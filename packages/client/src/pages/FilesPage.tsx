@@ -72,6 +72,16 @@ function FileRow({ file, onDelete, onDownload, selected, onSelect }: FileRowProp
         {file.projectName}
       </td>
 
+      {/* Organism */}
+      <td className="py-1.5 pr-3 text-caption text-text-secondary italic whitespace-nowrap">
+        {file.organismDisplay ?? '—'}
+      </td>
+
+      {/* Experiment */}
+      <td className="py-1.5 pr-3 text-caption text-text-secondary whitespace-nowrap">
+        {file.experimentName ?? '—'}
+      </td>
+
       {/* Format */}
       <td className="py-1.5 pr-3 whitespace-nowrap">
         <span className="font-mono text-micro px-1 py-px rounded-sm"
@@ -122,7 +132,7 @@ function FileRow({ file, onDelete, onDownload, selected, onSelect }: FileRowProp
 function SkeletonRow() {
   return (
     <tr className="border-b border-border-subtle">
-      {[...Array(9)].map((_, i) => (
+      {[...Array(11)].map((_, i) => (
         <td key={i} className="py-2 pr-3">
           <div className="skeleton h-4 rounded-sm" style={{ width: `${40 + Math.random() * 40}%` }} />
         </td>
@@ -147,8 +157,11 @@ export default function FilesPage() {
   const files = useMemo(() => {
     if (!data) return [];
     return data.filter(f => {
-      const matchSearch = !search || f.filename.toLowerCase().includes(search.toLowerCase())
-        || f.projectName.toLowerCase().includes(search.toLowerCase());
+      const q = search.toLowerCase();
+      const matchSearch = !search || f.filename.toLowerCase().includes(q)
+        || f.projectName.toLowerCase().includes(q)
+        || (f.organismDisplay?.toLowerCase().includes(q) ?? false)
+        || (f.experimentName?.toLowerCase().includes(q) ?? false);
       const matchFmt = fmtFilter === 'all' || detectFormat(f.filename) === fmtFilter;
       return matchSearch && matchFmt;
     });
@@ -235,7 +248,7 @@ export default function FilesPage() {
                   className="accent-accent cursor-pointer"
                 />
               </th>
-              {['File', 'Project', 'Format', 'Size', 'Status', 'Uploaded', 'Tags', ''].map(h => (
+              {['File', 'Project', 'Organism', 'Experiment', 'Format', 'Size', 'Status', 'Uploaded', 'Tags', ''].map(h => (
                 <th key={h} className="py-1.5 pr-3 font-body text-micro uppercase tracking-overline text-text-dim font-semibold whitespace-nowrap">
                   {h}
                 </th>
@@ -248,7 +261,7 @@ export default function FilesPage() {
               : files.length === 0
                 ? (
                   <tr>
-                    <td colSpan={9} className="py-12 text-center text-text-dim font-body text-body">
+                    <td colSpan={11} className="py-12 text-center text-text-dim font-body text-body">
                       {search || fmtFilter !== 'all' ? 'No files match your filters.' : 'No files yet. Upload some to get started.'}
                     </td>
                   </tr>

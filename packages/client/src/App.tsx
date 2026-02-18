@@ -1,9 +1,13 @@
 import { useState } from 'react';
 import { cx } from 'class-variance-authority';
 import { navLink } from './ui/recipes';
-import DashboardPage from './pages/DashboardPage';
-import FilesPage     from './pages/FilesPage';
-import UploadPage    from './pages/UploadPage';
+import { useAuth } from './hooks/useAuth';
+import LoginPage       from './pages/LoginPage';
+import DashboardPage   from './pages/DashboardPage';
+import FilesPage       from './pages/FilesPage';
+import UploadPage      from './pages/UploadPage';
+import OrganismsPage   from './pages/OrganismsPage';
+import ExperimentsPage from './pages/ExperimentsPage';
 
 // ── DNA helix icon ────────────────────────────────────────
 const GenomicIcon = () => (
@@ -47,20 +51,49 @@ const icons = {
       <path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3" />
     </svg>
   ),
+  organisms: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M2 12h20" />
+      <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
+    </svg>
+  ),
+  experiments: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round">
+      <path d="M9 3h6v7l4 9H5l4-9V3z" />
+      <path d="M9 3h6" />
+    </svg>
+  ),
 };
 
-type Page = 'dashboard' | 'files' | 'upload';
+type Page = 'dashboard' | 'files' | 'upload' | 'organisms' | 'experiments';
 
 const NAV_ITEMS: { id: Page; label: string }[] = [
-  { id: 'dashboard', label: 'Dashboard' },
-  { id: 'files',     label: 'Files' },
-  { id: 'upload',    label: 'Upload' },
+  { id: 'dashboard',   label: 'Dashboard' },
+  { id: 'organisms',   label: 'Organisms' },
+  { id: 'experiments', label: 'Experiments' },
+  { id: 'files',       label: 'Files' },
+  { id: 'upload',      label: 'Upload' },
 ];
 
 // ── App ───────────────────────────────────────────────────
 
 export default function App() {
+  const { user, loading, logout } = useAuth();
   const [page, setPage] = useState<Page>('dashboard');
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full"
+        style={{ background: 'var(--color-bg)' }}>
+        <div className="font-body text-body text-text-dim">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!user) return <LoginPage />;
 
   return (
     <div className="flex h-full" style={{ background: 'var(--color-bg)' }}>
@@ -94,19 +127,47 @@ export default function App() {
           ))}
         </nav>
 
-        {/* Footer */}
-        <div className="px-3 py-2 border-t border-border-subtle">
-          <div className="font-mono text-micro text-text-dim">
-            AWS · S3 + CloudFront
+        {/* Footer — user info */}
+        <div className="px-3 py-2 border-t border-border-subtle flex items-center gap-2">
+          {user.picture ? (
+            <img
+              src={user.picture}
+              alt=""
+              referrerPolicy="no-referrer"
+              className="w-6 h-6 rounded-full shrink-0"
+            />
+          ) : (
+            <div className="w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-micro font-bold"
+              style={{ background: 'var(--color-accent)', color: 'var(--color-bg)' }}>
+              {user.name.charAt(0).toUpperCase()}
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="font-body text-micro text-text truncate">{user.name}</div>
+            <div className="font-mono text-micro text-text-dim truncate">{user.email}</div>
           </div>
+          <button
+            onClick={logout}
+            className="shrink-0 text-text-dim hover:text-text cursor-pointer bg-transparent border-none p-0.5"
+            title="Sign out"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="2" strokeLinecap="round">
+              <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+          </button>
         </div>
       </aside>
 
       {/* Main */}
       <main className="flex-1 overflow-auto">
-        {page === 'dashboard' && <DashboardPage />}
-        {page === 'files'     && <FilesPage />}
-        {page === 'upload'    && <UploadPage />}
+        {page === 'dashboard'   && <DashboardPage />}
+        {page === 'organisms'   && <OrganismsPage />}
+        {page === 'experiments' && <ExperimentsPage />}
+        {page === 'files'       && <FilesPage />}
+        {page === 'upload'      && <UploadPage />}
       </main>
     </div>
   );

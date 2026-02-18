@@ -1,6 +1,5 @@
 import { useState, useRef, useCallback, useId } from 'react';
-import { useMultipartUpload } from '../hooks/useGenomicQueries';
-import { useProjectsQuery } from '../hooks/useGenomicQueries';
+import { useMultipartUpload, useProjectsQuery, useOrganismsQuery, useExperimentsQuery } from '../hooks/useGenomicQueries';
 import { detectFormat, FORMAT_META, formatBytes } from '../lib/formats';
 import { Button, Badge, Text, Heading, Select, Input } from '../ui';
 
@@ -79,44 +78,69 @@ function DropZone({ onFiles }: DropZoneProps) {
 interface QueueItemProps {
   file:      File;
   projectId: string;
+  organismId: string;
+  experimentId: string;
+  description: string;
+  tags: string;
   onRemove:  () => void;
-  onProjectChange: (p: string) => void;
-  projects: { id: string; name: string }[];
+  onChange: (patch: Partial<{ projectId: string; organismId: string; experimentId: string; description: string; tags: string }>) => void;
+  projects:    { id: string; name: string }[];
+  organisms:   { id: string; displayName: string }[];
+  experiments: { id: string; name: string }[];
 }
 
-function QueueItem({ file, projectId, onRemove, onProjectChange, projects }: QueueItemProps) {
+function QueueItem({ file, projectId, organismId, experimentId, description, tags, onRemove, onChange, projects, organisms, experiments }: QueueItemProps) {
   const fmt  = detectFormat(file.name);
   const meta = FORMAT_META[fmt];
 
   return (
-    <div className="flex items-center gap-2.5 p-2 bg-surface border border-border rounded-md">
-      {/* Format pill */}
-      <div className="font-mono text-micro px-1.5 py-0.5 rounded-sm shrink-0 font-bold"
-        style={{ background: meta.bg, color: meta.color }}>
-        {meta.label}
+    <div className="flex flex-col gap-2 p-2.5 bg-surface border border-border rounded-md">
+      {/* Row 1: identity */}
+      <div className="flex items-center gap-2.5">
+        <div className="font-mono text-micro px-1.5 py-0.5 rounded-sm shrink-0 font-bold"
+          style={{ background: meta.bg, color: meta.color }}>
+          {meta.label}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="font-mono text-caption text-text truncate">{file.name}</div>
+          <div className="text-micro text-text-dim">{formatBytes(file.size)} · {meta.description}</div>
+        </div>
+        <Button intent="ghost" size="xs" onClick={onRemove}>×</Button>
       </div>
 
-      {/* Name + size */}
-      <div className="flex-1 min-w-0">
-        <div className="font-mono text-caption text-text truncate">{file.name}</div>
-        <div className="text-micro text-text-dim">{formatBytes(file.size)} · {meta.description}</div>
+      {/* Row 2: assignment selects */}
+      <div className="flex gap-2 flex-wrap">
+        <Select variant="surface" size="sm" value={projectId} onChange={e => onChange({ projectId: e.target.value })} className="w-40">
+          <option value="">— project —</option>
+          {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </Select>
+        <Select variant="surface" size="sm" value={organismId} onChange={e => onChange({ organismId: e.target.value })} className="w-40">
+          <option value="">— organism —</option>
+          {organisms.map(o => <option key={o.id} value={o.id}>{o.displayName}</option>)}
+        </Select>
+        <Select variant="surface" size="sm" value={experimentId} onChange={e => onChange({ experimentId: e.target.value })} className="w-40">
+          <option value="">— experiment —</option>
+          {experiments.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+        </Select>
       </div>
 
-      {/* Project assign */}
-      <Select
-        variant="surface"
-        size="sm"
-        value={projectId}
-        onChange={e => onProjectChange(e.target.value)}
-        className="w-36 shrink-0"
-      >
-        <option value="">— project —</option>
-        {projects.map(p => (
-          <option key={p.id} value={p.id}>{p.name}</option>
-        ))}
-      </Select>
-
-      <Button intent="ghost" size="xs" onClick={onRemove}>×</Button>
+      {/* Row 3: description + tags */}
+      <div className="flex gap-2">
+        <Input
+          variant="surface" size="sm"
+          placeholder="Description (optional)"
+          value={description}
+          onChange={e => onChange({ description: e.target.value })}
+          className="flex-1"
+        />
+        <Input
+          variant="surface" size="sm"
+          placeholder="Tags (comma-separated)"
+          value={tags}
+          onChange={e => onChange({ tags: e.target.value })}
+          className="w-48"
+        />
+      </div>
     </div>
   );
 }
@@ -178,9 +202,11 @@ function ProgressBar({ filename, loaded, total, status, error }: ProgressBarProp
 
 export default function UploadPage() {
   const { data: projects } = useProjectsQuery();
+  const { data: organisms } = useOrganismsQuery();
+  const { data: experiments } = useExperimentsQuery();
   const { uploads, upload, clearDone } = useMultipartUpload();
 
-  type QueueEntry = { file: File; projectId: string; tags: string; description: string };
+  type QueueEntry = { file: File; projectId: string; organismId: string; experimentId: string; tags: string; description: string };
   const [queue,      setQueue]      = useState<QueueEntry[]>([]);
   const [defaultPrj, setDefaultPrj] = useState('');
   const [uploading,  setUploading]  = useState(false);
@@ -188,15 +214,15 @@ export default function UploadPage() {
   const addFiles = useCallback((files: File[]) => {
     setQueue(prev => [
       ...prev,
-      ...files.map(f => ({ file: f, projectId: defaultPrj, tags: '', description: '' })),
+      ...files.map(f => ({ file: f, projectId: defaultPrj, organismId: '', experimentId: '', tags: '', description: '' })),
     ]);
   }, [defaultPrj]);
 
   const removeFromQueue = (idx: number) =>
     setQueue(prev => prev.filter((_, i) => i !== idx));
 
-  const setProjectForFile = (idx: number, projectId: string) =>
-    setQueue(prev => prev.map((e, i) => i === idx ? { ...e, projectId } : e));
+  const updateQueueItem = (idx: number, patch: Partial<QueueEntry>) =>
+    setQueue(prev => prev.map((e, i) => i === idx ? { ...e, ...patch } : e));
 
   const startUploads = async () => {
     const ready = queue.filter(e => e.projectId);
@@ -208,6 +234,8 @@ export default function UploadPage() {
         e.file, e.projectId,
         e.description || undefined,
         e.tags ? e.tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
+        e.organismId || undefined,
+        e.experimentId || undefined,
       ))
     );
     setUploading(false);
@@ -218,7 +246,7 @@ export default function UploadPage() {
   const errorUploads   = [...uploads.values()].filter(u => u.status === 'error');
 
   return (
-    <div className="flex flex-col gap-3 p-3 max-w-2xl mx-auto w-full">
+    <div className="flex flex-col gap-3 p-3 max-w-3xl mx-auto w-full">
       <div>
         <Heading level="heading">Upload Files</Heading>
         <Text variant="caption">Files are uploaded directly to S3 via multipart presigned URLs</Text>
@@ -251,9 +279,15 @@ export default function UploadPage() {
                 key={i}
                 file={e.file}
                 projectId={e.projectId}
+                organismId={e.organismId}
+                experimentId={e.experimentId}
+                description={e.description}
+                tags={e.tags}
                 projects={projects ?? []}
+                organisms={organisms ?? []}
+                experiments={experiments ?? []}
                 onRemove={() => removeFromQueue(i)}
-                onProjectChange={id => setProjectForFile(i, id)}
+                onChange={patch => updateQueueItem(i, patch)}
               />
             ))}
           </div>

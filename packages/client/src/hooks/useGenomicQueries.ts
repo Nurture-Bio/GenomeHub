@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { apiFetch } from '../lib/api';
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -11,19 +12,53 @@ export interface Project {
   totalBytes:  number;
 }
 
+export interface Organism {
+  id:              string;
+  genus:           string;
+  species:         string;
+  strain:          string | null;
+  commonName:      string | null;
+  ncbiTaxId:       number | null;
+  referenceGenome: string | null;
+  displayName:     string;
+  fileCount:       number;
+  experimentCount: number;
+  createdAt:       string;
+}
+
+export interface Experiment {
+  id:              string;
+  name:            string;
+  description:     string | null;
+  technique:       string;
+  experimentDate:  string | null;
+  createdBy:       string | null;
+  projectId:       string;
+  projectName:     string | null;
+  organismId:      string | null;
+  organismDisplay: string | null;
+  fileCount:       number;
+  createdAt:       string;
+}
+
 export interface GenomicFile {
-  id:          string;
-  projectId:   string;
-  projectName: string;
-  filename:    string;
-  s3Key:       string;
-  sizeBytes:   number;
-  format:      string;
-  md5:         string | null;
-  status:      'pending' | 'ready' | 'error';
-  uploadedAt:  string;
-  description: string | null;
-  tags:        string[];
+  id:              string;
+  projectId:       string;
+  projectName:     string;
+  filename:        string;
+  s3Key:           string;
+  sizeBytes:       number;
+  format:          string;
+  md5:             string | null;
+  status:          'pending' | 'ready' | 'error';
+  uploadedAt:      string;
+  description:     string | null;
+  tags:            string[];
+  organismId:      string | null;
+  organismDisplay: string | null;
+  experimentId:    string | null;
+  experimentName:  string | null;
+  uploadedBy:      string | null;
 }
 
 export interface StorageStats {
@@ -42,7 +77,7 @@ export function useFilesQuery(projectId?: string) {
   const refetch = useCallback(() => {
     setIsLoading(true);
     const url = projectId ? `/api/files?projectId=${projectId}` : '/api/files';
-    fetch(url)
+    apiFetch(url)
       .then(r => r.ok ? r.json() : Promise.reject(r))
       .then(d => { setData(d); setError(null); })
       .catch(e => setError(e))
@@ -63,7 +98,7 @@ export function useProjectsQuery() {
 
   const refetch = useCallback(() => {
     setIsLoading(true);
-    fetch('/api/projects')
+    apiFetch('/api/projects')
       .then(r => r.ok ? r.json() : Promise.reject(r))
       .then(d => { setData(d); setError(null); })
       .catch(e => setError(e))
@@ -75,6 +110,100 @@ export function useProjectsQuery() {
   return { data, isLoading, error, refetch };
 }
 
+// ─── Organisms ────────────────────────────────────────────
+
+export function useOrganismsQuery() {
+  const [data, setData] = useState<Organism[] | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  const refetch = useCallback(() => {
+    setIsLoading(true);
+    apiFetch('/api/organisms')
+      .then(r => r.ok ? r.json() : Promise.reject(r))
+      .then(d => { setData(d); setError(null); })
+      .catch(e => setError(e))
+      .finally(() => setIsLoading(false));
+  }, []);
+
+  useEffect(() => { refetch(); }, [refetch]);
+
+  return { data, isLoading, error, refetch };
+}
+
+export function useCreateOrganismMutation(onSuccess?: () => void) {
+  const [pending, setPending] = useState(false);
+
+  const createOrganism = useCallback(async (body: {
+    genus: string; species: string; strain?: string;
+    commonName?: string; ncbiTaxId?: number; referenceGenome?: string;
+  }) => {
+    setPending(true);
+    try {
+      const r = await apiFetch('/api/organisms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) throw new Error('Create failed');
+      onSuccess?.();
+    } finally {
+      setPending(false);
+    }
+  }, [onSuccess]);
+
+  return { createOrganism, pending };
+}
+
+// ─── Experiments ──────────────────────────────────────────
+
+export function useExperimentsQuery(filters?: { projectId?: string; organismId?: string }) {
+  const [data, setData] = useState<Experiment[] | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  const refetch = useCallback(() => {
+    setIsLoading(true);
+    const params = new URLSearchParams();
+    if (filters?.projectId) params.set('projectId', filters.projectId);
+    if (filters?.organismId) params.set('organismId', filters.organismId);
+    const qs = params.toString();
+    apiFetch(`/api/experiments${qs ? '?' + qs : ''}`)
+      .then(r => r.ok ? r.json() : Promise.reject(r))
+      .then(d => { setData(d); setError(null); })
+      .catch(e => setError(e))
+      .finally(() => setIsLoading(false));
+  }, [filters?.projectId, filters?.organismId]);
+
+  useEffect(() => { refetch(); }, [refetch]);
+
+  return { data, isLoading, error, refetch };
+}
+
+export function useCreateExperimentMutation(onSuccess?: () => void) {
+  const [pending, setPending] = useState(false);
+
+  const createExperiment = useCallback(async (body: {
+    name: string; technique: string; projectId: string;
+    description?: string; experimentDate?: string; organismId?: string;
+  }) => {
+    setPending(true);
+    try {
+      const r = await apiFetch('/api/experiments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) throw new Error('Create failed');
+      onSuccess?.();
+    } finally {
+      setPending(false);
+    }
+  }, [onSuccess]);
+
+  return { createExperiment, pending };
+}
+
 // ─── Storage stats ────────────────────────────────────────
 
 export function useStorageStats() {
@@ -82,7 +211,7 @@ export function useStorageStats() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/stats')
+    apiFetch('/api/stats')
       .then(r => r.json())
       .then(setData)
       .finally(() => setIsLoading(false));
@@ -99,7 +228,7 @@ export function useDeleteFileMutation(onSuccess?: () => void) {
   const deleteFile = useCallback(async (fileId: string) => {
     setPending(true);
     try {
-      const r = await fetch(`/api/files/${fileId}`, { method: 'DELETE' });
+      const r = await apiFetch(`/api/files/${fileId}`, { method: 'DELETE' });
       if (!r.ok) throw new Error('Delete failed');
       onSuccess?.();
     } finally {
@@ -118,7 +247,7 @@ export function usePresignedUrl() {
   const getUrl = useCallback(async (fileId: string): Promise<string> => {
     setPending(true);
     try {
-      const r = await fetch(`/api/files/${fileId}/download`);
+      const r = await apiFetch(`/api/files/${fileId}/download`);
       const { url } = await r.json();
       return url;
     } finally {
@@ -156,7 +285,9 @@ export function useMultipartUpload() {
     file:      File,
     projectId: string,
     description?: string,
-    tags?: string[]
+    tags?: string[],
+    organismId?: string,
+    experimentId?: string,
   ) => {
     const tmpId = crypto.randomUUID();
 
@@ -171,13 +302,14 @@ export function useMultipartUpload() {
 
     try {
       // 1. Initiate multipart upload
-      const initRes = await fetch('/api/uploads/initiate', {
+      const initRes = await apiFetch('/api/uploads/initiate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           filename: file.name, projectId,
           contentType: file.type || 'application/octet-stream',
           sizeBytes: file.size, description, tags,
+          organismId, experimentId,
         }),
       });
       const { fileId, uploadId, s3Key } = await initRes.json();
@@ -194,7 +326,7 @@ export function useMultipartUpload() {
         const chunk  = file.slice(start, end);
 
         // Get presigned URL for this part
-        const partRes = await fetch('/api/uploads/part-url', {
+        const partRes = await apiFetch('/api/uploads/part-url', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ fileId, uploadId, s3Key, partNumber: i + 1 }),
@@ -213,7 +345,7 @@ export function useMultipartUpload() {
       }
 
       // 3. Complete
-      await fetch('/api/uploads/complete', {
+      await apiFetch('/api/uploads/complete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fileId, uploadId, s3Key, parts }),

@@ -12,11 +12,14 @@
 
 import 'dotenv/config';
 import express, { Request, Response, NextFunction } from 'express';
-import { createServer }   from 'http';
-import path               from 'path';
-import { fileURLToPath }  from 'url';
-import { AppDataSource }  from './app_data.js';
-import { Project, GenomicFile } from './entities/index.js';
+import session             from 'express-session';
+import connectPgSimple     from 'connect-pg-simple';
+import { OAuth2Client }    from 'google-auth-library';
+import { createServer }    from 'http';
+import path                from 'path';
+import { fileURLToPath }   from 'url';
+import { AppDataSource }   from './app_data.js';
+import { User, Project, Organism, Experiment, GenomicFile } from './entities/index.js';
 import {
   buildS3Key, initiateMultipartUpload, presignPartUrl,
   completeMultipartUpload, abortMultipartUpload,
@@ -29,12 +32,114 @@ const server    = createServer(app);
 
 app.use(express.json());
 
+// ─── Session ──────────────────────────────────────────────
+
+const PgSession = connectPgSimple(session);
+
+app.use(session({
+  store: new PgSession({
+    conString: process.env.DATABASE_URL,
+    createTableIfMissing: true,
+  }),
+  secret: process.env.SESSION_SECRET || 'dev-secret-change-me',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+  },
+}));
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
 // ─── Helper ────────────────────────────────────────────────
 
 function asyncWrap(fn: (req: Request, res: Response) => Promise<void>) {
   return (req: Request, res: Response, next: NextFunction) =>
     fn(req, res).catch(next);
 }
+
+// ─── Auth routes ────────────────────────────────────────────
+
+app.post('/api/auth/google', asyncWrap(async (req, res) => {
+  const { accessToken } = req.body as { accessToken: string };
+  if (!accessToken) { res.status(400).json({ error: 'accessToken required' }); return; }
+
+  // Exchange access token for user info from Google
+  const infoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!infoRes.ok) { res.status(401).json({ error: 'invalid token' }); return; }
+
+  const info = await infoRes.json() as {
+    sub: string; email: string; name?: string;
+    given_name?: string; family_name?: string; picture?: string; hd?: string;
+  };
+
+  if (info.hd !== 'nurture.bio') {
+    res.status(403).json({ error: 'Only nurture.bio accounts are allowed' });
+    return;
+  }
+
+  const userRepo = AppDataSource.getRepository(User);
+  let user = await userRepo.findOneBy({ googleId: info.sub });
+  if (user) {
+    user.name = info.name ?? user.name;
+    user.givenName = info.given_name ?? user.givenName;
+    user.familyName = info.family_name ?? user.familyName;
+    user.picture = info.picture ?? user.picture;
+    user.lastLoginAt = new Date();
+    await userRepo.save(user);
+  } else {
+    user = userRepo.create({
+      googleId: info.sub,
+      email: info.email,
+      name: info.name ?? info.email,
+      givenName: info.given_name ?? null,
+      familyName: info.family_name ?? null,
+      picture: info.picture ?? null,
+      hd: info.hd ?? null,
+      lastLoginAt: new Date(),
+    });
+    await userRepo.save(user);
+  }
+
+  req.session.userId = user.id;
+  req.session.email = user.email;
+  req.session.name = user.name;
+  req.session.picture = user.picture;
+
+  res.json({ id: user.id, email: user.email, name: user.name, picture: user.picture });
+}));
+
+app.get('/api/auth/me', (req, res) => {
+  if (!req.session.userId) { res.status(401).json({ error: 'not authenticated' }); return; }
+  res.json({
+    id: req.session.userId,
+    email: req.session.email,
+    name: req.session.name,
+    picture: req.session.picture,
+  });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  req.session.destroy(() => {
+    res.clearCookie('connect.sid');
+    res.json({ ok: true });
+  });
+});
+
+// ─── Auth guard ─────────────────────────────────────────────
+
+app.use('/api', (req, res, next) => {
+  if (!req.session.userId) {
+    res.status(401).json({ error: 'not authenticated' });
+    return;
+  }
+  next();
+});
 
 // ─── Projects ──────────────────────────────────────────────
 
@@ -71,17 +176,157 @@ app.post('/api/projects', asyncWrap(async (req, res) => {
   res.status(201).json(prj);
 }));
 
+// ─── Organisms ────────────────────────────────────────────
+
+app.get('/api/organisms', asyncWrap(async (_req, res) => {
+  const repo = AppDataSource.getRepository(Organism);
+  const organisms = await repo.find({ order: { createdAt: 'DESC' } });
+
+  const fileRepo = AppDataSource.getRepository(GenomicFile);
+  const fileCounts = await fileRepo
+    .createQueryBuilder('f')
+    .select('f.organism_id', 'organismId')
+    .addSelect('COUNT(*)', 'fileCount')
+    .where('f.organism_id IS NOT NULL')
+    .groupBy('f.organism_id')
+    .getRawMany<{ organismId: string; fileCount: string }>();
+  const fileMap = new Map(fileCounts.map(s => [s.organismId, parseInt(s.fileCount)]));
+
+  const expRepo = AppDataSource.getRepository(Experiment);
+  const expCounts = await expRepo
+    .createQueryBuilder('e')
+    .select('e.organism_id', 'organismId')
+    .addSelect('COUNT(*)', 'experimentCount')
+    .where('e.organism_id IS NOT NULL')
+    .groupBy('e.organism_id')
+    .getRawMany<{ organismId: string; experimentCount: string }>();
+  const expMap = new Map(expCounts.map(s => [s.organismId, parseInt(s.experimentCount)]));
+
+  res.json(organisms.map(o => ({
+    ...o,
+    displayName: `${o.genus.charAt(0)}. ${o.species}${o.strain ? ' ' + o.strain : ''}`,
+    fileCount: fileMap.get(o.id) ?? 0,
+    experimentCount: expMap.get(o.id) ?? 0,
+  })));
+}));
+
+app.post('/api/organisms', asyncWrap(async (req, res) => {
+  const { genus, species, strain, commonName, ncbiTaxId, referenceGenome } = req.body as {
+    genus: string; species: string; strain?: string; commonName?: string;
+    ncbiTaxId?: number; referenceGenome?: string;
+  };
+  if (!genus || !species) { res.status(400).json({ error: 'genus and species required' }); return; }
+
+  const repo = AppDataSource.getRepository(Organism);
+  const org = repo.create({
+    genus, species,
+    strain: strain ?? null,
+    commonName: commonName ?? null,
+    ncbiTaxId: ncbiTaxId ?? null,
+    referenceGenome: referenceGenome ?? null,
+  });
+  await repo.save(org);
+  res.status(201).json(org);
+}));
+
+app.delete('/api/organisms/:id', asyncWrap(async (req, res) => {
+  const repo = AppDataSource.getRepository(Organism);
+  const org = await repo.findOneBy({ id: req.params.id });
+  if (!org) { res.status(404).json({ error: 'not found' }); return; }
+  await repo.remove(org);
+  res.json({ ok: true });
+}));
+
+// ─── Experiments ──────────────────────────────────────────
+
+app.get('/api/experiments', asyncWrap(async (req, res) => {
+  const { projectId, organismId } = req.query as { projectId?: string; organismId?: string };
+  const repo = AppDataSource.getRepository(Experiment);
+
+  const qb = repo.createQueryBuilder('e')
+    .leftJoinAndSelect('e.project', 'p')
+    .leftJoinAndSelect('e.organism', 'o')
+    .orderBy('e.createdAt', 'DESC');
+
+  if (projectId) qb.andWhere('e.project_id = :projectId', { projectId });
+  if (organismId) qb.andWhere('e.organism_id = :organismId', { organismId });
+
+  const experiments = await qb.getMany();
+
+  const fileRepo = AppDataSource.getRepository(GenomicFile);
+  const fileCounts = await fileRepo
+    .createQueryBuilder('f')
+    .select('f.experiment_id', 'experimentId')
+    .addSelect('COUNT(*)', 'fileCount')
+    .where('f.experiment_id IS NOT NULL')
+    .groupBy('f.experiment_id')
+    .getRawMany<{ experimentId: string; fileCount: string }>();
+  const fileMap = new Map(fileCounts.map(s => [s.experimentId, parseInt(s.fileCount)]));
+
+  res.json(experiments.map(e => ({
+    id: e.id,
+    name: e.name,
+    description: e.description,
+    technique: e.technique,
+    experimentDate: e.experimentDate,
+    createdBy: e.createdBy,
+    projectId: e.projectId,
+    projectName: e.project?.name ?? null,
+    organismId: e.organismId,
+    organismDisplay: e.organism
+      ? `${e.organism.genus.charAt(0)}. ${e.organism.species}${e.organism.strain ? ' ' + e.organism.strain : ''}`
+      : null,
+    fileCount: fileMap.get(e.id) ?? 0,
+    createdAt: e.createdAt,
+  })));
+}));
+
+app.post('/api/experiments', asyncWrap(async (req, res) => {
+  const { name, technique, projectId, description, experimentDate, createdBy, organismId } = req.body as {
+    name: string; technique: string; projectId: string;
+    description?: string; experimentDate?: string; createdBy?: string; organismId?: string;
+  };
+  if (!name || !technique || !projectId) {
+    res.status(400).json({ error: 'name, technique, and projectId required' }); return;
+  }
+
+  const repo = AppDataSource.getRepository(Experiment);
+  const exp = repo.create({
+    name, technique, projectId,
+    description: description ?? null,
+    experimentDate: experimentDate ?? null,
+    createdBy: req.session.email ?? createdBy ?? null,
+    organismId: organismId ?? null,
+  });
+  await repo.save(exp);
+  res.status(201).json(exp);
+}));
+
+app.delete('/api/experiments/:id', asyncWrap(async (req, res) => {
+  const repo = AppDataSource.getRepository(Experiment);
+  const exp = await repo.findOneBy({ id: req.params.id });
+  if (!exp) { res.status(404).json({ error: 'not found' }); return; }
+  await repo.remove(exp);
+  res.json({ ok: true });
+}));
+
 // ─── Files ─────────────────────────────────────────────────
 
 app.get('/api/files', asyncWrap(async (req, res) => {
-  const { projectId } = req.query as { projectId?: string };
+  const { projectId, organismId, experimentId } = req.query as {
+    projectId?: string; organismId?: string; experimentId?: string;
+  };
   const repo = AppDataSource.getRepository(GenomicFile);
 
   const qb = repo.createQueryBuilder('f')
     .innerJoinAndSelect('f.project', 'p')
+    .leftJoinAndSelect('f.organism', 'o')
+    .leftJoinAndSelect('f.experiment', 'e')
     .orderBy('f.uploadedAt', 'DESC');
 
-  if (projectId) qb.where('f.project_id = :projectId', { projectId });
+  if (projectId) qb.andWhere('f.project_id = :projectId', { projectId });
+  if (organismId) qb.andWhere('f.organism_id = :organismId', { organismId });
+  if (experimentId) qb.andWhere('f.experiment_id = :experimentId', { experimentId });
 
   const files = await qb.getMany();
   res.json(files.map(f => ({
@@ -97,6 +342,13 @@ app.get('/api/files', asyncWrap(async (req, res) => {
     uploadedAt:  f.uploadedAt,
     description: f.description,
     tags:        f.tags,
+    organismId:  f.organismId,
+    organismDisplay: f.organism
+      ? `${f.organism.genus.charAt(0)}. ${f.organism.species}${f.organism.strain ? ' ' + f.organism.strain : ''}`
+      : null,
+    experimentId:   f.experimentId,
+    experimentName: f.experiment?.name ?? null,
+    uploadedBy:     f.uploadedBy,
   })));
 }));
 
@@ -153,7 +405,7 @@ app.get('/api/stats', asyncWrap(async (_req, res) => {
 
 /** Step 1 — register file metadata and initiate S3 multipart */
 app.post('/api/uploads/initiate', asyncWrap(async (req, res) => {
-  const { filename, projectId, contentType, sizeBytes, description, tags } =
+  const { filename, projectId, contentType, sizeBytes, description, tags, organismId, experimentId } =
     req.body as {
       filename:    string;
       projectId:   string;
@@ -161,6 +413,8 @@ app.post('/api/uploads/initiate', asyncWrap(async (req, res) => {
       sizeBytes:   number;
       description?: string;
       tags?: string[];
+      organismId?: string;
+      experimentId?: string;
     };
 
   if (!filename || !projectId) {
@@ -178,6 +432,9 @@ app.post('/api/uploads/initiate', asyncWrap(async (req, res) => {
     status: 'pending',
     s3Key:  '',   // filled after we have the id
     format: detectFormat(filename),
+    organismId: organismId ?? null,
+    experimentId: experimentId ?? null,
+    uploadedBy: req.session.email ?? null,
   });
   await repo.save(file);
 
@@ -258,6 +515,7 @@ const PORT = parseInt(process.env.PORT ?? '3000');
 
 async function main() {
   await AppDataSource.initialize();
+  await AppDataSource.synchronize();
   console.log('Database connected');
 
   server.listen(PORT, () => {

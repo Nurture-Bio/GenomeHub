@@ -1,4 +1,4 @@
-import { useStorageStats, useProjectsQuery } from '../hooks/useGenomicQueries';
+import { useStorageStats, useProjectsQuery, useOrganismsQuery, useExperimentsQuery } from '../hooks/useGenomicQueries';
 import { FORMAT_META, formatBytes } from '../lib/formats';
 import { Heading, Text, Badge } from '../ui';
 
@@ -43,13 +43,15 @@ function FormatBar({ items }: { items: { format: string; bytes: number }[] }) {
 export default function DashboardPage() {
   const { data: stats, isLoading: statsLoading } = useStorageStats();
   const { data: projects, isLoading: projLoading } = useProjectsQuery();
+  const { data: organisms, isLoading: orgLoading } = useOrganismsQuery();
+  const { data: experiments, isLoading: expLoading } = useExperimentsQuery();
 
   return (
     <div className="flex flex-col gap-3 p-3">
       <Heading level="heading">Dashboard</Heading>
 
       {/* Top stats */}
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
         <StatCard
           label="Total Files"
           value={statsLoading ? '—' : (stats?.totalFiles ?? 0).toLocaleString()}
@@ -61,6 +63,14 @@ export default function DashboardPage() {
         <StatCard
           label="Projects"
           value={projLoading ? '—' : (projects?.length ?? 0).toString()}
+        />
+        <StatCard
+          label="Organisms"
+          value={orgLoading ? '—' : (organisms?.length ?? 0).toString()}
+        />
+        <StatCard
+          label="Experiments"
+          value={expLoading ? '—' : (experiments?.length ?? 0).toString()}
         />
         <StatCard
           label="Formats"
