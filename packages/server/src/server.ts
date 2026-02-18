@@ -30,6 +30,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app       = express();
 const server    = createServer(app);
 
+app.set('trust proxy', 1);
 app.use(express.json());
 
 // ─── Session ──────────────────────────────────────────────
