@@ -6,14 +6,14 @@ CREATE TABLE IF NOT EXISTS file_kinds (
 );
 
 INSERT INTO file_kinds (name, description) VALUES
-  ('library', 'Library prep (fastq)'),
+  ('library', 'Sequencing library'),
   ('sample', 'Raw sample data'),
-  ('reference', 'Reference genome/assembly'),
-  ('alignment', 'Aligned reads (bam/cram)'),
-  ('counts', 'Count matrix'),
-  ('annotation', 'Genome annotation (gff/gtf)'),
+  ('reference', 'Reference genome or assembly'),
+  ('alignment', 'Aligned reads'),
+  ('counts', 'Count or expression matrix'),
+  ('annotation', 'Genome annotation'),
   ('qc', 'Quality control report'),
   ('index', 'Index file'),
   ('raw', 'Unclassified file'),
   ('other', 'Other file type')
-ON CONFLICT (name) DO NOTHING;
+ON CONFLICT (name) DO UPDATE SET description = EXCLUDED.description;

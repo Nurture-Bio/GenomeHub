@@ -1,17 +1,29 @@
 import type { GenomicFile } from "../hooks/useGenomicQueries";
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, type KeyboardEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { useFilesQuery, useDeleteFileMutation, useUpdateFileMutation, usePresignedUrl, useAddFilesToCollection } from '../hooks/useGenomicQueries';
+import {
+  useFilesQuery, useDeleteFileMutation, useUpdateFileMutation,
+  usePresignedUrl, useAddFilesToCollection, useRemoveFilesFromCollection,
+} from '../hooks/useGenomicQueries';
 import { useConfirm } from '../hooks/useConfirm';
-import { detectFormat, FORMAT_META, formatBytes, formatRelativeTime } from '../lib/formats';
-import { Button, Badge, Input, Text, Heading, Card } from '../ui';
+import { detectFormat, FORMAT_META, FORMAT_REGISTRY, formatBytes, formatRelativeTime } from '../lib/formats';
+import { Button, Badge, Input, Text, Heading, Card, ComboBox } from '../ui';
 import { CollectionPicker, OrganismPicker, FileKindPicker } from '../ui';
+import type { ComboBoxItem } from '../ui';
+
+// ── Format picker items (built once) ────────────────────
+
+const FORMAT_ITEMS: ComboBoxItem[] = FORMAT_REGISTRY.map(e => ({
+  id: e.id,
+  label: e.label,
+  description: e.description,
+}));
 
 // ── Format icon ──────────────────────────────────────────
 
-function FormatIcon({ filename, size = 32 }: { filename: string; size?: number }) {
-  const fmt   = detectFormat(filename);
-  const meta  = FORMAT_META[fmt];
+function FormatIcon({ filename, format, size = 32 }: { filename: string; format?: string; size?: number }) {
+  const fmt   = format ?? detectFormat(filename);
+  const meta  = FORMAT_META[fmt] ?? FORMAT_META['other'];
   return (
     <div
       className="flex items-center justify-center rounded-sm shrink-0 font-mono font-bold"
@@ -28,6 +40,111 @@ function FormatIcon({ filename, size = 32 }: { filename: string; size?: number }
   );
 }
 
+// ── Inline tag editor ────────────────────────────────────
+
+function InlineTagEditor({ tags, onUpdate }: { tags: string[]; onUpdate: (tags: string[]) => void }) {
+  const [input, setInput] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    const val = input.trim();
+    if (e.key === 'Enter' && val) {
+      e.preventDefault();
+      if (!tags.includes(val)) onUpdate([...tags, val]);
+      setInput('');
+    }
+    if (e.key === 'Backspace' && !input && tags.length > 0) {
+      onUpdate(tags.slice(0, -1));
+    }
+  };
+
+  const removeTag = (t: string) => onUpdate(tags.filter(x => x !== t));
+
+  return (
+    <div
+      className="flex gap-0.5 flex-wrap items-center min-w-16 cursor-text"
+      onClick={() => inputRef.current?.focus()}
+    >
+      {tags.map(t => (
+        <span
+          key={t}
+          className="inline-flex items-center gap-px font-body text-micro px-1 py-px rounded-sm bg-surface-2 text-text-secondary"
+        >
+          {t}
+          <button
+            className="ml-px text-text-dim hover:text-text cursor-pointer bg-transparent border-none p-0 text-micro leading-none"
+            onClick={e => { e.stopPropagation(); removeTag(t); }}
+          >
+            ×
+          </button>
+        </span>
+      ))}
+      <input
+        ref={inputRef}
+        value={input}
+        onChange={e => setInput(e.target.value)}
+        onKeyDown={handleKey}
+        placeholder={tags.length === 0 ? '+tag' : ''}
+        className="bg-transparent border-none outline-none font-body text-micro text-text placeholder:text-text-dim w-12 min-w-0 p-0"
+      />
+    </div>
+  );
+}
+
+// ── Inline collection editor ─────────────────────────────
+
+function InlineCollectionEditor({
+  fileId, collections, onAdd, onRemove,
+}: {
+  fileId: string;
+  collections: { id: string; name: string | null }[];
+  onAdd: (collectionId: string, fileIds: string[]) => Promise<void>;
+  onRemove: (collectionId: string, fileIds: string[]) => Promise<void>;
+}) {
+  const [adding, setAdding] = useState(false);
+
+  return (
+    <div className="flex gap-0.5 flex-wrap items-center">
+      {collections.map(c => (
+        <span
+          key={c.id}
+          className="inline-flex items-center gap-px font-body text-micro px-1 py-px rounded-sm bg-surface-2 text-text-secondary"
+        >
+          <Link to={`/collections/${c.id}`} className="no-underline text-text-secondary hover:text-accent">
+            {c.name}
+          </Link>
+          <button
+            className="ml-px text-text-dim hover:text-text cursor-pointer bg-transparent border-none p-0 text-micro leading-none"
+            onClick={() => onRemove(c.id, [fileId])}
+          >
+            ×
+          </button>
+        </span>
+      ))}
+      {adding ? (
+        <CollectionPicker
+          value=""
+          onValueChange={v => {
+            if (v) onAdd(v, [fileId]);
+            setAdding(false);
+          }}
+          placeholder="Collection..."
+          variant="surface"
+          size="sm"
+          className="w-32"
+        />
+      ) : (
+        <button
+          className="text-micro text-text-dim hover:text-accent cursor-pointer bg-transparent border-none p-0 font-body"
+          onClick={() => setAdding(true)}
+        >
+          +
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ── Mobile file card ────────────────────────────────────
 
 interface FileCardProps {
@@ -39,8 +156,7 @@ interface FileCardProps {
 }
 
 function FileCard({ file, onDelete, onDownload, selected, onSelect }: FileCardProps) {
-  const fmt  = detectFormat(file.filename);
-  const meta = FORMAT_META[fmt];
+  const meta = FORMAT_META[file.format] ?? FORMAT_META['other'];
 
   return (
     <Card
@@ -88,16 +204,18 @@ interface FileRowProps {
   file: GenomicFile;
   onDelete: (id: string) => void;
   onDownload: (id: string) => void;
-  onUpdate: (id: string, patch: { kind?: string; organismId?: string | null }) => void;
+  onUpdate: (id: string, patch: { kind?: string; format?: string; organismId?: string | null; tags?: string[] }) => void;
+  onAddToCollection: (collectionId: string, fileIds: string[]) => Promise<void>;
+  onRemoveFromCollection: (collectionId: string, fileIds: string[]) => Promise<void>;
   selected: boolean;
   onSelect: (id: string, sel: boolean) => void;
 }
 
-function FileRow({ file, onDelete, onDownload, onUpdate, selected, onSelect }: FileRowProps) {
-  const fmt  = detectFormat(file.filename);
-  const meta = FORMAT_META[fmt];
+function FileRow({ file, onDelete, onDownload, onUpdate, onAddToCollection, onRemoveFromCollection, selected, onSelect }: FileRowProps) {
+  const meta = FORMAT_META[file.format] ?? FORMAT_META['other'];
   const [editKind, setEditKind] = useState(false);
   const [editOrg, setEditOrg] = useState(false);
+  const [editFmt, setEditFmt] = useState(false);
 
   return (
     <tr
@@ -117,7 +235,7 @@ function FileRow({ file, onDelete, onDownload, onUpdate, selected, onSelect }: F
       {/* Icon + name */}
       <td className="py-1.5 pr-3">
         <div className="flex items-center gap-2">
-          <FormatIcon filename={file.filename} size={28} />
+          <FormatIcon filename={file.filename} format={file.format} size={28} />
           <div className="min-w-0">
             <Link to={`/files/${file.id}`} className="no-underline font-mono text-caption text-text truncate max-w-xs block hover:text-accent transition-colors duration-fast">
               {file.filename}
@@ -150,18 +268,14 @@ function FileRow({ file, onDelete, onDownload, onUpdate, selected, onSelect }: F
         )}
       </td>
 
-      {/* Collections */}
+      {/* Collections — inline add/remove */}
       <td className="py-1.5 pr-3">
-        <div className="flex gap-0.5 flex-wrap">
-          {file.collections.length > 0
-            ? file.collections.map(c => (
-              <Link key={c.id} to={`/collections/${c.id}`} className="no-underline">
-                <Badge variant="count" color="dim">{c.name}</Badge>
-              </Link>
-            ))
-            : <span className="text-caption text-text-dim">—</span>
-          }
-        </div>
+        <InlineCollectionEditor
+          fileId={file.id}
+          collections={file.collections}
+          onAdd={onAddToCollection}
+          onRemove={onRemoveFromCollection}
+        />
       </td>
 
       {/* Kind — click to edit inline */}
@@ -182,12 +296,27 @@ function FileRow({ file, onDelete, onDownload, onUpdate, selected, onSelect }: F
         )}
       </td>
 
-      {/* Format */}
+      {/* Format — click to edit inline */}
       <td className="py-1.5 pr-3 whitespace-nowrap">
-        <span className="font-mono text-micro px-1 py-px rounded-sm"
-          style={{ background: meta.bg, color: meta.color }}>
-          {meta.label}
-        </span>
+        {editFmt ? (
+          <ComboBox
+            items={FORMAT_ITEMS}
+            value={file.format}
+            onValueChange={v => { if (v) onUpdate(file.id, { format: v }); setEditFmt(false); }}
+            placeholder="Format"
+            variant="surface"
+            size="sm"
+            className="w-24"
+          />
+        ) : (
+          <span
+            className="font-mono text-micro px-1 py-px rounded-sm cursor-pointer hover:ring-1 hover:ring-accent transition-all duration-fast"
+            style={{ background: meta.bg, color: meta.color }}
+            onClick={() => setEditFmt(true)}
+          >
+            {meta.label}
+          </span>
+        )}
       </td>
 
       {/* Size */}
@@ -207,13 +336,12 @@ function FileRow({ file, onDelete, onDownload, onUpdate, selected, onSelect }: F
         {formatRelativeTime(file.uploadedAt)}
       </td>
 
-      {/* Tags */}
+      {/* Tags — inline edit */}
       <td className="py-1.5 pr-3">
-        <div className="flex gap-0.5 flex-wrap">
-          {file.tags.slice(0, 3).map(t => (
-            <Badge key={t} variant="count" color="dim">{t}</Badge>
-          ))}
-        </div>
+        <InlineTagEditor
+          tags={file.tags}
+          onUpdate={tags => onUpdate(file.id, { tags })}
+        />
       </td>
 
       {/* Actions */}
@@ -272,14 +400,15 @@ export default function FilesPage() {
   });
   const { deleteFile, pending: deletePending } = useDeleteFileMutation(refetch);
   const { updateFile } = useUpdateFileMutation(refetch);
-  const { addFiles, pending: addPending } = useAddFilesToCollection();
-  const { getUrl, pending: urlPending } = usePresignedUrl();
+  const { addFiles } = useAddFilesToCollection();
+  const { removeFiles } = useRemoveFilesFromCollection();
+  const { getUrl } = usePresignedUrl();
   const { confirm, dialog } = useConfirm();
 
   // Derive format and kind filters from actual data
   const formatFilters = useMemo(() => {
     if (!data) return ['all'];
-    const fmts = new Set(data.map(f => detectFormat(f.filename)));
+    const fmts = new Set(data.map(f => f.format));
     return ['all', ...Array.from(fmts).sort()];
   }, [data]);
 
@@ -300,8 +429,9 @@ export default function FilesPage() {
       const q = search.toLowerCase();
       const matchSearch = !search || f.filename.toLowerCase().includes(q)
         || (f.organismDisplay?.toLowerCase().includes(q) ?? false)
-        || f.collections.some(c => c.name?.toLowerCase().includes(q));
-      const matchFmt = fmtFilter === 'all' || detectFormat(f.filename) === fmtFilter;
+        || f.collections.some(c => c.name?.toLowerCase().includes(q))
+        || f.tags.some(t => t.toLowerCase().includes(q));
+      const matchFmt = fmtFilter === 'all' || f.format === fmtFilter;
       return matchSearch && matchFmt;
     });
   }, [data, search, fmtFilter]);
@@ -333,7 +463,7 @@ export default function FilesPage() {
     setSelected(new Set());
   };
 
-  const handleAddToCollection = async (collectionId: string) => {
+  const handleBulkAddToCollection = async (collectionId: string) => {
     if (!collectionId || selected.size === 0) return;
     await addFiles(collectionId, [...selected]);
     setSelected(new Set());
@@ -341,8 +471,18 @@ export default function FilesPage() {
     refetch();
   };
 
-  const handleInlineUpdate = async (fileId: string, patch: { kind?: string; organismId?: string | null }) => {
+  const handleInlineUpdate = async (fileId: string, patch: { kind?: string; format?: string; organismId?: string | null; tags?: string[] }) => {
     await updateFile(fileId, patch);
+  };
+
+  const handleAddToCollection = async (collectionId: string, fileIds: string[]) => {
+    await addFiles(collectionId, fileIds);
+    refetch();
+  };
+
+  const handleRemoveFromCollection = async (collectionId: string, fileIds: string[]) => {
+    await removeFiles(collectionId, fileIds);
+    refetch();
   };
 
   return (
@@ -367,7 +507,7 @@ export default function FilesPage() {
               <div className="flex items-center gap-1">
                 <CollectionPicker
                   value={addToColId}
-                  onValueChange={handleAddToCollection}
+                  onValueChange={handleBulkAddToCollection}
                   placeholder="Pick collection..."
                   variant="surface"
                   size="sm"
@@ -478,6 +618,8 @@ export default function FilesPage() {
                     onDelete={deleteFile}
                     onDownload={handleDownload}
                     onUpdate={handleInlineUpdate}
+                    onAddToCollection={handleAddToCollection}
+                    onRemoveFromCollection={handleRemoveFromCollection}
                   />
                 ))
             }

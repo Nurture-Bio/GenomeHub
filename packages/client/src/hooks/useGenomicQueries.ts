@@ -175,7 +175,7 @@ export function useDeleteFileMutation(onSuccess?: () => void) {
 
 export function useUpdateFileMutation(onSuccess?: () => void) {
   const { mutate, pending } = useApiMutation<[string, {
-    kind?: string; organismId?: string | null;
+    kind?: string; format?: string; organismId?: string | null;
     description?: string | null; tags?: string[];
   }], GenomicFile>(
     (fileId, body) => ({

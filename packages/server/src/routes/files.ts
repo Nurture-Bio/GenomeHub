@@ -215,12 +215,13 @@ router.put('/:id', asyncWrap(async (req, res) => {
   const file = await repo.findOneBy({ id: req.params.id });
   if (!file) { res.status(404).json({ error: 'not found' }); return; }
 
-  const { kind, organismId, description, tags } = req.body as Partial<{
-    kind: string; organismId: string | null;
+  const { kind, format, organismId, description, tags } = req.body as Partial<{
+    kind: string; format: string; organismId: string | null;
     description: string | null; tags: string[];
   }>;
 
   if (kind !== undefined) file.kind = kind;
+  if (format !== undefined) file.format = format;
   if (description !== undefined) file.description = description;
   if (tags !== undefined) file.tags = tags;
   await repo.save(file);
