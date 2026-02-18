@@ -33,6 +33,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 COPY --from=build-server /app/packages/server/dist  ./packages/server/dist
+COPY --from=build-server /app/packages/server/src/migrations  ./packages/server/migrations
 COPY --from=build-client /app/dist/client           ./dist/client
 COPY --from=build-shared /app/packages/shared/dist  ./packages/shared/dist
 COPY package*.json ./

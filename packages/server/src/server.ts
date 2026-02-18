@@ -14,6 +14,7 @@ import 'dotenv/config';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import { createServer } from 'http';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { AppDataSource } from './app_data.js';
 import { Technique } from './entities/index.js';
@@ -91,6 +92,53 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 
 const PORT = parseInt(process.env.PORT ?? '3000');
 
+async function runSqlMigrations() {
+  const qr = AppDataSource.createQueryRunner();
+
+  // Create tracking table if it doesn't exist
+  await qr.query(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      name TEXT PRIMARY KEY,
+      applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+
+  // Find SQL migration files
+  // In production (Docker): ../migrations relative to dist/
+  // In development: ../src/migrations relative to dist/
+  const prodDir = path.join(__dirname, '..', 'migrations');
+  const devDir = path.join(__dirname, '..', 'src', 'migrations');
+  const migrationsDir = fs.existsSync(prodDir) ? prodDir : devDir;
+  if (!fs.existsSync(migrationsDir)) {
+    await qr.release();
+    return;
+  }
+
+  const files = fs.readdirSync(migrationsDir)
+    .filter(f => f.endsWith('.sql'))
+    .sort();
+
+  if (!files.length) {
+    await qr.release();
+    return;
+  }
+
+  // Check which have been applied
+  const applied = await qr.query('SELECT name FROM schema_migrations');
+  const appliedSet = new Set(applied.map((r: { name: string }) => r.name));
+
+  for (const file of files) {
+    if (appliedSet.has(file)) continue;
+    console.log(`Running migration: ${file}`);
+    const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
+    await qr.query(sql);
+    await qr.query('INSERT INTO schema_migrations (name) VALUES ($1)', [file]);
+    console.log(`Migration applied: ${file}`);
+  }
+
+  await qr.release();
+}
+
 async function seedTechniques() {
   const repo = AppDataSource.getRepository(Technique);
   const count = await repo.count();
@@ -116,6 +164,7 @@ async function seedTechniques() {
 
 async function main() {
   await AppDataSource.initialize();
+  await runSqlMigrations();
   await seedTechniques();
   console.log('Database connected');
 
