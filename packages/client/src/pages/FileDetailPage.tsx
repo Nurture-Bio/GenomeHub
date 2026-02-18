@@ -8,20 +8,20 @@ import {
 } from '../hooks/useGenomicQueries';
 import { detectFormat, FORMAT_META, formatBytes, formatRelativeTime } from '../lib/formats';
 import { Heading, Text, Card, Badge, Button, Input } from '../ui';
-import { CollectionPicker } from '../ui';
+import { CollectionPicker, RelationPicker } from '../ui';
 import LinksList from '../components/LinksList';
 import { useAppStore } from '../stores/useAppStore';
 
-const PROVENANCE_LABELS: Record<string, string> = {
-  derived_from: 'Derived from',
-  sequenced_from: 'Sequenced from',
-  produced_by: 'Produced by',
+const RELATION_LABELS: Record<string, string> = {
+  derived_from: 'derived from',
+  sequenced_from: 'sequenced from',
+  produced_by: 'produced by',
 };
 
-function ProvenanceRelationLabel({ relation }: { relation: string }) {
+function RelationLabel({ relation }: { relation: string }) {
   return (
     <span className="font-mono text-micro px-1.5 py-0.5 rounded-sm bg-surface-2 text-text-secondary">
-      {PROVENANCE_LABELS[relation] ?? relation}
+      {RELATION_LABELS[relation] ?? relation.replace(/_/g, ' ')}
     </span>
   );
 }
@@ -194,24 +194,10 @@ export default function FileDetailPage() {
         )}
       </div>
 
-      {/* Projects */}
-      {file.projects.length > 0 && (
-        <div>
-          <Text variant="overline" className="mb-1.5 block">Projects</Text>
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {file.projects.map(p => (
-              <Link key={p.id} to={`/projects/${p.id}`} className="no-underline">
-                <Badge variant="count" color="dim">{p.name}</Badge>
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Provenance */}
+      {/* Data Links */}
       <div>
         <div className="flex items-center gap-2 mb-1.5">
-          <Text variant="overline" className="flex-1">Provenance</Text>
+          <Text variant="overline" className="flex-1">Data Links</Text>
           <Button
             intent="ghost"
             size="sm"
@@ -221,20 +207,19 @@ export default function FileDetailPage() {
           </Button>
         </div>
 
-        {/* Add provenance panel */}
+        {/* Add data link panel */}
         {addingProv && (
           <div className="border border-border rounded-md p-2.5 mb-2 bg-surface-2">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <Text variant="caption" className="shrink-0">This file</Text>
-              <select
+              <RelationPicker
                 value={provRelation}
-                onChange={e => setProvRelation(e.target.value)}
-                className="font-body text-caption bg-surface border border-border rounded-sm px-1.5 py-1 cursor-pointer"
-              >
-                <option value="derived_from">derived from</option>
-                <option value="sequenced_from">sequenced from</option>
-                <option value="produced_by">produced by</option>
-              </select>
+                onValueChange={setProvRelation}
+                placeholder="Relation"
+                variant="surface"
+                size="sm"
+                className="w-40"
+              />
               <Text variant="caption" className="shrink-0">→</Text>
               <Input
                 variant="surface"
@@ -292,7 +277,7 @@ export default function FileDetailPage() {
             <div className="flex flex-col gap-1">
               {file.provenance.upstream.map(p => p.file && (
                 <Card key={p.edgeId} className="p-2 flex items-center gap-2">
-                  <ProvenanceRelationLabel relation={p.relation} />
+                  <RelationLabel relation={p.relation} />
                   <div className="font-mono text-micro px-1 py-px rounded-sm shrink-0 font-bold"
                     style={{ background: FORMAT_META[detectFormat(p.file.filename)]?.bg, color: FORMAT_META[detectFormat(p.file.filename)]?.color }}>
                     {FORMAT_META[detectFormat(p.file.filename)]?.label}
@@ -322,7 +307,7 @@ export default function FileDetailPage() {
             <div className="flex flex-col gap-1">
               {file.provenance.downstream.map(p => p.file && (
                 <Card key={p.edgeId} className="p-2 flex items-center gap-2">
-                  <ProvenanceRelationLabel relation={p.relation} />
+                  <RelationLabel relation={p.relation} />
                   <div className="font-mono text-micro px-1 py-px rounded-sm shrink-0 font-bold"
                     style={{ background: FORMAT_META[detectFormat(p.file.filename)]?.bg, color: FORMAT_META[detectFormat(p.file.filename)]?.color }}>
                     {FORMAT_META[detectFormat(p.file.filename)]?.label}
@@ -346,7 +331,7 @@ export default function FileDetailPage() {
         )}
 
         {file.provenance.upstream.length === 0 && file.provenance.downstream.length === 0 && !addingProv && (
-          <Text variant="caption">No provenance links. Click "Add link" to connect related files.</Text>
+          <Text variant="caption">No data links. Click "Add link" to connect related files.</Text>
         )}
       </div>
 

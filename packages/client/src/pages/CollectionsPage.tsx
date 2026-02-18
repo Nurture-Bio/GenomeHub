@@ -7,14 +7,14 @@ import {
 import { techniqueColor, TechniquePill } from '../lib/techniqueColors';
 import { formatRelativeTime } from '../lib/formats';
 import { Button, Badge, Input, Text, Heading, Card } from '../ui';
-import { TechniquePicker, ProjectPicker, OrganismPicker } from '../ui';
+import { TechniquePicker, OrganismPicker } from '../ui';
 
 // ── Skeleton row ─────────────────────────────────────────
 
 function SkeletonRow() {
   return (
     <tr className="border-b border-border-subtle">
-      {[...Array(7)].map((_, i) => (
+      {[...Array(6)].map((_, i) => (
         <td key={i} className="py-2 pr-3">
           <div className="skeleton h-4 rounded-sm" style={{ width: `${40 + Math.random() * 40}%` }} />
         </td>
@@ -35,7 +35,6 @@ export default function CollectionsPage() {
   // Create form — only name is required. Everything else optional.
   const [name,         setName]         = useState('');
   const [techniqueId,  setTechniqueId]  = useState('');
-  const [projectId,    setProjectId]    = useState('');
   const [organismId,   setOrganismId]   = useState('');
   const [description,  setDescription]  = useState('');
 
@@ -51,10 +50,9 @@ export default function CollectionsPage() {
       name,
       techniqueId: techniqueId || undefined,
       organismId: organismId || undefined,
-      projectId: projectId || undefined,
       description: description || undefined,
     });
-    setName(''); setTechniqueId(''); setProjectId('');
+    setName(''); setTechniqueId('');
     setOrganismId(''); setDescription('');
   };
 
@@ -83,16 +81,6 @@ export default function CollectionsPage() {
           <TechniquePicker
             value={techniqueId}
             onValueChange={setTechniqueId}
-            variant="surface"
-            size="sm"
-            className="w-full sm:w-36"
-          />
-        </div>
-        <div className="flex flex-col gap-0.5 w-[calc(50%-4px)] sm:w-auto">
-          <Text variant="overline">Project</Text>
-          <ProjectPicker
-            value={projectId}
-            onValueChange={setProjectId}
             variant="surface"
             size="sm"
             className="w-full sm:w-36"
@@ -145,7 +133,7 @@ export default function CollectionsPage() {
         <table className="w-full border-collapse text-left">
           <thead className="sticky top-0 bg-surface-2 z-10">
             <tr className="border-b border-border">
-              {['Name', 'Technique', 'Organism', 'Project', 'Kind', 'Created by', 'Files'].map(h => (
+              {['Name', 'Technique', 'Organism', 'Kind', 'Created by', 'Files'].map(h => (
                 <th key={h} className="py-1.5 pr-3 pl-2.5 font-body text-micro uppercase tracking-overline text-text-dim font-semibold whitespace-nowrap">
                   {h}
                 </th>
@@ -158,7 +146,7 @@ export default function CollectionsPage() {
               : !filtered.length
                 ? (
                   <tr>
-                    <td colSpan={7} className="py-12 text-center text-text-dim font-body text-body">
+                    <td colSpan={6} className="py-12 text-center text-text-dim font-body text-body">
                       {techFilter !== 'all' ? 'No collections match this technique.' : 'No collections yet. Create one above.'}
                     </td>
                   </tr>
@@ -177,7 +165,6 @@ export default function CollectionsPage() {
                     <td className="py-1.5 pr-3 text-caption text-text-secondary italic">
                       {c.organismDisplay ?? '--'}
                     </td>
-                    <td className="py-1.5 pr-3 text-caption text-text-secondary">{c.projectName ?? '--'}</td>
                     <td className="py-1.5 pr-3">
                       <Badge variant="count" color="dim">{c.kind}</Badge>
                     </td>
@@ -218,7 +205,6 @@ export default function CollectionsPage() {
                   {c.description && <Text variant="caption" className="truncate">{c.description}</Text>}
                   <div className="flex items-center gap-2 flex-wrap">
                     {c.organismDisplay && <Text variant="caption" className="italic">{c.organismDisplay}</Text>}
-                    {c.projectName && <Text variant="caption">{c.projectName}</Text>}
                     <Text variant="caption">{c.fileCount} files</Text>
                   </div>
                 </Card>

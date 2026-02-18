@@ -1,41 +1,27 @@
-import { Router, type Request, type Response, type NextFunction } from 'express';
+import { Router } from 'express';
 import { AppDataSource } from '../app_data.js';
 import { User, Collection, GenomicFile, Organism, Technique, EntityEdge } from '../entities/index.js';
 import * as edges from '../lib/edge_service.js';
+import { asyncWrap } from '../lib/async_wrap.js';
+import { organismDisplay } from '../lib/display.js';
 
 const router = Router();
-
-function asyncWrap(fn: (req: Request, res: Response) => Promise<void>) {
-  return (req: Request, res: Response, next: NextFunction) => fn(req, res).catch(next);
-}
-
-function organismDisplay(o: Organism): string {
-  return `${o.genus.charAt(0)}. ${o.species}${o.strain ? ' ' + o.strain : ''}`;
-}
 
 // ─── List collections ───────────────────────────────────────
 
 router.get('/', asyncWrap(async (req, res) => {
-  const { projectId, organismId, kind } = req.query as {
-    projectId?: string; organismId?: string; kind?: string;
+  const { organismId, kind } = req.query as {
+    organismId?: string; kind?: string;
   };
 
   const edgeRepo = AppDataSource.getRepository(EntityEdge);
   let filteredIds: string[] | null = null;
 
-  if (projectId) {
-    const projEdges = await edgeRepo.find({
-      where: { sourceType: 'collection' as any, targetType: 'project' as any, targetId: projectId, relation: 'belongs_to' as any },
-    });
-    filteredIds = projEdges.map(e => e.sourceId);
-  }
-
   if (organismId) {
     const orgEdges = await edgeRepo.find({
       where: { sourceType: 'collection' as any, targetType: 'organism' as any, targetId: organismId, relation: 'targets' as any },
     });
-    const orgIds = orgEdges.map(e => e.sourceId);
-    filteredIds = filteredIds ? filteredIds.filter(id => orgIds.includes(id)) : orgIds;
+    filteredIds = orgEdges.map(e => e.sourceId);
   }
 
   const repo = AppDataSource.getRepository(Collection);
@@ -62,29 +48,20 @@ router.get('/', asyncWrap(async (req, res) => {
     .where('e.source_type = :st AND e.source_id IN (:...ids)', { st: 'collection', ids: colIds })
     .getMany();
 
-  const projectIdByCol = new Map<string, string>();
   const typeIdByCol = new Map<string, string>();
   const orgIdByCol = new Map<string, string>();
   for (const e of allEdges) {
-    if (e.relation === 'belongs_to' && e.targetType === 'project') projectIdByCol.set(e.sourceId, e.targetId);
     if (e.relation === 'has_type') typeIdByCol.set(e.sourceId, e.targetId);
     if (e.relation === 'targets' && e.targetType === 'organism') orgIdByCol.set(e.sourceId, e.targetId);
   }
 
   // Load related entities
-  const { Project } = await import('../entities/index.js');
-  const allProjectIds = [...new Set(projectIdByCol.values())];
   const allTypeIds = [...new Set(typeIdByCol.values())];
   const allOrgIds = [...new Set(orgIdByCol.values())];
 
-  const projectMap = new Map<string, { id: string; name: string }>();
   const typeMap = new Map<string, Technique>();
   const orgMap = new Map<string, Organism>();
 
-  if (allProjectIds.length) {
-    const projects = await AppDataSource.getRepository(Project).findByIds(allProjectIds);
-    projects.forEach(p => projectMap.set(p.id, p));
-  }
   if (allTypeIds.length) {
     const types = await AppDataSource.getRepository(Technique).findByIds(allTypeIds);
     types.forEach(t => typeMap.set(t.id, t));
@@ -106,10 +83,8 @@ router.get('/', asyncWrap(async (req, res) => {
   const fileMap = new Map(fileCounts.map(s => [s.targetId, parseInt(s.fileCount)]));
 
   res.json(collections.map(c => {
-    const pId = projectIdByCol.get(c.id);
     const tId = typeIdByCol.get(c.id);
     const oId = orgIdByCol.get(c.id);
-    const prj = pId ? projectMap.get(pId) : null;
     const tech = tId ? typeMap.get(tId) : null;
     const org = oId ? orgMap.get(oId) : null;
 
@@ -122,8 +97,6 @@ router.get('/', asyncWrap(async (req, res) => {
       techniqueId: tId ?? null,
       techniqueName: tech?.name ?? null,
       createdBy: c.createdBy,
-      projectId: pId ?? null,
-      projectName: prj?.name ?? null,
       organismId: oId ?? null,
       organismDisplay: org ? organismDisplay(org) : null,
       fileCount: fileMap.get(c.id) ?? 0,
@@ -145,17 +118,13 @@ router.get('/:id', asyncWrap(async (req, res) => {
     where: { sourceType: 'collection' as any, sourceId: col.id },
   });
 
-  let projectId: string | null = null;
   let typeId: string | null = null;
   let orgId: string | null = null;
   for (const e of colEdges) {
-    if (e.relation === 'belongs_to' && e.targetType === 'project') projectId = e.targetId;
     if (e.relation === 'has_type') typeId = e.targetId;
     if (e.relation === 'targets' && e.targetType === 'organism') orgId = e.targetId;
   }
 
-  const { Project } = await import('../entities/index.js');
-  const project = projectId ? await AppDataSource.getRepository(Project).findOneBy({ id: projectId }) : null;
   const technique = typeId ? await AppDataSource.getRepository(Technique).findOneBy({ id: typeId }) : null;
   const organism = orgId ? await AppDataSource.getRepository(Organism).findOneBy({ id: orgId }) : null;
 
@@ -185,8 +154,6 @@ router.get('/:id', asyncWrap(async (req, res) => {
     organismId: orgId,
     organismDisplay: organism ? organismDisplay(organism) : null,
     createdBy: col.createdBy,
-    projectId,
-    projectName: project?.name ?? null,
     fileCount: files.length,
     links: linkEdges.map(e => ({
       id: e.id,
@@ -210,12 +177,11 @@ router.get('/:id', asyncWrap(async (req, res) => {
 // ─── Create collection ──────────────────────────────────────
 
 router.post('/', asyncWrap(async (req, res) => {
-  const { name, kind, metadata, description, projectId, techniqueId, organismId } = req.body as {
+  const { name, kind, metadata, description, techniqueId, organismId } = req.body as {
     name: string;
     kind?: string;
     metadata?: Record<string, unknown>;
     description?: string;
-    projectId?: string;
     techniqueId?: string;
     organismId?: string;
   };
@@ -235,9 +201,6 @@ router.post('/', asyncWrap(async (req, res) => {
 
   const userId = (res.locals.user as User)?.id ?? null;
 
-  if (projectId) {
-    await edges.link({ type: 'collection', id: col.id }, { type: 'project', id: projectId }, 'belongs_to', null, userId);
-  }
   if (organismId) {
     await edges.link({ type: 'collection', id: col.id }, { type: 'organism', id: organismId }, 'targets', null, userId);
   }
@@ -255,9 +218,9 @@ router.put('/:id', asyncWrap(async (req, res) => {
   const col = await repo.findOneBy({ id: req.params.id });
   if (!col) { res.status(404).json({ error: 'not found' }); return; }
 
-  const { name, kind, metadata, description, projectId, techniqueId, organismId } = req.body as Partial<{
+  const { name, kind, metadata, description, techniqueId, organismId } = req.body as Partial<{
     name: string; kind: string; metadata: Record<string, unknown>;
-    description: string; projectId: string; techniqueId: string; organismId: string;
+    description: string; techniqueId: string; organismId: string;
   }>;
 
   if (name !== undefined) col.name = name;
@@ -268,27 +231,13 @@ router.put('/:id', asyncWrap(async (req, res) => {
   await repo.save(col);
 
   const userId = (res.locals.user as User)?.id ?? null;
-  const edgeRepo = AppDataSource.getRepository(EntityEdge);
-
-  if (projectId !== undefined) {
-    await edgeRepo.delete({ sourceType: 'collection' as any, sourceId: col.id, targetType: 'project' as any, relation: 'belongs_to' as any });
-    if (projectId) {
-      await edges.link({ type: 'collection', id: col.id }, { type: 'project', id: projectId }, 'belongs_to', null, userId);
-    }
-  }
 
   if (organismId !== undefined) {
-    await edgeRepo.delete({ sourceType: 'collection' as any, sourceId: col.id, targetType: 'organism' as any, relation: 'targets' as any });
-    if (organismId) {
-      await edges.link({ type: 'collection', id: col.id }, { type: 'organism', id: organismId }, 'targets', null, userId);
-    }
+    await edges.replaceEdge({ type: 'collection', id: col.id }, 'targets', 'organism', organismId || null, userId);
   }
 
   if (techniqueId !== undefined) {
-    await edgeRepo.delete({ sourceType: 'collection' as any, sourceId: col.id, relation: 'has_type' as any });
-    if (techniqueId) {
-      await edges.link({ type: 'collection', id: col.id }, { type: 'technique', id: techniqueId }, 'has_type', null, userId);
-    }
+    await edges.replaceEdge({ type: 'collection', id: col.id }, 'has_type', 'technique', techniqueId || null, userId);
   }
 
   res.json(col);

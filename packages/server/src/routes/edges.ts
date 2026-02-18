@@ -1,12 +1,9 @@
-import { Router, type Request, type Response, type NextFunction } from 'express';
+import { Router } from 'express';
 import { AppDataSource } from '../app_data.js';
 import { User, EntityEdge, type EntityType, type EdgeRelation } from '../entities/index.js';
 import { detectLinkService } from '../lib/link_service.js';
 import * as edgeService from '../lib/edge_service.js';
-
-function asyncWrap(fn: (req: Request, res: Response) => Promise<void>) {
-  return (req: Request, res: Response, next: NextFunction) => fn(req, res).catch(next);
-}
+import { asyncWrap } from '../lib/async_wrap.js';
 
 // ─── Edge CRUD router (mounted at /api/edges) ──────────────
 

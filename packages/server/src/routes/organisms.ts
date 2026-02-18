@@ -1,12 +1,10 @@
-import { Router, type Request, type Response, type NextFunction } from 'express';
+import { Router } from 'express';
 import { AppDataSource } from '../app_data.js';
 import { Organism, EntityEdge } from '../entities/index.js';
+import { asyncWrap } from '../lib/async_wrap.js';
+import { organismDisplay } from '../lib/display.js';
 
 const router = Router();
-
-function asyncWrap(fn: (req: Request, res: Response) => Promise<void>) {
-  return (req: Request, res: Response, next: NextFunction) => fn(req, res).catch(next);
-}
 
 router.get('/', asyncWrap(async (_req, res) => {
   const repo = AppDataSource.getRepository(Organism);
@@ -36,7 +34,7 @@ router.get('/', asyncWrap(async (_req, res) => {
 
   res.json(organisms.map(o => ({
     ...o,
-    displayName: `${o.genus.charAt(0)}. ${o.species}${o.strain ? ' ' + o.strain : ''}`,
+    displayName: organismDisplay(o),
     fileCount: fileMap.get(o.id) ?? 0,
     collectionCount: colMap.get(o.id) ?? 0,
   })));

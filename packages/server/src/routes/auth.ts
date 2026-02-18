@@ -1,13 +1,10 @@
 import crypto from 'crypto';
-import { Router, type Request, type Response, type NextFunction } from 'express';
+import { Router, type Request } from 'express';
 import { AppDataSource } from '../app_data.js';
 import { User } from '../entities/index.js';
+import { asyncWrap } from '../lib/async_wrap.js';
 
 const router = Router();
-
-function asyncWrap(fn: (req: Request, res: Response) => Promise<void>) {
-  return (req: Request, res: Response, next: NextFunction) => fn(req, res).catch(next);
-}
 
 /** Look up the authenticated user from the Authorization header. */
 export async function resolveUser(req: Request): Promise<User | null> {

@@ -1,8 +1,16 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 
+export interface UploadProgress {
+  fileId:   string;
+  filename: string;
+  loaded:   number;
+  total:    number;
+  status:   'uploading' | 'done' | 'error';
+  error?:   string;
+}
+
 interface RecentSelections {
-  projects: string[];
   collections: string[];
 }
 
@@ -14,6 +22,7 @@ interface PersistedState {
 interface AppState extends PersistedState {
   selectedFileIds: Set<string>;
   breadcrumbLabels: Record<string, string>;
+  uploads: Map<string, UploadProgress>;
 
   toggleFileSelection: (id: string) => void;
   selectAllFiles: (ids: string[]) => void;
@@ -21,6 +30,9 @@ interface AppState extends PersistedState {
   toggleSidebar: () => void;
   addRecentSelection: (kind: keyof RecentSelections, id: string) => void;
   setBreadcrumbLabel: (id: string, label: string) => void;
+  setUpload: (id: string, progress: UploadProgress) => void;
+  updateUpload: (id: string, patch: Partial<UploadProgress>) => void;
+  clearDoneUploads: () => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -28,8 +40,9 @@ export const useAppStore = create<AppState>()(
     (set) => ({
       selectedFileIds: new Set<string>(),
       sidebarOpen: true,
-      recentSelections: { projects: [], collections: [] },
+      recentSelections: { collections: [] },
       breadcrumbLabels: {},
+      uploads: new Map<string, UploadProgress>(),
 
       toggleFileSelection: (id) =>
         set((s) => {
@@ -63,6 +76,30 @@ export const useAppStore = create<AppState>()(
         set((s) => ({
           breadcrumbLabels: { ...s.breadcrumbLabels, [id]: label },
         })),
+
+      setUpload: (id, progress) =>
+        set((s) => {
+          const next = new Map(s.uploads);
+          next.set(id, progress);
+          return { uploads: next };
+        }),
+
+      updateUpload: (id, patch) =>
+        set((s) => {
+          const next = new Map(s.uploads);
+          const cur = next.get(id);
+          if (cur) next.set(id, { ...cur, ...patch });
+          return { uploads: next };
+        }),
+
+      clearDoneUploads: () =>
+        set((s) => {
+          const next = new Map(s.uploads);
+          for (const [k, v] of next) {
+            if (v.status === 'done') next.delete(k);
+          }
+          return { uploads: next };
+        }),
     }),
     {
       name: 'genomehub-app',

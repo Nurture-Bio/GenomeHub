@@ -1,12 +1,9 @@
-import { Router, type Request, type Response, type NextFunction } from 'express';
+import { Router } from 'express';
 import { AppDataSource } from '../app_data.js';
 import { GenomicFile } from '../entities/index.js';
+import { asyncWrap } from '../lib/async_wrap.js';
 
 const router = Router();
-
-function asyncWrap(fn: (req: Request, res: Response) => Promise<void>) {
-  return (req: Request, res: Response, next: NextFunction) => fn(req, res).catch(next);
-}
 
 router.get('/', asyncWrap(async (_req, res) => {
   const repo = AppDataSource.getRepository(GenomicFile);

@@ -1,11 +1,11 @@
 import type { GenomicFile } from "../hooks/useGenomicQueries";
 import { useState, useMemo } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
-import { useFilesQuery, useDeleteFileMutation, usePresignedUrl, useAddFilesToCollection } from '../hooks/useGenomicQueries';
+import { Link } from 'react-router-dom';
+import { useFilesQuery, useDeleteFileMutation, useUpdateFileMutation, usePresignedUrl, useAddFilesToCollection } from '../hooks/useGenomicQueries';
 import { useConfirm } from '../hooks/useConfirm';
 import { detectFormat, FORMAT_META, formatBytes, formatRelativeTime } from '../lib/formats';
 import { Button, Badge, Input, Text, Heading, Card } from '../ui';
-import { ProjectPicker, CollectionPicker } from '../ui';
+import { CollectionPicker, OrganismPicker, FileKindPicker } from '../ui';
 
 // ── Format icon ──────────────────────────────────────────
 
@@ -66,7 +66,6 @@ function FileCard({ file, onDelete, onDownload, selected, onSelect }: FileCardPr
 
       {/* Metadata row */}
       <div className="flex items-center gap-2 flex-wrap pl-5.5">
-        <Text variant="caption">{file.projectName}</Text>
         <Text variant="caption">{formatBytes(file.sizeBytes)}</Text>
         {file.status === 'ready'   && <Badge variant="status" color="green">ready</Badge>}
         {file.status === 'pending' && <Badge variant="status" color="yellow">uploading</Badge>}
@@ -89,13 +88,16 @@ interface FileRowProps {
   file: GenomicFile;
   onDelete: (id: string) => void;
   onDownload: (id: string) => void;
+  onUpdate: (id: string, patch: { kind?: string; organismId?: string | null }) => void;
   selected: boolean;
   onSelect: (id: string, sel: boolean) => void;
 }
 
-function FileRow({ file, onDelete, onDownload, selected, onSelect }: FileRowProps) {
+function FileRow({ file, onDelete, onDownload, onUpdate, selected, onSelect }: FileRowProps) {
   const fmt  = detectFormat(file.filename);
   const meta = FORMAT_META[fmt];
+  const [editKind, setEditKind] = useState(false);
+  const [editOrg, setEditOrg] = useState(false);
 
   return (
     <tr
@@ -127,14 +129,25 @@ function FileRow({ file, onDelete, onDownload, selected, onSelect }: FileRowProp
         </div>
       </td>
 
-      {/* Project */}
-      <td className="py-1.5 pr-3 text-caption text-text-secondary whitespace-nowrap">
-        {file.projectName}
-      </td>
-
-      {/* Organism */}
-      <td className="py-1.5 pr-3 text-caption text-text-secondary italic whitespace-nowrap">
-        {file.organismDisplay ?? '—'}
+      {/* Organism — click to edit inline */}
+      <td className="py-1.5 pr-3">
+        {editOrg ? (
+          <OrganismPicker
+            value={file.organismId ?? ''}
+            onValueChange={v => { onUpdate(file.id, { organismId: v || null }); setEditOrg(false); }}
+            placeholder="Organism"
+            variant="surface"
+            size="sm"
+            className="w-36"
+          />
+        ) : (
+          <span
+            className="text-caption text-text-secondary italic whitespace-nowrap cursor-pointer hover:text-accent transition-colors duration-fast"
+            onClick={() => setEditOrg(true)}
+          >
+            {file.organismDisplay ?? '—'}
+          </span>
+        )}
       </td>
 
       {/* Collections */}
@@ -151,9 +164,22 @@ function FileRow({ file, onDelete, onDownload, selected, onSelect }: FileRowProp
         </div>
       </td>
 
-      {/* Kind */}
+      {/* Kind — click to edit inline */}
       <td className="py-1.5 pr-3 whitespace-nowrap">
-        <Badge variant="count" color="dim">{file.kind}</Badge>
+        {editKind ? (
+          <FileKindPicker
+            value={file.kind}
+            onValueChange={v => { onUpdate(file.id, { kind: v }); setEditKind(false); }}
+            placeholder="Kind"
+            variant="surface"
+            size="sm"
+            className="w-28"
+          />
+        ) : (
+          <span className="cursor-pointer" onClick={() => setEditKind(true)}>
+            <Badge variant="count" color="dim">{file.kind}</Badge>
+          </span>
+        )}
       </td>
 
       {/* Format */}
@@ -206,7 +232,7 @@ function FileRow({ file, onDelete, onDownload, selected, onSelect }: FileRowProp
 function SkeletonRow() {
   return (
     <tr className="border-b border-border-subtle">
-      {[...Array(12)].map((_, i) => (
+      {[...Array(11)].map((_, i) => (
         <td key={i} className="py-2 pr-3">
           <div className="skeleton h-4 rounded-sm" style={{ width: `${40 + Math.random() * 40}%` }} />
         </td>
@@ -236,42 +262,43 @@ function SkeletonCard() {
 
 // ── FilesPage ─────────────────────────────────────────────
 
-const FORMAT_FILTERS = ['all', 'fastq', 'bam', 'cram', 'vcf', 'bed', 'fasta', 'other'] as const;
-const KIND_FILTERS = ['all', 'library', 'sample', 'reference', 'alignment', 'counts', 'annotation', 'qc', 'index', 'raw', 'other'] as const;
-
 export default function FilesPage() {
-  const [searchParams] = useSearchParams();
-  const [filterProjectId, setFilterProjectId] = useState(searchParams.get('project') ?? '');
   const [filterCollectionId, setFilterCollectionId] = useState('');
   const [filterKind, setFilterKind] = useState('');
 
   const { data, isLoading, refetch } = useFilesQuery({
-    projectId: filterProjectId || undefined,
     collectionId: filterCollectionId || undefined,
     kind: filterKind || undefined,
   });
   const { deleteFile, pending: deletePending } = useDeleteFileMutation(refetch);
+  const { updateFile } = useUpdateFileMutation(refetch);
   const { addFiles, pending: addPending } = useAddFilesToCollection();
   const { getUrl, pending: urlPending } = usePresignedUrl();
   const { confirm, dialog } = useConfirm();
+
+  // Derive format and kind filters from actual data
+  const formatFilters = useMemo(() => {
+    if (!data) return ['all'];
+    const fmts = new Set(data.map(f => detectFormat(f.filename)));
+    return ['all', ...Array.from(fmts).sort()];
+  }, [data]);
+
+  const kindFilters = useMemo(() => {
+    if (!data) return ['all'];
+    const kinds = new Set(data.map(f => f.kind).filter(Boolean));
+    return ['all', ...Array.from(kinds).sort()];
+  }, [data]);
 
   const [search,     setSearch]     = useState('');
   const [fmtFilter,  setFmtFilter]  = useState<string>('all');
   const [selected,   setSelected]   = useState<Set<string>>(new Set());
   const [addToColId, setAddToColId] = useState<string | null>(null);
 
-  // Cascading clears
-  const handleProjectChange = (id: string) => {
-    setFilterProjectId(id);
-    setFilterCollectionId('');
-  };
-
   const files = useMemo(() => {
     if (!data) return [];
     return data.filter(f => {
       const q = search.toLowerCase();
       const matchSearch = !search || f.filename.toLowerCase().includes(q)
-        || (f.projectName?.toLowerCase().includes(q) ?? false)
         || (f.organismDisplay?.toLowerCase().includes(q) ?? false)
         || f.collections.some(c => c.name?.toLowerCase().includes(q));
       const matchFmt = fmtFilter === 'all' || detectFormat(f.filename) === fmtFilter;
@@ -312,6 +339,10 @@ export default function FilesPage() {
     setSelected(new Set());
     setAddToColId(null);
     refetch();
+  };
+
+  const handleInlineUpdate = async (fileId: string, patch: { kind?: string; organismId?: string | null }) => {
+    await updateFile(fileId, patch);
   };
 
   return (
@@ -357,25 +388,15 @@ export default function FilesPage() {
         <Input
           variant="surface"
           size="md"
-          placeholder="Search files or projects..."
+          placeholder="Search files..."
           value={search}
           onChange={e => setSearch(e.target.value)}
           className="w-full md:w-64"
         />
 
-        <ProjectPicker
-          value={filterProjectId}
-          onValueChange={handleProjectChange}
-          placeholder="All projects"
-          variant="surface"
-          size="md"
-          className="w-full sm:w-44"
-        />
-
         <CollectionPicker
           value={filterCollectionId}
           onValueChange={setFilterCollectionId}
-          projectId={filterProjectId || undefined}
           placeholder="All collections"
           variant="surface"
           size="md"
@@ -383,7 +404,7 @@ export default function FilesPage() {
         />
 
         <div className="flex gap-1 flex-wrap">
-          {KIND_FILTERS.map(k => (
+          {kindFilters.map(k => (
             <button
               key={k}
               onClick={() => setFilterKind(k === 'all' ? '' : k)}
@@ -394,13 +415,13 @@ export default function FilesPage() {
                 borderColor: (k === 'all' ? !filterKind : filterKind === k) ? 'transparent'        : 'var(--color-border)',
               }}
             >
-              {k === 'all' ? 'All' : k}
+              {k === 'all' ? 'All kinds' : k}
             </button>
           ))}
         </div>
 
         <div className="flex gap-1 flex-wrap">
-          {FORMAT_FILTERS.map(f => (
+          {formatFilters.map(f => (
             <button
               key={f}
               onClick={() => setFmtFilter(f)}
@@ -411,7 +432,7 @@ export default function FilesPage() {
                 borderColor: fmtFilter === f ? 'transparent'        : 'var(--color-border)',
               }}
             >
-              {f === 'all' ? 'All' : FORMAT_META[f as keyof typeof FORMAT_META]?.label ?? f}
+              {f === 'all' ? 'All formats' : FORMAT_META[f as keyof typeof FORMAT_META]?.label ?? f}
             </button>
           ))}
         </div>
@@ -430,7 +451,7 @@ export default function FilesPage() {
                   className="accent-accent cursor-pointer"
                 />
               </th>
-              {['File', 'Project', 'Organism', 'Collection', 'Kind', 'Format', 'Size', 'Status', 'Uploaded', 'Tags', ''].map(h => (
+              {['File', 'Organism', 'Collection', 'Kind', 'Format', 'Size', 'Status', 'Uploaded', 'Tags', ''].map(h => (
                 <th key={h} className="py-1.5 pr-3 font-body text-micro uppercase tracking-overline text-text-dim font-semibold whitespace-nowrap">
                   {h}
                 </th>
@@ -443,8 +464,8 @@ export default function FilesPage() {
               : files.length === 0
                 ? (
                   <tr>
-                    <td colSpan={12} className="py-12 text-center text-text-dim font-body text-body">
-                      {search || fmtFilter !== 'all' || filterProjectId ? 'No files match your filters.' : 'No files yet. Upload some to get started.'}
+                    <td colSpan={11} className="py-12 text-center text-text-dim font-body text-body">
+                      {search || fmtFilter !== 'all' || filterCollectionId ? 'No files match your filters.' : 'No files yet. Upload some to get started.'}
                     </td>
                   </tr>
                 )
@@ -456,6 +477,7 @@ export default function FilesPage() {
                     onSelect={toggleOne}
                     onDelete={deleteFile}
                     onDownload={handleDownload}
+                    onUpdate={handleInlineUpdate}
                   />
                 ))
             }
@@ -483,7 +505,7 @@ export default function FilesPage() {
           : files.length === 0
             ? (
               <div className="py-8 text-center text-text-dim font-body text-body">
-                {search || fmtFilter !== 'all' || filterProjectId ? 'No files match your filters.' : 'No files yet. Upload some to get started.'}
+                {search || fmtFilter !== 'all' || filterCollectionId ? 'No files match your filters.' : 'No files yet. Upload some to get started.'}
               </div>
             )
             : files.map(f => (

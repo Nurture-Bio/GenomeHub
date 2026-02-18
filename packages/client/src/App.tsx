@@ -9,11 +9,11 @@ import DashboardPage        from './pages/DashboardPage';
 import FilesPage            from './pages/FilesPage';
 import UploadPage           from './pages/UploadPage';
 import OrganismsPage        from './pages/OrganismsPage';
-import ProjectsPage         from './pages/ProjectsPage';
 import CollectionsPage      from './pages/CollectionsPage';
-import ProjectDetailPage    from './pages/ProjectDetailPage';
 import CollectionDetailPage from './pages/CollectionDetailPage';
 import FileDetailPage       from './pages/FileDetailPage';
+import SettingsPage         from './pages/SettingsPage';
+
 import PageErrorBoundary    from './components/PageErrorBoundary';
 import Breadcrumbs          from './components/Breadcrumbs';
 
@@ -59,12 +59,6 @@ const icons: Record<string, ReactNode> = {
       <path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3" />
     </svg>
   ),
-  projects: (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth="2" strokeLinecap="round">
-      <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
-    </svg>
-  ),
   organisms: (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
       strokeWidth="2" strokeLinecap="round">
@@ -80,15 +74,22 @@ const icons: Record<string, ReactNode> = {
       <path d="M9 3h6" />
     </svg>
   ),
+  settings: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
+    </svg>
+  ),
 };
 
 const NAV_ITEMS: { to: string; label: string; icon: string; end?: boolean }[] = [
   { to: '/',             label: 'Dashboard',    icon: 'dashboard', end: true },
-  { to: '/projects',     label: 'Projects',     icon: 'projects' },
   { to: '/organisms',    label: 'Organisms',    icon: 'organisms' },
   { to: '/collections',  label: 'Collections',  icon: 'collections' },
   { to: '/files',        label: 'Files',        icon: 'files' },
   { to: '/upload',       label: 'Upload',       icon: 'upload' },
+  { to: '/settings',     label: 'Settings',     icon: 'settings' },
 ];
 
 // ── Sidebar content (shared between desktop static + mobile drawer) ──
@@ -247,17 +248,15 @@ export default function App() {
         <Breadcrumbs />
         <Routes>
           <Route path="/" element={<PageErrorBoundary><DashboardPage /></PageErrorBoundary>} />
-          <Route path="/projects" element={<PageErrorBoundary><ProjectsPage /></PageErrorBoundary>} />
           <Route path="/organisms" element={<PageErrorBoundary><OrganismsPage /></PageErrorBoundary>} />
           <Route path="/collections" element={<PageErrorBoundary><CollectionsPage /></PageErrorBoundary>} />
           <Route path="/files" element={<PageErrorBoundary><FilesPage /></PageErrorBoundary>} />
           <Route path="/files/:fileId" element={<PageErrorBoundary><FileDetailPage /></PageErrorBoundary>} />
           <Route path="/upload" element={<PageErrorBoundary><UploadPage /></PageErrorBoundary>} />
-          <Route path="/projects/:projectId" element={<PageErrorBoundary><ProjectDetailPage /></PageErrorBoundary>} />
+          <Route path="/settings" element={<PageErrorBoundary><SettingsPage /></PageErrorBoundary>} />
           <Route path="/collections/:collectionId" element={<PageErrorBoundary><CollectionDetailPage /></PageErrorBoundary>} />
           {/* Legacy redirects */}
           <Route path="/experiments/:collectionId" element={<LegacyCollectionRedirect />} />
-          <Route path="/projects/:projectId/experiments/:collectionId" element={<LegacyCollectionRedirect />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

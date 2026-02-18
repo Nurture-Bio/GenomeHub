@@ -92,11 +92,6 @@ export default function CollectionDetailPage() {
         {collection.description && <Text variant="caption">{collection.description}</Text>}
         <div className="flex items-center gap-2 mt-1 flex-wrap">
           {collection.organismDisplay && <Text variant="caption" className="italic">{collection.organismDisplay}</Text>}
-          {collection.projectName && (
-            <Link to={`/projects/${collection.projectId}`} className="no-underline">
-              <Badge variant="count" color="dim">{collection.projectName}</Badge>
-            </Link>
-          )}
           <Badge variant="count" color="accent">{collection.fileCount} files</Badge>
         </div>
       </div>

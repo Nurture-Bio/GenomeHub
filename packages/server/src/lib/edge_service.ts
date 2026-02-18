@@ -7,8 +7,7 @@
  */
 
 import { AppDataSource } from '../app_data.js';
-import { EntityEdge, GenomicFile, type EntityType, type EdgeRelation } from '../entities/index.js';
-import { deleteObject } from './s3.js';
+import { EntityEdge, type EntityType, type EdgeRelation } from '../entities/index.js';
 
 interface EntityRef {
   type: EntityType;
@@ -134,35 +133,38 @@ export async function getReverseLinkedIds(
 }
 
 /**
- * Remove all edges referencing an entity, and optionally cascade-delete
- * dependent entities based on the cascade rules.
+ * Replace edges: delete existing edge(s) for source+relation+targetType,
+ * then create a new one if newTargetId is provided.
+ */
+export async function replaceEdge(
+  source: EntityRef,
+  relation: EdgeRelation,
+  targetType: EntityType,
+  newTargetId: string | null,
+  createdBy?: string | null,
+): Promise<EntityEdge | null> {
+  const repo = edgeRepo();
+  await repo.delete({
+    sourceType: source.type,
+    sourceId: source.id,
+    targetType: targetType,
+    relation,
+  });
+  if (newTargetId) {
+    return link(source, { type: targetType, id: newTargetId }, relation, null, createdBy);
+  }
+  return null;
+}
+
+/**
+ * Remove all edges referencing an entity.
  *
  * Cascade rules:
- *   project    → delete project's files, remove edges
  *   collection → detach files, remove edges
  *   file       → remove edges only
  */
 export async function cascadeDelete(entity: EntityRef): Promise<void> {
   const repo = edgeRepo();
-
-  if (entity.type === 'project') {
-    // Delete all files that belong_to this project
-    const fileIds = await getReverseLinkedIds(
-      { type: 'project', id: entity.id },
-      'file',
-    );
-    if (fileIds.length) {
-      const fileRepo = AppDataSource.getRepository(GenomicFile);
-      const files = await fileRepo.findByIds(fileIds);
-      for (const f of files) {
-        if (f.s3Key) await deleteObject(f.s3Key).catch(() => {});
-        // Remove file's edges
-        await repo.delete({ sourceType: 'file' as EntityType, sourceId: f.id });
-        await repo.delete({ targetType: 'file' as EntityType, targetId: f.id });
-        await fileRepo.remove(f);
-      }
-    }
-  }
 
   // Remove all edges where this entity is source or target
   await repo.delete({ sourceType: entity.type, sourceId: entity.id });

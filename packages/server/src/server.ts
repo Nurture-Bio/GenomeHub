@@ -22,7 +22,6 @@ import { resolveUser } from './routes/auth.js';
 
 // Route modules
 import authRoutes from './routes/auth.js';
-import projectRoutes from './routes/projects.js';
 import collectionRoutes from './routes/collections.js';
 import fileRoutes from './routes/files.js';
 import uploadRoutes from './routes/uploads.js';
@@ -30,6 +29,8 @@ import organismRoutes from './routes/organisms.js';
 import techniqueRoutes from './routes/techniques.js';
 import edgeRoutes, { linksRouter } from './routes/edges.js';
 import statsRoutes from './routes/stats.js';
+import relationTypeRoutes from './routes/relation_types.js';
+import fileKindRoutes from './routes/file_kinds.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app       = express();
@@ -63,7 +64,6 @@ app.use('/api', (req: Request, res: Response, next: NextFunction) => {
 
 // ─── Protected routes ───────────────────────────────────────
 
-app.use('/api/projects', projectRoutes);
 app.use('/api/collections', collectionRoutes);
 app.use('/api/files', fileRoutes);
 app.use('/api/uploads', uploadRoutes);
@@ -72,6 +72,8 @@ app.use('/api/techniques', techniqueRoutes);
 app.use('/api/edges', edgeRoutes);
 app.use('/api/links', linksRouter);
 app.use('/api/stats', statsRoutes);
+app.use('/api/relation-types', relationTypeRoutes);
+app.use('/api/file-kinds', fileKindRoutes);
 
 // ─── Serve client ──────────────────────────────────────────
 

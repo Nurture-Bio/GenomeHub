@@ -2,7 +2,7 @@
  * TypeORM entities for GenomeHub.
  *
  * Knowledge-graph model: all relationships live in entity_edges.
- * Core entities: Project, Collection, GenomicFile, Organism, Technique.
+ * Core entities: Collection, GenomicFile, Organism, Technique.
  *
  * @module
  */
@@ -51,26 +51,6 @@ export class User {
 
   @Column({ name: 'auth_token', type: 'text', nullable: true, unique: true })
   authToken!: string | null;
-}
-
-// ─── Project ───────────────────────────────────────────────
-
-@Entity('projects')
-export class Project {
-  @PrimaryGeneratedColumn('uuid')
-  id!: string;
-
-  @Column({ type: 'text', unique: true })
-  name!: string;
-
-  @Column({ type: 'text', nullable: true })
-  description!: string | null;
-
-  @CreateDateColumn()
-  createdAt!: Date;
-
-  @UpdateDateColumn()
-  updatedAt!: Date;
 }
 
 // ─── Organism ─────────────────────────────────────────────
@@ -160,13 +140,48 @@ export class Collection {
   updatedAt!: Date;
 }
 
+// ─── FileKind ───────────────────────────────────────────
+// First-class entity — users manage these through the UX.
+
+@Entity('file_kinds')
+export class FileKind {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @Column({ type: 'text', unique: true })
+  name!: string;
+
+  @Column({ type: 'text', nullable: true })
+  description!: string | null;
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt!: Date;
+}
+
+// ─── RelationType ───────────────────────────────────────
+// First-class entity — users manage these through the UX.
+
+@Entity('relation_types')
+export class RelationType {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @Column({ type: 'text', unique: true })
+  name!: string;
+
+  @Column({ type: 'text', nullable: true })
+  description!: string | null;
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt!: Date;
+}
+
 // ─── EntityEdge ──────────────────────────────────────────
 
-export type EntityType = 'project' | 'collection' | 'file' | 'organism' | 'technique';
-export type EdgeRelation =
-  | 'belongs_to' | 'has_type' | 'targets' | 'from_organism'
-  | 'derived_from' | 'sequenced_from' | 'produced_by'
-  | 'links_to' | 'references';
+export type EntityType = 'collection' | 'file' | 'organism' | 'technique';
+// EdgeRelation kept as a type alias for internal/system edges.
+// User-facing relation types live in the relation_types table.
+export type EdgeRelation = string;
 
 @Entity('entity_edges')
 export class EntityEdge {

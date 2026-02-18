@@ -1,26 +1,18 @@
-import { Router, type Request, type Response, type NextFunction } from 'express';
+import { Router } from 'express';
 import { AppDataSource } from '../app_data.js';
-import { User, GenomicFile, EntityEdge, Organism, Collection, Project, type EdgeRelation } from '../entities/index.js';
+import { User, GenomicFile, EntityEdge, Organism, Collection, type EdgeRelation } from '../entities/index.js';
 import { deleteObject, presignDownloadUrl } from '../lib/s3.js';
 import * as edges from '../lib/edge_service.js';
+import { asyncWrap } from '../lib/async_wrap.js';
+import { organismDisplay } from '../lib/display.js';
 
 const router = Router();
-
-function asyncWrap(fn: (req: Request, res: Response) => Promise<void>) {
-  return (req: Request, res: Response, next: NextFunction) => fn(req, res).catch(next);
-}
-
-function organismDisplay(o: Organism): string {
-  return `${o.genus.charAt(0)}. ${o.species}${o.strain ? ' ' + o.strain : ''}`;
-}
-
-const PROVENANCE_RELATIONS = ['derived_from', 'sequenced_from', 'produced_by'];
 
 // ─── List files ─────────────────────────────────────────────
 
 router.get('/', asyncWrap(async (req, res) => {
-  const { projectId, organismId, collectionId, kind } = req.query as {
-    projectId?: string; organismId?: string; collectionId?: string; kind?: string;
+  const { organismId, collectionId, kind } = req.query as {
+    organismId?: string; collectionId?: string; kind?: string;
   };
 
   const edgeRepo = AppDataSource.getRepository(EntityEdge);
@@ -35,7 +27,6 @@ router.get('/', asyncWrap(async (req, res) => {
     idSets.push(found.map(e => e.sourceId));
   }
 
-  if (projectId) await addFilter('project', projectId, 'belongs_to');
   if (collectionId) await addFilter('collection', collectionId, 'belongs_to');
   if (organismId) await addFilter('organism', organismId, 'from_organism');
 
@@ -68,12 +59,10 @@ router.get('/', asyncWrap(async (req, res) => {
     .getMany();
 
   // Build maps — many-to-many for collections
-  const projectIdByFile = new Map<string, string>();
   const collectionIdsByFile = new Map<string, string[]>();
   const organismIdByFile = new Map<string, string>();
 
   for (const e of allEdges) {
-    if (e.relation === 'belongs_to' && e.targetType === 'project') projectIdByFile.set(e.sourceId, e.targetId);
     if (e.relation === 'belongs_to' && e.targetType === 'collection') {
       const arr = collectionIdsByFile.get(e.sourceId) ?? [];
       arr.push(e.targetId);
@@ -83,18 +72,12 @@ router.get('/', asyncWrap(async (req, res) => {
   }
 
   // Load related entities
-  const allProjectIds = [...new Set(projectIdByFile.values())];
   const allColIds = [...new Set([...collectionIdsByFile.values()].flat())];
   const allOrgIds = [...new Set(organismIdByFile.values())];
 
-  const projectMap = new Map<string, Project>();
   const colMap = new Map<string, Collection>();
   const orgMap = new Map<string, Organism>();
 
-  if (allProjectIds.length) {
-    const projects = await AppDataSource.getRepository(Project).findByIds(allProjectIds);
-    projects.forEach(p => projectMap.set(p.id, p));
-  }
   if (allColIds.length) {
     const cols = await AppDataSource.getRepository(Collection).findByIds(allColIds);
     cols.forEach(c => colMap.set(c.id, c));
@@ -105,14 +88,11 @@ router.get('/', asyncWrap(async (req, res) => {
   }
 
   res.json(files.map(f => {
-    const pId = projectIdByFile.get(f.id);
     const oId = organismIdByFile.get(f.id);
     const colIds = collectionIdsByFile.get(f.id) ?? [];
 
     return {
       id:          f.id,
-      projectId:   pId ?? null,
-      projectName: pId ? projectMap.get(pId)?.name ?? null : null,
       filename:    f.filename,
       s3Key:       f.s3Key,
       sizeBytes:   Number(f.sizeBytes),
@@ -145,23 +125,22 @@ router.get('/:id', asyncWrap(async (req, res) => {
   const neighborhood = await edges.getNeighborhood({ type: 'file', id: file.id });
 
   const collectionIds: string[] = [];
-  const projectIds: string[] = [];
   let organismId: string | null = null;
   const provenanceUp: { fileId: string; relation: string; edgeId: string }[] = [];
   const provenanceDown: { fileId: string; relation: string; edgeId: string }[] = [];
   const linkEdges: EntityEdge[] = [];
 
+  const SYSTEM_RELATIONS = new Set(['belongs_to', 'from_organism', 'links_to', 'has_type', 'targets']);
   for (const e of neighborhood) {
     if (e.sourceId === file.id && e.sourceType === 'file') {
       if (e.relation === 'belongs_to' && e.targetType === 'collection') collectionIds.push(e.targetId);
-      if (e.relation === 'belongs_to' && e.targetType === 'project') projectIds.push(e.targetId);
       if (e.relation === 'from_organism') organismId = e.targetId;
-      if (PROVENANCE_RELATIONS.includes(e.relation)) {
+      if (e.relation === 'links_to') linkEdges.push(e);
+      if (e.targetType === 'file' && !SYSTEM_RELATIONS.has(e.relation)) {
         provenanceUp.push({ fileId: e.targetId, relation: e.relation, edgeId: e.id });
       }
-      if (e.relation === 'links_to') linkEdges.push(e);
     } else if (e.targetId === file.id && e.targetType === 'file') {
-      if (PROVENANCE_RELATIONS.includes(e.relation)) {
+      if (!SYSTEM_RELATIONS.has(e.relation)) {
         provenanceDown.push({ fileId: e.sourceId, relation: e.relation, edgeId: e.id });
       }
     }
@@ -170,9 +149,6 @@ router.get('/:id', asyncWrap(async (req, res) => {
   // Load related entities
   const collections = collectionIds.length
     ? await AppDataSource.getRepository(Collection).findByIds(collectionIds)
-    : [];
-  const projects = projectIds.length
-    ? await AppDataSource.getRepository(Project).findByIds(projectIds)
     : [];
   const organism = organismId
     ? await AppDataSource.getRepository(Organism).findOneBy({ id: organismId })
@@ -202,7 +178,6 @@ router.get('/:id', asyncWrap(async (req, res) => {
     uploadedBy: file.uploadedBy,
     uploadedAt: file.uploadedAt,
     collections: collections.map(c => ({ id: c.id, name: c.name, kind: c.kind })),
-    projects: projects.map(p => ({ id: p.id, name: p.name })),
     organismId,
     organismDisplay: organism ? organismDisplay(organism) : null,
     provenance: {
@@ -251,11 +226,7 @@ router.put('/:id', asyncWrap(async (req, res) => {
   await repo.save(file);
 
   if (organismId !== undefined) {
-    const edgeRepo = AppDataSource.getRepository(EntityEdge);
-    await edgeRepo.delete({ sourceType: 'file' as any, sourceId: file.id, targetType: 'organism' as any, relation: 'from_organism' as any });
-    if (organismId) {
-      await edges.link({ type: 'file', id: file.id }, { type: 'organism', id: organismId }, 'from_organism');
-    }
+    await edges.replaceEdge({ type: 'file', id: file.id }, 'from_organism', 'organism', organismId || null);
   }
 
   res.json(file);
@@ -271,9 +242,6 @@ router.post('/:id/provenance', asyncWrap(async (req, res) => {
   const { targetFileId, relation } = req.body as { targetFileId: string; relation: string };
   if (!targetFileId || !relation) {
     res.status(400).json({ error: 'targetFileId and relation required' }); return;
-  }
-  if (!PROVENANCE_RELATIONS.includes(relation)) {
-    res.status(400).json({ error: `relation must be one of: ${PROVENANCE_RELATIONS.join(', ')}` }); return;
   }
 
   const target = await repo.findOneBy({ id: targetFileId });

@@ -126,8 +126,7 @@ export async function headObject(s3Key: string) {
 
 // ─── S3 key builder ────────────────────────────────────────
 
-export function buildS3Key(projectId: string, fileId: string, filename: string): string {
-  // e.g. projects/proj-abc/files/file-xyz/sample_R1.fastq.gz
+export function buildS3Key(fileId: string, filename: string): string {
   const safe = filename.replace(/[^a-zA-Z0-9._\-]/g, '_');
-  return `projects/${projectId}/files/${fileId}/${safe}`;
+  return `files/${fileId}/${safe}`;
 }

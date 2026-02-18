@@ -9,7 +9,7 @@ const ROUTE_LABELS: Record<string, string> = {
   collections: 'Collections',
   files: 'Files',
   upload: 'Upload',
-  projects: 'Projects',
+  settings: 'Settings',
 };
 
 export default function Breadcrumbs() {
@@ -39,8 +39,7 @@ export default function Breadcrumbs() {
         crumbs.push({ label: resolved, to: path });
       } else {
         const prev = segments[i - 1];
-        const context = prev === 'projects' ? 'Project'
-          : prev === 'collections' ? 'Collection'
+        const context = prev === 'collections' ? 'Collection'
           : prev === 'files' ? 'File'
           : seg;
         crumbs.push({ label: `${context} ${seg.slice(0, 8)}`, to: path });

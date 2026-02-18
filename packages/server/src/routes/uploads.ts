@@ -1,4 +1,4 @@
-import { Router, type Request, type Response, type NextFunction } from 'express';
+import { Router } from 'express';
 import { AppDataSource } from '../app_data.js';
 import { User, GenomicFile } from '../entities/index.js';
 import {
@@ -7,19 +7,15 @@ import {
 } from '../lib/s3.js';
 import * as edges from '../lib/edge_service.js';
 import { detectFormat } from '@genome-hub/shared';
+import { asyncWrap } from '../lib/async_wrap.js';
 
 const router = Router();
 
-function asyncWrap(fn: (req: Request, res: Response) => Promise<void>) {
-  return (req: Request, res: Response, next: NextFunction) => fn(req, res).catch(next);
-}
-
 /** Step 1 — register file metadata and initiate S3 multipart */
 router.post('/initiate', asyncWrap(async (req, res) => {
-  const { filename, projectId, contentType, sizeBytes, description, tags, organismId, collectionId, kind } =
+  const { filename, contentType, sizeBytes, description, tags, organismId, collectionId, kind } =
     req.body as {
       filename:    string;
-      projectId?:  string;
       contentType: string;
       sizeBytes:   number;
       description?: string;
@@ -48,8 +44,7 @@ router.post('/initiate', asyncWrap(async (req, res) => {
   });
   await repo.save(file);
 
-  // Use projectId in the S3 key if provided, otherwise use 'unassigned'
-  const s3Key   = buildS3Key(projectId ?? 'unassigned', file.id, filename);
+  const s3Key   = buildS3Key(file.id, filename);
   const uploadId = await initiateMultipartUpload(s3Key, contentType);
 
   file.s3Key    = s3Key;
@@ -58,9 +53,6 @@ router.post('/initiate', asyncWrap(async (req, res) => {
 
   // Create edges for relationships
   const userId = (res.locals.user as User)?.id ?? null;
-  if (projectId) {
-    await edges.link({ type: 'file', id: file.id }, { type: 'project', id: projectId }, 'belongs_to', null, userId);
-  }
   if (collectionId) {
     await edges.link({ type: 'file', id: file.id }, { type: 'collection', id: collectionId }, 'belongs_to', null, userId);
   }

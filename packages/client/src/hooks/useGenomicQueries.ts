@@ -1,17 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import { apiFetch } from '../lib/api';
+import { useApiQuery, useApiMutation } from './useApi';
 
 // ─── Types ────────────────────────────────────────────────
-
-export interface Project {
-  id:          string;
-  name:        string;
-  description: string | null;
-  createdAt:   string;
-  fileCount:   number;
-  totalBytes:  number;
-}
 
 export interface Organism {
   id:              string;
@@ -36,8 +28,6 @@ export interface Collection {
   techniqueId:     string | null;
   techniqueName:   string | null;
   createdBy:       string | null;
-  projectId:       string | null;
-  projectName:     string | null;
   organismId:      string | null;
   organismDisplay: string | null;
   fileCount:       number;
@@ -46,8 +36,6 @@ export interface Collection {
 
 export interface GenomicFile {
   id:              string;
-  projectId:       string | null;
-  projectName:     string | null;
   filename:        string;
   s3Key:           string;
   sizeBytes:       number;
@@ -78,7 +66,6 @@ export interface FileDetail {
   uploadedBy:      string | null;
   uploadedAt:      string;
   collections:     { id: string; name: string; kind: string }[];
-  projects:        { id: string; name: string }[];
   organismId:      string | null;
   organismDisplay: string | null;
   provenance: {
@@ -108,7 +95,21 @@ export interface Technique {
   createdAt:   string;
 }
 
-export type LinkParentType = 'project' | 'collection' | 'file';
+export interface RelationType {
+  id:          string;
+  name:        string;
+  description: string | null;
+  createdAt:   string;
+}
+
+export interface FileKind {
+  id:          string;
+  name:        string;
+  description: string | null;
+  createdAt:   string;
+}
+
+export type LinkParentType = 'collection' | 'file';
 export type LinkServiceType =
   | 'jira' | 'confluence' | 'slack'
   | 'google-doc' | 'google-sheet' | 'google-drive'
@@ -126,212 +127,13 @@ export interface ExternalLink {
   createdAt:  string;
 }
 
-export interface ProjectTree {
-  id:          string;
-  name:        string;
-  description: string | null;
-  createdAt:   string;
-  fileCount:   number;
-  links:       ExternalLink[];
-  collections: ProjectTreeCollection[];
-}
-
-export interface ProjectTreeCollection {
-  id:              string;
-  name:            string;
-  description:     string | null;
-  kind:            string;
-  metadata:        Record<string, unknown> | null;
-  technique:       { id: string; name: string } | null;
-  organismId:      string | null;
-  organismDisplay: string | null;
-  fileCount:       number;
-  links:           ExternalLink[];
-  files:           ProjectTreeFile[];
-}
-
-export interface ProjectTreeFile {
+export interface CollectionFile {
   id:        string;
   filename:  string;
   kind:      string;
   format:    string;
   sizeBytes: number;
   status:    string;
-}
-
-// ─── Files ────────────────────────────────────────────────
-
-export function useFilesQuery(filters?: { projectId?: string; collectionId?: string; kind?: string } | string) {
-  const projectId = typeof filters === 'string' ? filters : filters?.projectId;
-  const collectionId = typeof filters === 'string' ? undefined : filters?.collectionId;
-  const kind = typeof filters === 'string' ? undefined : filters?.kind;
-
-  const [data, setData] = useState<GenomicFile[] | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-
-  const refetch = useCallback(() => {
-    setIsLoading(true);
-    const params = new URLSearchParams();
-    if (projectId) params.set('projectId', projectId);
-    if (collectionId) params.set('collectionId', collectionId);
-    if (kind) params.set('kind', kind);
-    const qs = params.toString();
-    apiFetch(`/api/files${qs ? '?' + qs : ''}`)
-      .then(r => r.ok ? r.json() : Promise.reject(r))
-      .then(d => { setData(d); setError(null); })
-      .catch(e => setError(e))
-      .finally(() => setIsLoading(false));
-  }, [projectId, collectionId, kind]);
-
-  useEffect(() => { refetch(); }, [refetch]);
-
-  return { data, isLoading, error, refetch };
-}
-
-// ─── Projects ─────────────────────────────────────────────
-
-export function useProjectsQuery() {
-  const [data, setData] = useState<Project[] | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-
-  const refetch = useCallback(() => {
-    setIsLoading(true);
-    apiFetch('/api/projects')
-      .then(r => r.ok ? r.json() : Promise.reject(r))
-      .then(d => { setData(d); setError(null); })
-      .catch(e => setError(e))
-      .finally(() => setIsLoading(false));
-  }, []);
-
-  useEffect(() => { refetch(); }, [refetch]);
-
-  return { data, isLoading, error, refetch };
-}
-
-export function useCreateProjectMutation(onSuccess?: () => void) {
-  const [pending, setPending] = useState(false);
-
-  const createProject = useCallback(async (body: {
-    name: string; description?: string;
-  }) => {
-    setPending(true);
-    try {
-      const r = await apiFetch('/api/projects', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!r.ok) throw new Error('Create failed');
-      onSuccess?.();
-      toast.success('Project created');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create project');
-      throw err;
-    } finally {
-      setPending(false);
-    }
-  }, [onSuccess]);
-
-  return { createProject, pending };
-}
-
-// ─── Project tree ─────────────────────────────────────────
-
-export function useProjectTreeQuery(projectId?: string) {
-  const [data, setData] = useState<ProjectTree | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-
-  const refetch = useCallback(() => {
-    if (!projectId) { setIsLoading(false); return; }
-    setIsLoading(true);
-    apiFetch(`/api/projects/${projectId}/tree`)
-      .then(r => r.ok ? r.json() : Promise.reject(r))
-      .then(d => { setData(d); setError(null); })
-      .catch(e => setError(e))
-      .finally(() => setIsLoading(false));
-  }, [projectId]);
-
-  useEffect(() => { refetch(); }, [refetch]);
-
-  return { data, isLoading, error, refetch };
-}
-
-// ─── Organisms ────────────────────────────────────────────
-
-export function useOrganismsQuery() {
-  const [data, setData] = useState<Organism[] | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-
-  const refetch = useCallback(() => {
-    setIsLoading(true);
-    apiFetch('/api/organisms')
-      .then(r => r.ok ? r.json() : Promise.reject(r))
-      .then(d => { setData(d); setError(null); })
-      .catch(e => setError(e))
-      .finally(() => setIsLoading(false));
-  }, []);
-
-  useEffect(() => { refetch(); }, [refetch]);
-
-  return { data, isLoading, error, refetch };
-}
-
-export function useCreateOrganismMutation(onSuccess?: () => void) {
-  const [pending, setPending] = useState(false);
-
-  const createOrganism = useCallback(async (body: {
-    genus: string; species: string; strain?: string;
-    commonName?: string; ncbiTaxId?: number; referenceGenome?: string;
-  }) => {
-    setPending(true);
-    try {
-      const r = await apiFetch('/api/organisms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!r.ok) throw new Error('Create failed');
-      onSuccess?.();
-      toast.success('Organism created');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create organism');
-      throw err;
-    } finally {
-      setPending(false);
-    }
-  }, [onSuccess]);
-
-  return { createOrganism, pending };
-}
-
-// ─── Collections ──────────────────────────────────────────
-
-export function useCollectionsQuery(filters?: { projectId?: string; organismId?: string; kind?: string }) {
-  const [data, setData] = useState<Collection[] | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-
-  const refetch = useCallback(() => {
-    setIsLoading(true);
-    const params = new URLSearchParams();
-    if (filters?.projectId) params.set('projectId', filters.projectId);
-    if (filters?.organismId) params.set('organismId', filters.organismId);
-    if (filters?.kind) params.set('kind', filters.kind);
-    const qs = params.toString();
-    apiFetch(`/api/collections${qs ? '?' + qs : ''}`)
-      .then(r => r.ok ? r.json() : Promise.reject(r))
-      .then(d => { setData(d); setError(null); })
-      .catch(e => setError(e))
-      .finally(() => setIsLoading(false));
-  }, [filters?.projectId, filters?.organismId, filters?.kind]);
-
-  useEffect(() => { refetch(); }, [refetch]);
-
-  return { data, isLoading, error, refetch };
 }
 
 export interface CollectionDetail {
@@ -344,182 +146,185 @@ export interface CollectionDetail {
   organismId:      string | null;
   organismDisplay: string | null;
   createdBy:       string | null;
-  projectId:       string | null;
-  projectName:     string | null;
   fileCount:       number;
   links:           ExternalLink[];
-  files:           ProjectTreeFile[];
+  files:           CollectionFile[];
+}
+
+// ─── Files ────────────────────────────────────────────────
+
+export function useFilesQuery(filters?: { collectionId?: string; kind?: string }) {
+  const params = new URLSearchParams();
+  if (filters?.collectionId) params.set('collectionId', filters.collectionId);
+  if (filters?.kind) params.set('kind', filters.kind);
+  const qs = params.toString();
+  return useApiQuery<GenomicFile[]>(`/api/files${qs ? '?' + qs : ''}`, [filters?.collectionId, filters?.kind]);
+}
+
+export function useFileDetailQuery(fileId?: string) {
+  return useApiQuery<FileDetail>(fileId ? `/api/files/${fileId}` : null, [fileId]);
+}
+
+export function useDeleteFileMutation(onSuccess?: () => void) {
+  const { mutate, pending } = useApiMutation<[string]>(
+    (fileId) => ({ url: `/api/files/${fileId}`, init: { method: 'DELETE' } }),
+    { successMessage: 'File deleted', errorMessage: 'Failed to delete file', onSuccess },
+  );
+  return { deleteFile: mutate, pending };
+}
+
+export function useUpdateFileMutation(onSuccess?: () => void) {
+  const { mutate, pending } = useApiMutation<[string, {
+    kind?: string; organismId?: string | null;
+    description?: string | null; tags?: string[];
+  }], GenomicFile>(
+    (fileId, body) => ({
+      url: `/api/files/${fileId}`,
+      init: { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+    }),
+    { errorMessage: 'Failed to update file', onSuccess },
+  );
+  return { updateFile: mutate, pending };
+}
+
+// ─── Organisms ────────────────────────────────────────────
+
+export function useOrganismsQuery() {
+  return useApiQuery<Organism[]>('/api/organisms');
+}
+
+export function useCreateOrganismMutation(onSuccess?: () => void) {
+  const { mutate, pending } = useApiMutation<[{
+    genus: string; species: string; strain?: string;
+    commonName?: string; ncbiTaxId?: number; referenceGenome?: string;
+  }], Organism>(
+    (body) => ({
+      url: '/api/organisms',
+      init: { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+    }),
+    { successMessage: 'Organism created', errorMessage: 'Failed to create organism', onSuccess },
+  );
+  return { createOrganism: mutate, pending };
+}
+
+// ─── Collections ──────────────────────────────────────────
+
+export function useCollectionsQuery(filters?: { organismId?: string; kind?: string }) {
+  const params = new URLSearchParams();
+  if (filters?.organismId) params.set('organismId', filters.organismId);
+  if (filters?.kind) params.set('kind', filters.kind);
+  const qs = params.toString();
+  return useApiQuery<Collection[]>(`/api/collections${qs ? '?' + qs : ''}`, [filters?.organismId, filters?.kind]);
 }
 
 export function useCollectionDetailQuery(collectionId?: string) {
-  const [data, setData] = useState<CollectionDetail | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-
-  const refetch = useCallback(() => {
-    if (!collectionId) { setIsLoading(false); return; }
-    setIsLoading(true);
-    apiFetch(`/api/collections/${collectionId}`)
-      .then(r => r.ok ? r.json() : Promise.reject(r))
-      .then(d => { setData(d); setError(null); })
-      .catch(e => setError(e))
-      .finally(() => setIsLoading(false));
-  }, [collectionId]);
-
-  useEffect(() => { refetch(); }, [refetch]);
-
-  return { data, isLoading, error, refetch };
+  return useApiQuery<CollectionDetail>(collectionId ? `/api/collections/${collectionId}` : null, [collectionId]);
 }
 
 export function useCreateCollectionMutation(onSuccess?: () => void) {
-  const [pending, setPending] = useState(false);
-
-  const createCollection = useCallback(async (body: {
+  const { mutate, pending } = useApiMutation<[{
     name: string; kind?: string;
     metadata?: Record<string, unknown>;
-    projectId?: string; description?: string;
+    description?: string;
     techniqueId?: string; organismId?: string;
-  }) => {
-    setPending(true);
-    try {
-      const r = await apiFetch('/api/collections', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!r.ok) throw new Error('Create failed');
-      onSuccess?.();
-      toast.success('Collection created');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create collection');
-      throw err;
-    } finally {
-      setPending(false);
-    }
-  }, [onSuccess]);
-
-  return { createCollection, pending };
+  }], Collection>(
+    (body) => ({
+      url: '/api/collections',
+      init: { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+    }),
+    { successMessage: 'Collection created', errorMessage: 'Failed to create collection', onSuccess },
+  );
+  return { createCollection: mutate, pending };
 }
 
 // ─── Techniques ──────────────────────────────────────────
 
 export function useTechniquesQuery() {
-  const [data, setData] = useState<Technique[] | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-
-  const refetch = useCallback(() => {
-    setIsLoading(true);
-    apiFetch('/api/techniques')
-      .then(r => r.ok ? r.json() : Promise.reject(r))
-      .then(d => { setData(d); setError(null); })
-      .catch(e => setError(e))
-      .finally(() => setIsLoading(false));
-  }, []);
-
-  useEffect(() => { refetch(); }, [refetch]);
-
-  return { data, isLoading, error, refetch };
+  return useApiQuery<Technique[]>('/api/techniques');
 }
 
 export function useCreateTechniqueMutation(onSuccess?: () => void) {
-  const [pending, setPending] = useState(false);
-
-  const createTechnique = useCallback(async (body: {
+  const { mutate, pending } = useApiMutation<[{
     name: string; description?: string; defaultTags?: string[];
-  }) => {
-    setPending(true);
-    try {
-      const r = await apiFetch('/api/techniques', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!r.ok) throw new Error('Create failed');
-      const data = await r.json() as Technique;
-      onSuccess?.();
-      toast.success('Technique created');
-      return data;
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create technique');
-      throw err;
-    } finally {
-      setPending(false);
-    }
-  }, [onSuccess]);
+  }], Technique>(
+    (body) => ({
+      url: '/api/techniques',
+      init: { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+    }),
+    { successMessage: 'Technique created', errorMessage: 'Failed to create technique', onSuccess },
+  );
+  return { createTechnique: mutate, pending };
+}
 
-  return { createTechnique, pending };
+// ─── File kinds ──────────────────────────────────────────
+
+export function useFileKindsQuery() {
+  return useApiQuery<FileKind[]>('/api/file-kinds');
+}
+
+export function useCreateFileKindMutation(onSuccess?: () => void) {
+  const { mutate, pending } = useApiMutation<[{
+    name: string; description?: string;
+  }], FileKind>(
+    (body) => ({
+      url: '/api/file-kinds',
+      init: { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+    }),
+    { successMessage: 'File kind created', errorMessage: 'Failed to create file kind', onSuccess },
+  );
+  return { createFileKind: mutate, pending };
+}
+
+// ─── Relation types ──────────────────────────────────────
+
+export function useRelationTypesQuery() {
+  return useApiQuery<RelationType[]>('/api/relation-types');
+}
+
+export function useCreateRelationTypeMutation(onSuccess?: () => void) {
+  const { mutate, pending } = useApiMutation<[{
+    name: string; description?: string;
+  }], RelationType>(
+    (body) => ({
+      url: '/api/relation-types',
+      init: { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+    }),
+    { successMessage: 'Relation type created', errorMessage: 'Failed to create relation type', onSuccess },
+  );
+  return { createRelationType: mutate, pending };
 }
 
 // ─── External links ──────────────────────────────────────
 
 export function useLinksQuery(parentType?: LinkParentType, parentId?: string) {
-  const [data, setData] = useState<ExternalLink[] | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-
-  const refetch = useCallback(() => {
-    if (!parentType || !parentId) { setData([]); setIsLoading(false); return; }
-    setIsLoading(true);
-    apiFetch(`/api/links?parentType=${parentType}&parentId=${parentId}`)
-      .then(r => r.ok ? r.json() : Promise.reject(r))
-      .then(d => { setData(d); setError(null); })
-      .catch(e => setError(e))
-      .finally(() => setIsLoading(false));
-  }, [parentType, parentId]);
-
-  useEffect(() => { refetch(); }, [refetch]);
-
-  return { data, isLoading, error, refetch };
+  const url = parentType && parentId
+    ? `/api/links?parentType=${parentType}&parentId=${parentId}`
+    : null;
+  const result = useApiQuery<ExternalLink[]>(url, [parentType, parentId]);
+  // When skipping, return empty array instead of null for backward compat
+  return { ...result, data: result.data ?? (url ? null : []) };
 }
 
 export function useCreateLinkMutation(onSuccess?: () => void) {
-  const [pending, setPending] = useState(false);
-
-  const createLink = useCallback(async (body: {
+  const { mutate, pending } = useApiMutation<[{
     parentType: LinkParentType; parentId: string;
     url: string; label?: string;
-  }) => {
-    setPending(true);
-    try {
-      const r = await apiFetch('/api/links', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!r.ok) throw new Error('Create failed');
-      onSuccess?.();
-      toast.success('Link added');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to add link');
-      throw err;
-    } finally {
-      setPending(false);
-    }
-  }, [onSuccess]);
-
-  return { createLink, pending };
+  }]>(
+    (body) => ({
+      url: '/api/links',
+      init: { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+    }),
+    { successMessage: 'Link added', errorMessage: 'Failed to add link', onSuccess },
+  );
+  return { createLink: mutate, pending };
 }
 
 export function useDeleteLinkMutation(onSuccess?: () => void) {
-  const [pending, setPending] = useState(false);
-
-  const deleteLink = useCallback(async (linkId: string) => {
-    setPending(true);
-    try {
-      const r = await apiFetch(`/api/links/${linkId}`, { method: 'DELETE' });
-      if (!r.ok) throw new Error('Delete failed');
-      onSuccess?.();
-      toast.success('Link removed');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to remove link');
-      throw err;
-    } finally {
-      setPending(false);
-    }
-  }, [onSuccess]);
-
-  return { deleteLink, pending };
+  const { mutate, pending } = useApiMutation<[string]>(
+    (linkId) => ({ url: `/api/links/${linkId}`, init: { method: 'DELETE' } }),
+    { successMessage: 'Link removed', errorMessage: 'Failed to remove link', onSuccess },
+  );
+  return { deleteLink: mutate, pending };
 }
 
 // ─── Storage stats ────────────────────────────────────────
@@ -536,51 +341,6 @@ export function useStorageStats() {
   }, []);
 
   return { data, isLoading };
-}
-
-// ─── Delete file ──────────────────────────────────────────
-
-export function useDeleteFileMutation(onSuccess?: () => void) {
-  const [pending, setPending] = useState(false);
-
-  const deleteFile = useCallback(async (fileId: string) => {
-    setPending(true);
-    try {
-      const r = await apiFetch(`/api/files/${fileId}`, { method: 'DELETE' });
-      if (!r.ok) throw new Error('Delete failed');
-      onSuccess?.();
-      toast.success('File deleted');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to delete file');
-      throw err;
-    } finally {
-      setPending(false);
-    }
-  }, [onSuccess]);
-
-  return { deleteFile, pending };
-}
-
-// ─── File detail ──────────────────────────────────────────
-
-export function useFileDetailQuery(fileId?: string) {
-  const [data, setData] = useState<FileDetail | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-
-  const refetch = useCallback(() => {
-    if (!fileId) { setIsLoading(false); return; }
-    setIsLoading(true);
-    apiFetch(`/api/files/${fileId}`)
-      .then(r => r.ok ? r.json() : Promise.reject(r))
-      .then(d => { setData(d); setError(null); })
-      .catch(e => setError(e))
-      .finally(() => setIsLoading(false));
-  }, [fileId]);
-
-  useEffect(() => { refetch(); }, [refetch]);
-
-  return { data, isLoading, error, refetch };
 }
 
 // ─── Collection membership ────────────────────────────────
@@ -636,47 +396,25 @@ export function useRemoveFilesFromCollection() {
 // ─── Provenance ───────────────────────────────────────────
 
 export function useAddProvenance() {
-  const [pending, setPending] = useState(false);
-
-  const addProvenance = useCallback(async (fileId: string, targetFileId: string, relation: string) => {
-    setPending(true);
-    try {
-      const r = await apiFetch(`/api/files/${fileId}/provenance`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetFileId, relation }),
-      });
-      if (!r.ok) throw new Error('Failed to add provenance');
-      toast.success('Provenance link added');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to add provenance');
-      throw err;
-    } finally {
-      setPending(false);
-    }
-  }, []);
-
-  return { addProvenance, pending };
+  const { mutate, pending } = useApiMutation<[string, string, string]>(
+    (fileId, targetFileId, relation) => ({
+      url: `/api/files/${fileId}/provenance`,
+      init: { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ targetFileId, relation }) },
+    }),
+    { successMessage: 'Provenance link added', errorMessage: 'Failed to add provenance' },
+  );
+  return { addProvenance: mutate, pending };
 }
 
 export function useRemoveProvenance() {
-  const [pending, setPending] = useState(false);
-
-  const removeProvenance = useCallback(async (fileId: string, edgeId: string) => {
-    setPending(true);
-    try {
-      const r = await apiFetch(`/api/files/${fileId}/provenance/${edgeId}`, { method: 'DELETE' });
-      if (!r.ok) throw new Error('Failed to remove provenance');
-      toast.success('Provenance link removed');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to remove provenance');
-      throw err;
-    } finally {
-      setPending(false);
-    }
-  }, []);
-
-  return { removeProvenance, pending };
+  const { mutate, pending } = useApiMutation<[string, string]>(
+    (fileId, edgeId) => ({
+      url: `/api/files/${fileId}/provenance/${edgeId}`,
+      init: { method: 'DELETE' },
+    }),
+    { successMessage: 'Provenance link removed', errorMessage: 'Failed to remove provenance' },
+  );
+  return { removeProvenance: mutate, pending };
 }
 
 // ─── Presigned URL ────────────────────────────────────────
@@ -703,31 +441,18 @@ export function usePresignedUrl() {
 
 // ─── Multipart upload ─────────────────────────────────────
 
-export interface UploadProgress {
-  fileId:   string;
-  filename: string;
-  loaded:   number;
-  total:    number;
-  status:   'uploading' | 'done' | 'error';
-  error?:   string;
-}
+import { useAppStore, type UploadProgress } from '../stores/useAppStore';
+export type { UploadProgress };
 
 export function useMultipartUpload() {
-  const [uploads, setUploads] = useState<Map<string, UploadProgress>>(new Map());
-
-  const updateUpload = useCallback((id: string, patch: Partial<UploadProgress>) => {
-    setUploads(prev => {
-      const next = new Map(prev);
-      const cur = next.get(id);
-      if (cur) next.set(id, { ...cur, ...patch });
-      return next;
-    });
-  }, []);
+  const uploads = useAppStore(s => s.uploads);
+  const setUpload = useAppStore(s => s.setUpload);
+  const updateUploadStore = useAppStore(s => s.updateUpload);
+  const clearDone = useAppStore(s => s.clearDoneUploads);
 
   const upload = useCallback(async (
     file:      File,
     opts: {
-      projectId?: string;
       description?: string;
       tags?: string[];
       organismId?: string;
@@ -737,13 +462,9 @@ export function useMultipartUpload() {
   ) => {
     const tmpId = crypto.randomUUID();
 
-    setUploads(prev => {
-      const next = new Map(prev);
-      next.set(tmpId, {
-        fileId: tmpId, filename: file.name,
-        loaded: 0, total: file.size, status: 'uploading',
-      });
-      return next;
+    setUpload(tmpId, {
+      fileId: tmpId, filename: file.name,
+      loaded: 0, total: file.size, status: 'uploading',
     });
 
     try {
@@ -753,7 +474,6 @@ export function useMultipartUpload() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           filename: file.name,
-          projectId: opts.projectId,
           contentType: file.type || 'application/octet-stream',
           sizeBytes: file.size,
           description: opts.description,
@@ -764,7 +484,7 @@ export function useMultipartUpload() {
         }),
       });
       const { fileId, uploadId, s3Key } = await initRes.json();
-      updateUpload(tmpId, { fileId });
+      updateUploadStore(tmpId, { fileId });
 
       // 2. Upload parts (5MB each)
       const PART_SIZE = 5 * 1024 * 1024;
@@ -792,7 +512,7 @@ export function useMultipartUpload() {
 
         const etag = putRes.headers.get('ETag') ?? '';
         parts.push({ PartNumber: i + 1, ETag: etag });
-        updateUpload(tmpId, { loaded: end });
+        updateUploadStore(tmpId, { loaded: end });
       }
 
       // 3. Complete
@@ -802,26 +522,16 @@ export function useMultipartUpload() {
         body: JSON.stringify({ fileId, uploadId, s3Key, parts }),
       });
 
-      updateUpload(tmpId, { status: 'done', loaded: file.size });
+      updateUploadStore(tmpId, { status: 'done', loaded: file.size });
       toast.success(`Upload complete: ${file.name}`);
     } catch (err: unknown) {
-      updateUpload(tmpId, {
+      updateUploadStore(tmpId, {
         status: 'error',
         error: err instanceof Error ? err.message : 'Upload failed',
       });
       toast.error(`Upload failed: ${file.name}`);
     }
-  }, [updateUpload]);
-
-  const clearDone = useCallback(() => {
-    setUploads(prev => {
-      const next = new Map(prev);
-      for (const [k, v] of next) {
-        if (v.status === 'done') next.delete(k);
-      }
-      return next;
-    });
-  }, []);
+  }, [setUpload, updateUploadStore]);
 
   return { uploads, upload, clearDone };
 }

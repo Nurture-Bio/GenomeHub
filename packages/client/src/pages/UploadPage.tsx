@@ -1,10 +1,9 @@
 import { useState, useRef, useCallback, useMemo } from 'react';
-import { useMultipartUpload, useProjectsQuery, useOrganismsQuery, useCollectionsQuery, useTechniquesQuery } from '../hooks/useGenomicQueries';
+import { useMultipartUpload, useCollectionsQuery, useTechniquesQuery } from '../hooks/useGenomicQueries';
 import type { Collection, Technique } from '../hooks/useGenomicQueries';
 import { detectFormat, FORMAT_META, formatBytes } from '../lib/formats';
-import { Button, Badge, Text, Heading, Input, ComboBox } from '../ui';
-import { ProjectPicker, FileKindPicker } from '../ui';
-import type { ComboBoxItem } from '../ui';
+import { Button, Text, Heading, Input } from '../ui';
+import { CollectionPicker, OrganismPicker, FileKindPicker } from '../ui';
 
 // ── Drop zone ─────────────────────────────────────────────
 
@@ -82,20 +81,16 @@ function DropZone({ onFiles }: DropZoneProps) {
 
 interface QueueItemProps {
   file:      File;
-  projectId: string;
   organismId: string;
   collectionId: string;
   kind: string;
   description: string;
   tags: string;
   onRemove:  () => void;
-  onChange: (patch: Partial<{ projectId: string; organismId: string; collectionId: string; kind: string; description: string; tags: string }>) => void;
-  projectItems: ComboBoxItem[];
-  organismItems: ComboBoxItem[];
-  collectionItems: ComboBoxItem[];
+  onChange: (patch: Partial<{ organismId: string; collectionId: string; kind: string; description: string; tags: string }>) => void;
 }
 
-function QueueItem({ file, projectId, organismId, collectionId, kind, description, tags, onRemove, onChange, projectItems, organismItems, collectionItems }: QueueItemProps) {
+function QueueItem({ file, organismId, collectionId, kind, description, tags, onRemove, onChange }: QueueItemProps) {
   const fmt  = detectFormat(file.name);
   const meta = FORMAT_META[fmt];
 
@@ -116,17 +111,7 @@ function QueueItem({ file, projectId, organismId, collectionId, kind, descriptio
 
       {/* Row 2: assignment selects — stack on mobile */}
       <div className="flex flex-col sm:flex-row gap-2">
-        <ComboBox
-          items={projectItems}
-          value={projectId}
-          onValueChange={v => onChange({ projectId: v })}
-          placeholder="Project"
-          variant="surface"
-          size="sm"
-          className="w-full sm:w-40"
-        />
-        <ComboBox
-          items={organismItems}
+        <OrganismPicker
           value={organismId}
           onValueChange={v => onChange({ organismId: v })}
           placeholder="Organism"
@@ -134,8 +119,7 @@ function QueueItem({ file, projectId, organismId, collectionId, kind, descriptio
           size="sm"
           className="w-full sm:w-40"
         />
-        <ComboBox
-          items={collectionItems}
+        <CollectionPicker
           value={collectionId}
           onValueChange={v => onChange({ collectionId: v })}
           placeholder="Collection"
@@ -230,25 +214,9 @@ function ProgressBar({ filename, loaded, total, status, error }: ProgressBarProp
 // ── UploadPage ────────────────────────────────────────────
 
 export default function UploadPage() {
-  const { data: projects } = useProjectsQuery();
-  const { data: organisms } = useOrganismsQuery();
   const { data: collections } = useCollectionsQuery();
   const { data: techniques } = useTechniquesQuery();
   const { uploads, upload, clearDone } = useMultipartUpload();
-
-  // Pre-map items for ComboBox
-  const projectItems = useMemo<ComboBoxItem[]>(() =>
-    (projects ?? []).map(p => ({ id: p.id, label: p.name })),
-    [projects],
-  );
-  const organismItems = useMemo<ComboBoxItem[]>(() =>
-    (organisms ?? []).map(o => ({ id: o.id, label: o.displayName })),
-    [organisms],
-  );
-  const collectionItems = useMemo<ComboBoxItem[]>(() =>
-    (collections ?? []).map(c => ({ id: c.id, label: c.name, group: c.projectName ?? undefined })),
-    [collections],
-  );
 
   // Build lookup: collectionId → defaultTags from its technique
   const suggestedTagsMap = useMemo(() => {
@@ -265,17 +233,41 @@ export default function UploadPage() {
     return map;
   }, [collections, techniques]);
 
-  type QueueEntry = { file: File; projectId: string; organismId: string; collectionId: string; kind: string; tags: string; description: string };
+  type QueueEntry = { file: File; organismId: string; collectionId: string; kind: string; tags: string; description: string };
   const [queue,      setQueue]      = useState<QueueEntry[]>([]);
-  const [defaultPrj, setDefaultPrj] = useState('');
+  const [defaultOrg, setDefaultOrg] = useState('');
+  const [defaultCol, setDefaultCol] = useState('');
+  const [defaultKind, setDefaultKind] = useState('raw');
   const [uploading,  setUploading]  = useState(false);
 
   const addFiles = useCallback((files: File[]) => {
     setQueue(prev => [
       ...prev,
-      ...files.map(f => ({ file: f, projectId: defaultPrj, organismId: '', collectionId: '', kind: 'raw', tags: '', description: '' })),
+      ...files.map(f => ({ file: f, organismId: defaultOrg, collectionId: defaultCol, kind: defaultKind, tags: '', description: '' })),
     ]);
-  }, [defaultPrj]);
+  }, [defaultOrg, defaultCol, defaultKind]);
+
+  // Propagate default changes to queue items that still have the old/empty value
+  const handleDefaultOrg = (id: string) => {
+    setDefaultOrg(id);
+    setQueue(prev => prev.map(e => (!e.organismId ? { ...e, organismId: id } : e)));
+  };
+  const handleDefaultCol = (id: string) => {
+    setDefaultCol(id);
+    setQueue(prev => prev.map(e => {
+      if (e.collectionId) return e;
+      const updated = { ...e, collectionId: id };
+      if (!e.tags) {
+        const suggested = suggestedTagsMap.get(id);
+        if (suggested?.length) updated.tags = suggested.join(', ');
+      }
+      return updated;
+    }));
+  };
+  const handleDefaultKind = (k: string) => {
+    setDefaultKind(k);
+    setQueue(prev => prev.map(e => (e.kind === 'raw' || !e.kind ? { ...e, kind: k } : e)));
+  };
 
   const removeFromQueue = (idx: number) =>
     setQueue(prev => prev.filter((_, i) => i !== idx));
@@ -298,7 +290,6 @@ export default function UploadPage() {
     setQueue([]);
     await Promise.all(
       queue.map(e => upload(e.file, {
-        projectId: e.projectId || undefined,
         description: e.description || undefined,
         tags: e.tags ? e.tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
         organismId: e.organismId || undefined,
@@ -325,19 +316,34 @@ export default function UploadPage() {
       {/* Queue */}
       {queue.length > 0 && (
         <div className="flex flex-col gap-2">
-          {/* Queue header — stack on mobile */}
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+          {/* Queue header — batch defaults */}
+          <div className="flex flex-col gap-2">
             <Text variant="overline">Queued ({queue.length})</Text>
-            <div className="flex-1" />
-            <div className="flex items-center gap-2">
-              <span className="font-body text-caption text-text-secondary shrink-0">Default project:</span>
-              <ProjectPicker
-                value={defaultPrj}
-                onValueChange={setDefaultPrj}
-                placeholder="Project"
+            <div className="flex flex-col sm:flex-row gap-2">
+              <span className="font-body text-micro text-text-dim shrink-0 self-center">Defaults:</span>
+              <OrganismPicker
+                value={defaultOrg}
+                onValueChange={handleDefaultOrg}
+                placeholder="Organism"
                 variant="surface"
                 size="sm"
-                className="w-full sm:w-44"
+                className="w-full sm:w-40"
+              />
+              <CollectionPicker
+                value={defaultCol}
+                onValueChange={handleDefaultCol}
+                placeholder="Collection"
+                variant="surface"
+                size="sm"
+                className="w-full sm:w-40"
+              />
+              <FileKindPicker
+                value={defaultKind}
+                onValueChange={handleDefaultKind}
+                placeholder="Kind"
+                variant="surface"
+                size="sm"
+                className="w-full sm:w-32"
               />
             </div>
           </div>
@@ -347,15 +353,11 @@ export default function UploadPage() {
               <QueueItem
                 key={i}
                 file={e.file}
-                projectId={e.projectId}
                 organismId={e.organismId}
                 collectionId={e.collectionId}
                 kind={e.kind}
                 description={e.description}
                 tags={e.tags}
-                projectItems={projectItems}
-                organismItems={organismItems}
-                collectionItems={collectionItems}
                 onRemove={() => removeFromQueue(i)}
                 onChange={patch => updateQueueItem(i, patch)}
               />
