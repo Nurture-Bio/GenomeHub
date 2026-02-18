@@ -10,7 +10,10 @@ RUN npm ci --workspaces --if-present
 
 # ── Build client ──────────────────────────────────────────
 FROM deps AS build-client
+ARG VITE_GOOGLE_CLIENT_ID
+ENV VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID}
 COPY packages/client/ ./packages/client/
+COPY .env.example ./.env
 RUN npm run build -w packages/client
 
 # ── Build server ──────────────────────────────────────────

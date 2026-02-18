@@ -3,7 +3,7 @@
  *
  * Express API that:
  *  - Serves the Vite-built client from /dist/client
- *  - Exposes REST endpoints for files, projects, and S3 multipart uploads
+ *  - Exposes REST endpoints for projects, experiments, samples, files, links
  *  - Never buffers file payloads — the browser uploads directly to S3
  *    via presigned multipart URLs; the server only coordinates metadata.
  *
@@ -17,12 +17,16 @@ import { createServer }    from 'http';
 import path                from 'path';
 import { fileURLToPath }   from 'url';
 import { AppDataSource }   from './app_data.js';
-import { User, Project, Organism, Experiment, GenomicFile } from './entities/index.js';
+import {
+  User, Project, Organism, ExperimentType, Experiment,
+  Sample, ExternalLink, GenomicFile,
+} from './entities/index.js';
 import {
   buildS3Key, initiateMultipartUpload, presignPartUrl,
   completeMultipartUpload, abortMultipartUpload,
   deleteObject, presignDownloadUrl, headObject,
 } from './lib/s3.js';
+import { detectLinkService } from './lib/link_service.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app       = express();
@@ -171,6 +175,120 @@ app.post('/api/projects', asyncWrap(async (req, res) => {
   res.status(201).json(prj);
 }));
 
+// ─── Project tree ─────────────────────────────────────────
+
+app.get('/api/projects/:id/tree', asyncWrap(async (req, res) => {
+  const projectId = req.params.id;
+  const projRepo = AppDataSource.getRepository(Project);
+  const project = await projRepo.findOneBy({ id: projectId });
+  if (!project) { res.status(404).json({ error: 'not found' }); return; }
+
+  // Experiments with type
+  const experiments = await AppDataSource.getRepository(Experiment)
+    .find({
+      where: { projectId },
+      relations: ['experimentType'],
+      order: { createdAt: 'DESC' },
+    });
+
+  // Samples keyed by experimentId
+  const samples = await AppDataSource.getRepository(Sample)
+    .createQueryBuilder('s')
+    .where('s.experiment_id IN (:...expIds)', {
+      expIds: experiments.length ? experiments.map(e => e.id) : ['00000000-0000-0000-0000-000000000000'],
+    })
+    .orderBy('s.created_at', 'ASC')
+    .getMany();
+  const samplesByExp = new Map<string, typeof samples>();
+  for (const s of samples) {
+    const list = samplesByExp.get(s.experimentId) ?? [];
+    list.push(s);
+    samplesByExp.set(s.experimentId, list);
+  }
+
+  // File counts keyed by sampleId + experimentId + project-level
+  const fileCounts = await AppDataSource.getRepository(GenomicFile)
+    .createQueryBuilder('f')
+    .select('f.project_id', 'projectId')
+    .addSelect('f.experiment_id', 'experimentId')
+    .addSelect('f.sample_id', 'sampleId')
+    .addSelect('COUNT(*)', 'count')
+    .where('f.project_id = :projectId', { projectId })
+    .groupBy('f.project_id')
+    .addGroupBy('f.experiment_id')
+    .addGroupBy('f.sample_id')
+    .getRawMany<{ projectId: string; experimentId: string | null; sampleId: string | null; count: string }>();
+
+  // Build count maps
+  let projectFileCount = 0;
+  const expFileCounts = new Map<string, number>();
+  const sampleFileCounts = new Map<string, number>();
+  for (const r of fileCounts) {
+    const c = parseInt(r.count);
+    projectFileCount += c;
+    if (r.experimentId) expFileCounts.set(r.experimentId, (expFileCounts.get(r.experimentId) ?? 0) + c);
+    if (r.sampleId) sampleFileCounts.set(r.sampleId, (sampleFileCounts.get(r.sampleId) ?? 0) + c);
+  }
+
+  // Links
+  const allLinks = await AppDataSource.getRepository(ExternalLink)
+    .createQueryBuilder('l')
+    .where(
+      '(l.parent_type = :pt AND l.parent_id = :projectId) OR ' +
+      '(l.parent_type = :et AND l.parent_id IN (:...allIds))',
+      {
+        pt: 'project', et: 'experiment', projectId,
+        allIds: [
+          ...experiments.map(e => e.id),
+          ...samples.map(s => s.id),
+          '00000000-0000-0000-0000-000000000000',
+        ],
+      }
+    )
+    .orWhere('l.parent_type = :st AND l.parent_id IN (:...sampleIds)', {
+      st: 'sample',
+      sampleIds: samples.length ? samples.map(s => s.id) : ['00000000-0000-0000-0000-000000000000'],
+    })
+    .orderBy('l.created_at', 'ASC')
+    .getMany();
+
+  const linksByParent = new Map<string, ExternalLink[]>();
+  for (const l of allLinks) {
+    const key = `${l.parentType}:${l.parentId}`;
+    const list = linksByParent.get(key) ?? [];
+    list.push(l);
+    linksByParent.set(key, list);
+  }
+
+  res.json({
+    ...project,
+    fileCount: projectFileCount,
+    links: linksByParent.get(`project:${projectId}`) ?? [],
+    experiments: experiments.map(e => ({
+      id: e.id,
+      name: e.name,
+      description: e.description,
+      experimentType: e.experimentType ? { id: e.experimentType.id, name: e.experimentType.name } : null,
+      technique: e.technique,
+      organism: e.organism,
+      referenceGenome: e.referenceGenome,
+      status: e.status,
+      fileCount: expFileCounts.get(e.id) ?? 0,
+      links: linksByParent.get(`experiment:${e.id}`) ?? [],
+      samples: (samplesByExp.get(e.id) ?? []).map(s => ({
+        id: s.id,
+        name: s.name,
+        description: s.description,
+        condition: s.condition,
+        replicate: s.replicate,
+        metadata: s.metadata,
+        fileCount: sampleFileCounts.get(s.id) ?? 0,
+        links: linksByParent.get(`sample:${s.id}`) ?? [],
+      })),
+    })),
+  });
+}));
+
 // ─── Organisms ────────────────────────────────────────────
 
 app.get('/api/organisms', asyncWrap(async (_req, res) => {
@@ -232,6 +350,53 @@ app.delete('/api/organisms/:id', asyncWrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// ─── Experiment Types ────────────────────────────────────
+
+app.get('/api/experiment-types', asyncWrap(async (_req, res) => {
+  const repo = AppDataSource.getRepository(ExperimentType);
+  const types = await repo.find({ order: { name: 'ASC' } });
+  res.json(types);
+}));
+
+app.post('/api/experiment-types', asyncWrap(async (req, res) => {
+  const { name, description, defaultTags } = req.body as {
+    name: string; description?: string; defaultTags?: string[];
+  };
+  if (!name) { res.status(400).json({ error: 'name required' }); return; }
+
+  const repo = AppDataSource.getRepository(ExperimentType);
+  const et = repo.create({
+    name,
+    description: description ?? null,
+    defaultTags: defaultTags ?? [],
+  });
+  await repo.save(et);
+  res.status(201).json(et);
+}));
+
+app.put('/api/experiment-types/:id', asyncWrap(async (req, res) => {
+  const repo = AppDataSource.getRepository(ExperimentType);
+  const et = await repo.findOneBy({ id: req.params.id });
+  if (!et) { res.status(404).json({ error: 'not found' }); return; }
+
+  const { name, description, defaultTags } = req.body as {
+    name?: string; description?: string; defaultTags?: string[];
+  };
+  if (name !== undefined) et.name = name;
+  if (description !== undefined) et.description = description;
+  if (defaultTags !== undefined) et.defaultTags = defaultTags;
+  await repo.save(et);
+  res.json(et);
+}));
+
+app.delete('/api/experiment-types/:id', asyncWrap(async (req, res) => {
+  const repo = AppDataSource.getRepository(ExperimentType);
+  const et = await repo.findOneBy({ id: req.params.id });
+  if (!et) { res.status(404).json({ error: 'not found' }); return; }
+  await repo.remove(et);
+  res.json({ ok: true });
+}));
+
 // ─── Experiments ──────────────────────────────────────────
 
 app.get('/api/experiments', asyncWrap(async (req, res) => {
@@ -240,7 +405,8 @@ app.get('/api/experiments', asyncWrap(async (req, res) => {
 
   const qb = repo.createQueryBuilder('e')
     .leftJoinAndSelect('e.project', 'p')
-    .leftJoinAndSelect('e.organism', 'o')
+    .leftJoinAndSelect('e.experimentType', 'et')
+    .leftJoinAndSelect('e.organismEntity', 'o')
     .orderBy('e.createdAt', 'DESC');
 
   if (projectId) qb.andWhere('e.project_id = :projectId', { projectId });
@@ -258,43 +424,102 @@ app.get('/api/experiments', asyncWrap(async (req, res) => {
     .getRawMany<{ experimentId: string; fileCount: string }>();
   const fileMap = new Map(fileCounts.map(s => [s.experimentId, parseInt(s.fileCount)]));
 
+  // Sample counts
+  const sampleCounts = await AppDataSource.getRepository(Sample)
+    .createQueryBuilder('s')
+    .select('s.experiment_id', 'experimentId')
+    .addSelect('COUNT(*)', 'sampleCount')
+    .groupBy('s.experiment_id')
+    .getRawMany<{ experimentId: string; sampleCount: string }>();
+  const sampleMap = new Map(sampleCounts.map(s => [s.experimentId, parseInt(s.sampleCount)]));
+
   res.json(experiments.map(e => ({
     id: e.id,
     name: e.name,
     description: e.description,
     technique: e.technique,
+    experimentTypeId: e.experimentTypeId,
+    experimentTypeName: e.experimentType?.name ?? null,
+    organism: e.organism,
+    referenceGenome: e.referenceGenome,
+    metadata: e.metadata,
+    status: e.status,
     experimentDate: e.experimentDate,
     createdBy: e.createdBy,
     projectId: e.projectId,
     projectName: e.project?.name ?? null,
     organismId: e.organismId,
-    organismDisplay: e.organism
-      ? `${e.organism.genus.charAt(0)}. ${e.organism.species}${e.organism.strain ? ' ' + e.organism.strain : ''}`
+    organismDisplay: e.organismEntity
+      ? `${e.organismEntity.genus.charAt(0)}. ${e.organismEntity.species}${e.organismEntity.strain ? ' ' + e.organismEntity.strain : ''}`
       : null,
     fileCount: fileMap.get(e.id) ?? 0,
+    sampleCount: sampleMap.get(e.id) ?? 0,
     createdAt: e.createdAt,
   })));
 }));
 
 app.post('/api/experiments', asyncWrap(async (req, res) => {
-  const { name, technique, projectId, description, experimentDate, createdBy, organismId } = req.body as {
-    name: string; technique: string; projectId: string;
-    description?: string; experimentDate?: string; createdBy?: string; organismId?: string;
+  const {
+    name, projectId, experimentTypeId, technique,
+    description, organism, referenceGenome, metadata,
+    experimentDate, organismId, status,
+  } = req.body as {
+    name: string; projectId: string; experimentTypeId?: string; technique?: string;
+    description?: string; organism?: string; referenceGenome?: string;
+    metadata?: Record<string, unknown>; experimentDate?: string;
+    organismId?: string; status?: string;
   };
-  if (!name || !technique || !projectId) {
-    res.status(400).json({ error: 'name, technique, and projectId required' }); return;
+  if (!name || !projectId) {
+    res.status(400).json({ error: 'name and projectId required' }); return;
   }
 
   const repo = AppDataSource.getRepository(Experiment);
   const exp = repo.create({
-    name, technique, projectId,
+    name, projectId,
+    experimentTypeId: experimentTypeId ?? null,
+    technique: technique ?? null,
     description: description ?? null,
+    organism: organism ?? null,
+    referenceGenome: referenceGenome ?? null,
+    metadata: metadata ?? null,
+    status: (status as 'active' | 'complete' | 'archived') ?? 'active',
     experimentDate: experimentDate ?? null,
-    createdBy: (res.locals.user as User)?.email ?? createdBy ?? null,
+    createdBy: (res.locals.user as User)?.email ?? null,
     organismId: organismId ?? null,
   });
   await repo.save(exp);
   res.status(201).json(exp);
+}));
+
+app.put('/api/experiments/:id', asyncWrap(async (req, res) => {
+  const repo = AppDataSource.getRepository(Experiment);
+  const exp = await repo.findOneBy({ id: req.params.id });
+  if (!exp) { res.status(404).json({ error: 'not found' }); return; }
+
+  const {
+    name, experimentTypeId, technique, description,
+    organism, referenceGenome, metadata, status,
+    experimentDate, organismId,
+  } = req.body as Partial<{
+    name: string; experimentTypeId: string; technique: string;
+    description: string; organism: string; referenceGenome: string;
+    metadata: Record<string, unknown>; status: string;
+    experimentDate: string; organismId: string;
+  }>;
+
+  if (name !== undefined) exp.name = name;
+  if (experimentTypeId !== undefined) exp.experimentTypeId = experimentTypeId || null;
+  if (technique !== undefined) exp.technique = technique || null;
+  if (description !== undefined) exp.description = description || null;
+  if (organism !== undefined) exp.organism = organism || null;
+  if (referenceGenome !== undefined) exp.referenceGenome = referenceGenome || null;
+  if (metadata !== undefined) exp.metadata = metadata;
+  if (status !== undefined) exp.status = status as 'active' | 'complete' | 'archived';
+  if (experimentDate !== undefined) exp.experimentDate = experimentDate || null;
+  if (organismId !== undefined) exp.organismId = organismId || null;
+
+  await repo.save(exp);
+  res.json(exp);
 }));
 
 app.delete('/api/experiments/:id', asyncWrap(async (req, res) => {
@@ -305,11 +530,158 @@ app.delete('/api/experiments/:id', asyncWrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// ─── Samples ──────────────────────────────────────────────
+
+app.get('/api/samples', asyncWrap(async (req, res) => {
+  const { experimentId } = req.query as { experimentId?: string };
+  const repo = AppDataSource.getRepository(Sample);
+
+  const qb = repo.createQueryBuilder('s')
+    .leftJoinAndSelect('s.experiment', 'e')
+    .orderBy('s.created_at', 'ASC');
+
+  if (experimentId) qb.andWhere('s.experiment_id = :experimentId', { experimentId });
+
+  const samples = await qb.getMany();
+
+  // File counts
+  const fileCounts = await AppDataSource.getRepository(GenomicFile)
+    .createQueryBuilder('f')
+    .select('f.sample_id', 'sampleId')
+    .addSelect('COUNT(*)', 'fileCount')
+    .where('f.sample_id IS NOT NULL')
+    .groupBy('f.sample_id')
+    .getRawMany<{ sampleId: string; fileCount: string }>();
+  const fileMap = new Map(fileCounts.map(s => [s.sampleId, parseInt(s.fileCount)]));
+
+  res.json(samples.map(s => ({
+    id: s.id,
+    experimentId: s.experimentId,
+    experimentName: s.experiment?.name ?? null,
+    name: s.name,
+    description: s.description,
+    condition: s.condition,
+    replicate: s.replicate,
+    metadata: s.metadata,
+    fileCount: fileMap.get(s.id) ?? 0,
+    createdAt: s.createdAt,
+  })));
+}));
+
+app.post('/api/samples', asyncWrap(async (req, res) => {
+  const { experimentId, name, description, condition, replicate, metadata } = req.body as {
+    experimentId: string; name: string; description?: string;
+    condition?: string; replicate?: number; metadata?: Record<string, unknown>;
+  };
+  if (!experimentId || !name) {
+    res.status(400).json({ error: 'experimentId and name required' }); return;
+  }
+
+  const repo = AppDataSource.getRepository(Sample);
+  const sample = repo.create({
+    experimentId, name,
+    description: description ?? null,
+    condition: condition ?? null,
+    replicate: replicate ?? null,
+    metadata: metadata ?? null,
+  });
+  await repo.save(sample);
+  res.status(201).json(sample);
+}));
+
+app.put('/api/samples/:id', asyncWrap(async (req, res) => {
+  const repo = AppDataSource.getRepository(Sample);
+  const sample = await repo.findOneBy({ id: req.params.id });
+  if (!sample) { res.status(404).json({ error: 'not found' }); return; }
+
+  const { name, description, condition, replicate, metadata } = req.body as Partial<{
+    name: string; description: string; condition: string;
+    replicate: number; metadata: Record<string, unknown>;
+  }>;
+
+  if (name !== undefined) sample.name = name;
+  if (description !== undefined) sample.description = description || null;
+  if (condition !== undefined) sample.condition = condition || null;
+  if (replicate !== undefined) sample.replicate = replicate;
+  if (metadata !== undefined) sample.metadata = metadata;
+
+  await repo.save(sample);
+  res.json(sample);
+}));
+
+app.delete('/api/samples/:id', asyncWrap(async (req, res) => {
+  const repo = AppDataSource.getRepository(Sample);
+  const sample = await repo.findOneBy({ id: req.params.id });
+  if (!sample) { res.status(404).json({ error: 'not found' }); return; }
+  await repo.remove(sample);
+  res.json({ ok: true });
+}));
+
+// ─── External Links ───────────────────────────────────────
+
+app.get('/api/links', asyncWrap(async (req, res) => {
+  const { parentType, parentId } = req.query as { parentType?: string; parentId?: string };
+  const repo = AppDataSource.getRepository(ExternalLink);
+
+  const qb = repo.createQueryBuilder('l').orderBy('l.created_at', 'ASC');
+  if (parentType) qb.andWhere('l.parent_type = :parentType', { parentType });
+  if (parentId) qb.andWhere('l.parent_id = :parentId', { parentId });
+
+  res.json(await qb.getMany());
+}));
+
+app.post('/api/links', asyncWrap(async (req, res) => {
+  const { parentType, parentId, url, label } = req.body as {
+    parentType: string; parentId: string; url: string; label?: string;
+  };
+  if (!parentType || !parentId || !url) {
+    res.status(400).json({ error: 'parentType, parentId, and url required' }); return;
+  }
+
+  const detected = detectLinkService(url);
+  const repo = AppDataSource.getRepository(ExternalLink);
+  const link = repo.create({
+    parentType: parentType as 'project' | 'experiment' | 'sample',
+    parentId,
+    url,
+    service: detected.service,
+    label: label ?? detected.label ?? null,
+  });
+  await repo.save(link);
+  res.status(201).json(link);
+}));
+
+app.put('/api/links/:id', asyncWrap(async (req, res) => {
+  const repo = AppDataSource.getRepository(ExternalLink);
+  const link = await repo.findOneBy({ id: req.params.id });
+  if (!link) { res.status(404).json({ error: 'not found' }); return; }
+
+  const { url, label } = req.body as { url?: string; label?: string };
+  if (url !== undefined) {
+    link.url = url;
+    const detected = detectLinkService(url);
+    link.service = detected.service;
+    if (label === undefined) link.label = detected.label ?? link.label;
+  }
+  if (label !== undefined) link.label = label || null;
+
+  await repo.save(link);
+  res.json(link);
+}));
+
+app.delete('/api/links/:id', asyncWrap(async (req, res) => {
+  const repo = AppDataSource.getRepository(ExternalLink);
+  const link = await repo.findOneBy({ id: req.params.id });
+  if (!link) { res.status(404).json({ error: 'not found' }); return; }
+  await repo.remove(link);
+  res.json({ ok: true });
+}));
+
 // ─── Files ─────────────────────────────────────────────────
 
 app.get('/api/files', asyncWrap(async (req, res) => {
-  const { projectId, organismId, experimentId } = req.query as {
-    projectId?: string; organismId?: string; experimentId?: string;
+  const { projectId, organismId, experimentId, sampleId } = req.query as {
+    projectId?: string; organismId?: string; experimentId?: string; sampleId?: string;
   };
   const repo = AppDataSource.getRepository(GenomicFile);
 
@@ -317,11 +689,13 @@ app.get('/api/files', asyncWrap(async (req, res) => {
     .innerJoinAndSelect('f.project', 'p')
     .leftJoinAndSelect('f.organism', 'o')
     .leftJoinAndSelect('f.experiment', 'e')
+    .leftJoinAndSelect('f.sample', 's')
     .orderBy('f.uploadedAt', 'DESC');
 
   if (projectId) qb.andWhere('f.project_id = :projectId', { projectId });
   if (organismId) qb.andWhere('f.organism_id = :organismId', { organismId });
   if (experimentId) qb.andWhere('f.experiment_id = :experimentId', { experimentId });
+  if (sampleId) qb.andWhere('f.sample_id = :sampleId', { sampleId });
 
   const files = await qb.getMany();
   res.json(files.map(f => ({
@@ -343,8 +717,30 @@ app.get('/api/files', asyncWrap(async (req, res) => {
       : null,
     experimentId:   f.experimentId,
     experimentName: f.experiment?.name ?? null,
+    sampleId:       f.sampleId,
+    sampleName:     f.sample?.name ?? null,
     uploadedBy:     f.uploadedBy,
   })));
+}));
+
+app.put('/api/files/:id', asyncWrap(async (req, res) => {
+  const repo = AppDataSource.getRepository(GenomicFile);
+  const file = await repo.findOneBy({ id: req.params.id });
+  if (!file) { res.status(404).json({ error: 'not found' }); return; }
+
+  const { sampleId, experimentId, organismId, description, tags } = req.body as Partial<{
+    sampleId: string | null; experimentId: string | null; organismId: string | null;
+    description: string | null; tags: string[];
+  }>;
+
+  if (sampleId !== undefined) file.sampleId = sampleId;
+  if (experimentId !== undefined) file.experimentId = experimentId;
+  if (organismId !== undefined) file.organismId = organismId;
+  if (description !== undefined) file.description = description;
+  if (tags !== undefined) file.tags = tags;
+
+  await repo.save(file);
+  res.json(file);
 }));
 
 app.delete('/api/files/:id', asyncWrap(async (req, res) => {
@@ -400,7 +796,7 @@ app.get('/api/stats', asyncWrap(async (_req, res) => {
 
 /** Step 1 — register file metadata and initiate S3 multipart */
 app.post('/api/uploads/initiate', asyncWrap(async (req, res) => {
-  const { filename, projectId, contentType, sizeBytes, description, tags, organismId, experimentId } =
+  const { filename, projectId, contentType, sizeBytes, description, tags, organismId, experimentId, sampleId } =
     req.body as {
       filename:    string;
       projectId:   string;
@@ -410,6 +806,7 @@ app.post('/api/uploads/initiate', asyncWrap(async (req, res) => {
       tags?: string[];
       organismId?: string;
       experimentId?: string;
+      sampleId?: string;
     };
 
   if (!filename || !projectId) {
@@ -429,6 +826,7 @@ app.post('/api/uploads/initiate', asyncWrap(async (req, res) => {
     format: detectFormat(filename),
     organismId: organismId ?? null,
     experimentId: experimentId ?? null,
+    sampleId: sampleId ?? null,
     uploadedBy: (res.locals.user as User)?.email ?? null,
   });
   await repo.save(file);

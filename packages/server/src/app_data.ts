@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { DataSource } from 'typeorm';
-import { User, Project, Organism, Experiment, GenomicFile } from './entities/index.js';
+import { User, Project, Organism, ExperimentType, Experiment, Sample, ExternalLink, GenomicFile } from './entities/index.js';
 
 export function buildDatabaseUrl(raw: string | undefined): string | undefined {
   if (!raw) return undefined;
@@ -20,7 +20,7 @@ export function buildDatabaseUrl(raw: string | undefined): string | undefined {
 export const AppDataSource = new DataSource({
   type:     'postgres',
   url:      buildDatabaseUrl(process.env.DATABASE_URL),
-  entities: [User, Project, Organism, Experiment, GenomicFile],
+  entities: [User, Project, Organism, ExperimentType, Experiment, Sample, ExternalLink, GenomicFile],
   migrations: ['dist/migrations/*.js'],
   synchronize: process.env.NODE_ENV === 'development',
   ssl: process.env.NODE_ENV === 'production'
