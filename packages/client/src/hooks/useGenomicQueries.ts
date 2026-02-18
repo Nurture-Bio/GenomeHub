@@ -31,12 +31,11 @@ export interface Experiment {
   id:                  string;
   name:                string;
   description:         string | null;
-  technique:           string;
   experimentTypeId:    string | null;
   experimentTypeName:  string | null;
   experimentDate:      string | null;
   createdBy:           string | null;
-  projectId:           string;
+  projectId:           string | null;
   projectName:         string | null;
   organismId:          string | null;
   organismDisplay:     string | null;
@@ -127,9 +126,8 @@ export interface ProjectTreeExperiment {
   name:            string;
   description:     string | null;
   experimentType:  { id: string; name: string } | null;
-  technique:       string | null;
-  organism:        string | null;
-  referenceGenome: string | null;
+  organismId:      string | null;
+  organismDisplay: string | null;
   status:          string;
   fileCount:       number;
   links:           ExternalLink[];
@@ -322,13 +320,49 @@ export function useExperimentsQuery(filters?: { projectId?: string; organismId?:
   return { data, isLoading, error, refetch };
 }
 
+export interface ExperimentDetail {
+  id:              string;
+  name:            string;
+  description:     string | null;
+  experimentType:  { id: string; name: string } | null;
+  organismId:      string | null;
+  organismDisplay: string | null;
+  status:          string;
+  experimentDate:  string | null;
+  createdBy:       string | null;
+  projectId:       string | null;
+  projectName:     string | null;
+  fileCount:       number;
+  links:           ExternalLink[];
+  samples:         ProjectTreeSample[];
+}
+
+export function useExperimentDetailQuery(experimentId?: string) {
+  const [data, setData] = useState<ExperimentDetail | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  const refetch = useCallback(() => {
+    if (!experimentId) { setIsLoading(false); return; }
+    setIsLoading(true);
+    apiFetch(`/api/experiments/${experimentId}`)
+      .then(r => r.ok ? r.json() : Promise.reject(r))
+      .then(d => { setData(d); setError(null); })
+      .catch(e => setError(e))
+      .finally(() => setIsLoading(false));
+  }, [experimentId]);
+
+  useEffect(() => { refetch(); }, [refetch]);
+
+  return { data, isLoading, error, refetch };
+}
+
 export function useCreateExperimentMutation(onSuccess?: () => void) {
   const [pending, setPending] = useState(false);
 
   const createExperiment = useCallback(async (body: {
-    name: string; projectId: string;
-    technique?: string; experimentTypeId?: string;
-    description?: string; experimentDate?: string; organismId?: string;
+    name: string; experimentTypeId: string; organismId: string;
+    projectId?: string; description?: string; experimentDate?: string;
   }) => {
     setPending(true);
     try {

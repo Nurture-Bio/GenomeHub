@@ -145,12 +145,12 @@ export class Experiment {
   @Column({ type: 'text', nullable: true })
   description!: string | null;
 
-  @Column({ name: 'project_id', type: 'uuid' })
-  projectId!: string;
+  @Column({ name: 'project_id', type: 'uuid', nullable: true })
+  projectId!: string | null;
 
-  @ManyToOne(() => Project, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Project, { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'project_id' })
-  project!: Project;
+  project!: Project | null;
 
   @Column({ name: 'experiment_type_id', type: 'uuid', nullable: true })
   experimentTypeId!: string | null;
@@ -158,19 +158,6 @@ export class Experiment {
   @ManyToOne(() => ExperimentType, { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'experiment_type_id' })
   experimentType!: ExperimentType | null;
-
-  /** Kept for backward compat — free-text technique name */
-  @Column({ type: 'text', nullable: true })
-  technique!: string | null;
-
-  @Column({ type: 'text', nullable: true })
-  organism!: string | null;
-
-  @Column({ name: 'reference_genome', type: 'text', nullable: true })
-  referenceGenome!: string | null;
-
-  @Column({ type: 'jsonb', nullable: true })
-  metadata!: Record<string, unknown> | null;
 
   @Column({
     type: 'text',
@@ -185,13 +172,12 @@ export class Experiment {
   @Column({ name: 'created_by', type: 'text', nullable: true })
   createdBy!: string | null;
 
-  // Legacy FK — kept nullable for backward compat
   @Column({ name: 'organism_id', type: 'uuid', nullable: true })
   organismId!: string | null;
 
   @ManyToOne(() => Organism, { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'organism_id' })
-  organismEntity!: Organism | null;
+  organism!: Organism | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;

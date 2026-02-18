@@ -1,17 +1,14 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { useProjectTreeQuery, useCreateSampleMutation } from '../hooks/useGenomicQueries';
+import { useExperimentDetailQuery, useCreateSampleMutation } from '../hooks/useGenomicQueries';
 import { TechniquePill } from '../lib/techniqueColors';
 import { Heading, Text, Card, Badge, Input, Button } from '../ui';
 import LinksList from '../components/LinksList';
 import { useAppStore } from '../stores/useAppStore';
 
 export default function ExperimentDetailPage() {
-  const { projectId, experimentId } = useParams<{
-    projectId: string;
-    experimentId: string;
-  }>();
-  const { data: tree, isLoading, refetch } = useProjectTreeQuery(projectId);
+  const { experimentId } = useParams<{ experimentId: string }>();
+  const { data: experiment, isLoading, refetch } = useExperimentDetailQuery(experimentId);
   const { createSample, pending } = useCreateSampleMutation(refetch);
   const setBreadcrumbLabel = useAppStore(s => s.setBreadcrumbLabel);
 
@@ -20,15 +17,9 @@ export default function ExperimentDetailPage() {
   const [condition, setCondition] = useState('');
   const [replicate, setReplicate] = useState('');
 
-  const experiment = useMemo(() =>
-    tree?.experiments.find(e => e.id === experimentId),
-    [tree, experimentId],
-  );
-
   useEffect(() => {
-    if (tree && projectId) setBreadcrumbLabel(projectId, tree.name);
     if (experiment && experimentId) setBreadcrumbLabel(experimentId, experiment.name);
-  }, [tree, experiment, projectId, experimentId, setBreadcrumbLabel]);
+  }, [experiment, experimentId, setBreadcrumbLabel]);
 
   const handleCreate = async () => {
     if (!name || !experimentId) return;
@@ -69,8 +60,8 @@ export default function ExperimentDetailPage() {
       {/* Header */}
       <div>
         <div className="flex items-center gap-2 mb-1">
-          {(experiment.experimentType?.name || experiment.technique) && (
-            <TechniquePill name={experiment.experimentType?.name ?? experiment.technique!} />
+          {experiment.experimentType?.name && (
+            <TechniquePill name={experiment.experimentType.name} />
           )}
           <Badge variant="status" color={
             experiment.status === 'active' ? 'green'
@@ -83,7 +74,12 @@ export default function ExperimentDetailPage() {
         <Heading level="heading">{experiment.name}</Heading>
         {experiment.description && <Text variant="caption">{experiment.description}</Text>}
         <div className="flex items-center gap-2 mt-1 flex-wrap">
-          {experiment.organism && <Text variant="caption" className="italic">{experiment.organism}</Text>}
+          {experiment.organismDisplay && <Text variant="caption" className="italic">{experiment.organismDisplay}</Text>}
+          {experiment.projectName && (
+            <Link to={`/projects/${experiment.projectId}`} className="no-underline">
+              <Badge variant="count" color="dim">{experiment.projectName}</Badge>
+            </Link>
+          )}
           <Badge variant="count" color="accent">{experiment.fileCount} files</Badge>
           <Badge variant="count" color="dim">{experiment.samples.length} samples</Badge>
         </div>
@@ -118,7 +114,7 @@ export default function ExperimentDetailPage() {
             {experiment.samples.map(sample => (
               <Link
                 key={sample.id}
-                to={`/projects/${projectId}/experiments/${experimentId}/samples/${sample.id}`}
+                to={`/experiments/${experimentId}/samples/${sample.id}`}
                 className="no-underline"
               >
                 <Card className="p-2.5 flex flex-col gap-1 hover:border-accent transition-colors duration-fast cursor-pointer h-full">

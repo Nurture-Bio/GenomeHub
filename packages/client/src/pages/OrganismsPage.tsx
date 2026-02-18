@@ -49,7 +49,7 @@ export default function OrganismsPage() {
       <div className="shrink-0">
         <Heading level="heading">Organisms</Heading>
         <Text variant="caption">
-          {data ? `${data.length} organism${data.length !== 1 ? 's' : ''}` : 'Loading\u2026'}
+          {data ? `${data.length} organism${data.length !== 1 ? 's' : ''}` : 'Loading...'}
         </Text>
       </div>
 

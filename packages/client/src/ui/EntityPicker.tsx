@@ -77,7 +77,7 @@ export function ExperimentPicker({ value, onValueChange, projectId, placeholder 
     return (data ?? []).map(e => ({
       id: e.id,
       label: e.name,
-      description: [e.technique, e.organismDisplay].filter(Boolean).join(' / '),
+      description: [e.experimentTypeName, e.organismDisplay].filter(Boolean).join(' / '),
       group: e.projectName ?? undefined,
     }));
   }, [data, overrideItems]);

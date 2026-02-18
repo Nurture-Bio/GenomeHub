@@ -31,7 +31,7 @@ export default function ComboBox({
   items,
   value,
   onValueChange,
-  placeholder = '\u2026',
+  placeholder = '...',
   emptyMessage = 'No results.',
   recentIds,
   size = 'md',
@@ -81,7 +81,7 @@ export default function ComboBox({
           )}
         >
           <span className="flex-1 min-w-0 truncate">
-            {loading ? 'Loading\u2026' : selected ? selected.label : placeholder}
+            {loading ? 'Loading...' : selected ? selected.label : placeholder}
           </span>
           <svg width="12" height="12" viewBox="0 0 12 12" className="shrink-0 text-text-dim">
             <path d="M3 5l3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -101,7 +101,7 @@ export default function ComboBox({
               <Command.Input
                 value={search}
                 onValueChange={setSearch}
-                placeholder="Filter\u2026"
+                placeholder="Filter..."
                 className="w-full bg-transparent border-none outline-none font-body text-caption text-text placeholder:text-text-dim"
               />
             </div>

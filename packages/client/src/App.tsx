@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Routes, Route, NavLink, Navigate } from 'react-router-dom';
+import { Routes, Route, NavLink, Navigate, useParams } from 'react-router-dom';
 import { cx } from 'class-variance-authority';
 import { navLink } from './ui/recipes';
 import { useAuth } from './hooks/useAuth';
@@ -154,6 +154,18 @@ function SidebarFooter({ user, logout }: { user: { name: string; email: string; 
   );
 }
 
+// ── Legacy redirects ──────────────────────────────────────
+
+function LegacyExperimentRedirect() {
+  const { experimentId } = useParams<{ experimentId: string }>();
+  return <Navigate to={`/experiments/${experimentId}`} replace />;
+}
+
+function LegacySampleRedirect() {
+  const { experimentId, sampleId } = useParams<{ experimentId: string; sampleId: string }>();
+  return <Navigate to={`/experiments/${experimentId}/samples/${sampleId}`} replace />;
+}
+
 // ── App ───────────────────────────────────────────────────
 
 export default function App() {
@@ -246,8 +258,11 @@ export default function App() {
           <Route path="/files" element={<PageErrorBoundary><FilesPage /></PageErrorBoundary>} />
           <Route path="/upload" element={<PageErrorBoundary><UploadPage /></PageErrorBoundary>} />
           <Route path="/projects/:projectId" element={<PageErrorBoundary><ProjectDetailPage /></PageErrorBoundary>} />
-          <Route path="/projects/:projectId/experiments/:experimentId" element={<PageErrorBoundary><ExperimentDetailPage /></PageErrorBoundary>} />
-          <Route path="/projects/:projectId/experiments/:experimentId/samples/:sampleId" element={<PageErrorBoundary><SampleDetailPage /></PageErrorBoundary>} />
+          <Route path="/experiments/:experimentId" element={<PageErrorBoundary><ExperimentDetailPage /></PageErrorBoundary>} />
+          <Route path="/experiments/:experimentId/samples/:sampleId" element={<PageErrorBoundary><SampleDetailPage /></PageErrorBoundary>} />
+          {/* Legacy project-nested routes redirect to top-level */}
+          <Route path="/projects/:projectId/experiments/:experimentId" element={<LegacyExperimentRedirect />} />
+          <Route path="/projects/:projectId/experiments/:experimentId/samples/:sampleId" element={<LegacySampleRedirect />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

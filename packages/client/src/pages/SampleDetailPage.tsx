@@ -1,25 +1,19 @@
 import { useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { useProjectTreeQuery, useFilesQuery, type GenomicFile } from '../hooks/useGenomicQueries';
+import { useExperimentDetailQuery, useFilesQuery, type GenomicFile } from '../hooks/useGenomicQueries';
 import { detectFormat, FORMAT_META, formatBytes, formatRelativeTime } from '../lib/formats';
 import { Heading, Text, Card, Badge } from '../ui';
 import LinksList from '../components/LinksList';
 import { useAppStore } from '../stores/useAppStore';
 
 export default function SampleDetailPage() {
-  const { projectId, experimentId, sampleId } = useParams<{
-    projectId: string;
+  const { experimentId, sampleId } = useParams<{
     experimentId: string;
     sampleId: string;
   }>();
-  const { data: tree, isLoading: treeLoading } = useProjectTreeQuery(projectId);
+  const { data: experiment, isLoading: expLoading } = useExperimentDetailQuery(experimentId);
   const { data: files, isLoading: filesLoading } = useFilesQuery({ sampleId });
   const setBreadcrumbLabel = useAppStore(s => s.setBreadcrumbLabel);
-
-  const experiment = useMemo(() =>
-    tree?.experiments.find(e => e.id === experimentId),
-    [tree, experimentId],
-  );
 
   const sample = useMemo(() =>
     experiment?.samples.find(s => s.id === sampleId),
@@ -27,12 +21,11 @@ export default function SampleDetailPage() {
   );
 
   useEffect(() => {
-    if (tree && projectId) setBreadcrumbLabel(projectId, tree.name);
     if (experiment && experimentId) setBreadcrumbLabel(experimentId, experiment.name);
     if (sample && sampleId) setBreadcrumbLabel(sampleId, sample.name);
-  }, [tree, experiment, sample, projectId, experimentId, sampleId, setBreadcrumbLabel]);
+  }, [experiment, sample, experimentId, sampleId, setBreadcrumbLabel]);
 
-  const isLoading = treeLoading;
+  const isLoading = expLoading;
 
   if (isLoading) {
     return (

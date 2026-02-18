@@ -184,11 +184,11 @@ app.get('/api/projects/:id/tree', asyncWrap(async (req, res) => {
   const project = await projRepo.findOneBy({ id: projectId });
   if (!project) { res.status(404).json({ error: 'not found' }); return; }
 
-  // Experiments with type
+  // Experiments with type and organism
   const experiments = await AppDataSource.getRepository(Experiment)
     .find({
       where: { projectId },
-      relations: ['experimentType'],
+      relations: ['experimentType', 'organism'],
       order: { createdAt: 'DESC' },
     });
 
@@ -270,9 +270,10 @@ app.get('/api/projects/:id/tree', asyncWrap(async (req, res) => {
       name: e.name,
       description: e.description,
       experimentType: e.experimentType ? { id: e.experimentType.id, name: e.experimentType.name } : null,
-      technique: e.technique,
-      organism: e.organism,
-      referenceGenome: e.referenceGenome,
+      organismId: e.organismId,
+      organismDisplay: e.organism
+        ? `${e.organism.genus.charAt(0)}. ${e.organism.species}${e.organism.strain ? ' ' + e.organism.strain : ''}`
+        : null,
       status: e.status,
       fileCount: expFileCounts.get(e.id) ?? 0,
       links: linksByParent.get(`experiment:${e.id}`) ?? [],
@@ -407,7 +408,7 @@ app.get('/api/experiments', asyncWrap(async (req, res) => {
   const qb = repo.createQueryBuilder('e')
     .leftJoinAndSelect('e.project', 'p')
     .leftJoinAndSelect('e.experimentType', 'et')
-    .leftJoinAndSelect('e.organismEntity', 'o')
+    .leftJoinAndSelect('e.organism', 'o')
     .orderBy('e.createdAt', 'DESC');
 
   if (projectId) qb.andWhere('e.project_id = :projectId', { projectId });
@@ -438,20 +439,16 @@ app.get('/api/experiments', asyncWrap(async (req, res) => {
     id: e.id,
     name: e.name,
     description: e.description,
-    technique: e.technique,
     experimentTypeId: e.experimentTypeId,
     experimentTypeName: e.experimentType?.name ?? null,
-    organism: e.organism,
-    referenceGenome: e.referenceGenome,
-    metadata: e.metadata,
     status: e.status,
     experimentDate: e.experimentDate,
     createdBy: e.createdBy,
     projectId: e.projectId,
     projectName: e.project?.name ?? null,
     organismId: e.organismId,
-    organismDisplay: e.organismEntity
-      ? `${e.organismEntity.genus.charAt(0)}. ${e.organismEntity.species}${e.organismEntity.strain ? ' ' + e.organismEntity.strain : ''}`
+    organismDisplay: e.organism
+      ? `${e.organism.genus.charAt(0)}. ${e.organism.species}${e.organism.strain ? ' ' + e.organism.strain : ''}`
       : null,
     fileCount: fileMap.get(e.id) ?? 0,
     sampleCount: sampleMap.get(e.id) ?? 0,
@@ -459,34 +456,102 @@ app.get('/api/experiments', asyncWrap(async (req, res) => {
   })));
 }));
 
+app.get('/api/experiments/:id', asyncWrap(async (req, res) => {
+  const repo = AppDataSource.getRepository(Experiment);
+  const exp = await repo.findOne({
+    where: { id: req.params.id },
+    relations: ['experimentType', 'organism', 'project'],
+  });
+  if (!exp) { res.status(404).json({ error: 'not found' }); return; }
+
+  // Samples
+  const samples = await AppDataSource.getRepository(Sample)
+    .find({ where: { experimentId: exp.id }, order: { createdAt: 'ASC' } });
+
+  // File counts per sample + experiment total
+  const fileCounts = await AppDataSource.getRepository(GenomicFile)
+    .createQueryBuilder('f')
+    .select('f.sample_id', 'sampleId')
+    .addSelect('COUNT(*)', 'count')
+    .where('f.experiment_id = :expId', { expId: exp.id })
+    .groupBy('f.sample_id')
+    .getRawMany<{ sampleId: string | null; count: string }>();
+
+  let totalFiles = 0;
+  const sampleFileCounts = new Map<string, number>();
+  for (const r of fileCounts) {
+    const c = parseInt(r.count);
+    totalFiles += c;
+    if (r.sampleId) sampleFileCounts.set(r.sampleId, c);
+  }
+
+  // Links for experiment + samples
+  const allIds = [exp.id, ...samples.map(s => s.id)];
+  const links = await AppDataSource.getRepository(ExternalLink)
+    .createQueryBuilder('l')
+    .where('l.parent_id IN (:...ids)', { ids: allIds })
+    .orderBy('l.created_at', 'ASC')
+    .getMany();
+
+  const linksByParent = new Map<string, ExternalLink[]>();
+  for (const l of links) {
+    const list = linksByParent.get(l.parentId) ?? [];
+    list.push(l);
+    linksByParent.set(l.parentId, list);
+  }
+
+  res.json({
+    id: exp.id,
+    name: exp.name,
+    description: exp.description,
+    experimentType: exp.experimentType ? { id: exp.experimentType.id, name: exp.experimentType.name } : null,
+    organismId: exp.organismId,
+    organismDisplay: exp.organism
+      ? `${exp.organism.genus.charAt(0)}. ${exp.organism.species}${exp.organism.strain ? ' ' + exp.organism.strain : ''}`
+      : null,
+    status: exp.status,
+    experimentDate: exp.experimentDate,
+    createdBy: exp.createdBy,
+    projectId: exp.projectId,
+    projectName: exp.project?.name ?? null,
+    fileCount: totalFiles,
+    links: linksByParent.get(exp.id) ?? [],
+    samples: samples.map(s => ({
+      id: s.id,
+      name: s.name,
+      description: s.description,
+      condition: s.condition,
+      replicate: s.replicate,
+      metadata: s.metadata,
+      fileCount: sampleFileCounts.get(s.id) ?? 0,
+      links: linksByParent.get(s.id) ?? [],
+    })),
+  });
+}));
+
 app.post('/api/experiments', asyncWrap(async (req, res) => {
   const {
-    name, projectId, experimentTypeId, technique,
-    description, organism, referenceGenome, metadata,
-    experimentDate, organismId, status,
+    name, projectId, experimentTypeId,
+    description, experimentDate, organismId, status,
   } = req.body as {
-    name: string; projectId: string; experimentTypeId?: string; technique?: string;
-    description?: string; organism?: string; referenceGenome?: string;
-    metadata?: Record<string, unknown>; experimentDate?: string;
-    organismId?: string; status?: string;
+    name: string; projectId?: string; experimentTypeId: string;
+    description?: string; experimentDate?: string;
+    organismId: string; status?: string;
   };
-  if (!name || !projectId) {
-    res.status(400).json({ error: 'name and projectId required' }); return;
+  if (!name || !experimentTypeId || !organismId) {
+    res.status(400).json({ error: 'name, experimentTypeId, and organismId required' }); return;
   }
 
   const repo = AppDataSource.getRepository(Experiment);
   const exp = repo.create({
-    name, projectId,
-    experimentTypeId: experimentTypeId ?? null,
-    technique: technique ?? null,
+    name,
+    projectId: projectId ?? null,
+    experimentTypeId,
     description: description ?? null,
-    organism: organism ?? null,
-    referenceGenome: referenceGenome ?? null,
-    metadata: metadata ?? null,
     status: (status as 'active' | 'complete' | 'archived') ?? 'active',
     experimentDate: experimentDate ?? null,
     createdBy: (res.locals.user as User)?.email ?? null,
-    organismId: organismId ?? null,
+    organismId,
   });
   await repo.save(exp);
   res.status(201).json(exp);
@@ -498,26 +563,21 @@ app.put('/api/experiments/:id', asyncWrap(async (req, res) => {
   if (!exp) { res.status(404).json({ error: 'not found' }); return; }
 
   const {
-    name, experimentTypeId, technique, description,
-    organism, referenceGenome, metadata, status,
-    experimentDate, organismId,
+    name, experimentTypeId, description, status,
+    experimentDate, organismId, projectId,
   } = req.body as Partial<{
-    name: string; experimentTypeId: string; technique: string;
-    description: string; organism: string; referenceGenome: string;
-    metadata: Record<string, unknown>; status: string;
-    experimentDate: string; organismId: string;
+    name: string; experimentTypeId: string;
+    description: string; status: string;
+    experimentDate: string; organismId: string; projectId: string;
   }>;
 
   if (name !== undefined) exp.name = name;
   if (experimentTypeId !== undefined) exp.experimentTypeId = experimentTypeId || null;
-  if (technique !== undefined) exp.technique = technique || null;
   if (description !== undefined) exp.description = description || null;
-  if (organism !== undefined) exp.organism = organism || null;
-  if (referenceGenome !== undefined) exp.referenceGenome = referenceGenome || null;
-  if (metadata !== undefined) exp.metadata = metadata;
   if (status !== undefined) exp.status = status as 'active' | 'complete' | 'archived';
   if (experimentDate !== undefined) exp.experimentDate = experimentDate || null;
   if (organismId !== undefined) exp.organismId = organismId || null;
+  if (projectId !== undefined) exp.projectId = projectId || null;
 
   await repo.save(exp);
   res.json(exp);
@@ -932,7 +992,6 @@ async function seedExperimentTypes() {
 
 async function main() {
   await AppDataSource.initialize();
-  await AppDataSource.synchronize();
   await seedExperimentTypes();
   console.log('Database connected');
 

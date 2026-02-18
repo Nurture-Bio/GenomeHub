@@ -300,7 +300,7 @@ export default function FilesPage() {
         <div className="flex-1 min-w-0">
           <Heading level="heading">Files</Heading>
           <Text variant="caption">
-            {data ? `${data.length.toLocaleString()} files` : 'Loading\u2026'}
+            {data ? `${data.length.toLocaleString()} files` : 'Loading...'}
           </Text>
         </div>
 
@@ -316,7 +316,7 @@ export default function FilesPage() {
         <Input
           variant="surface"
           size="md"
-          placeholder="Search files or projects\u2026"
+          placeholder="Search files or projects..."
           value={search}
           onChange={e => setSearch(e.target.value)}
           className="w-full md:w-64"

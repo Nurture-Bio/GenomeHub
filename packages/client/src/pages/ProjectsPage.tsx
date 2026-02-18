@@ -43,7 +43,7 @@ export default function ProjectsPage() {
       <div className="shrink-0">
         <Heading level="heading">Projects</Heading>
         <Text variant="caption">
-          {data ? `${data.length} project${data.length !== 1 ? 's' : ''}` : 'Loading\u2026'}
+          {data ? `${data.length} project${data.length !== 1 ? 's' : ''}` : 'Loading...'}
         </Text>
       </div>
 

@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import {
   useExperimentsQuery, useCreateExperimentMutation,
   useExperimentTypesQuery,
@@ -46,12 +47,12 @@ export default function ExperimentsPage() {
   }, [data, techFilter]);
 
   const handleCreate = async () => {
-    if (!name || !experimentTypeId || !projectId) return;
+    if (!name || !experimentTypeId || !organismId) return;
     await createExperiment({
-      name, projectId, experimentTypeId,
+      name, experimentTypeId, organismId,
+      projectId: projectId || undefined,
       description: description || undefined,
       experimentDate: experimentDate || undefined,
-      organismId: organismId || undefined,
     });
     setName(''); setExperimentTypeId(''); setProjectId('');
     setOrganismId(''); setDescription(''); setExperimentDate('');
@@ -68,7 +69,7 @@ export default function ExperimentsPage() {
       <div className="shrink-0">
         <Heading level="heading">Experiments</Heading>
         <Text variant="caption">
-          {data ? `${data.length} experiment${data.length !== 1 ? 's' : ''}` : 'Loading\u2026'}
+          {data ? `${data.length} experiment${data.length !== 1 ? 's' : ''}` : 'Loading...'}
         </Text>
       </div>
 
@@ -116,7 +117,7 @@ export default function ExperimentsPage() {
           <Text variant="overline">Date</Text>
           <Input variant="surface" size="sm" type="date" value={experimentDate} onChange={e => setExperimentDate(e.target.value)} className="w-full sm:w-32" />
         </div>
-        <Button intent="primary" size="sm" pending={pending} onClick={handleCreate} disabled={!name || !experimentTypeId || !projectId} className="w-full sm:w-auto">
+        <Button intent="primary" size="sm" pending={pending} onClick={handleCreate} disabled={!name || !experimentTypeId || !organismId} className="w-full sm:w-auto">
           Add
         </Button>
       </div>
@@ -168,19 +169,23 @@ export default function ExperimentsPage() {
                   </tr>
                 )
                 : filtered.map(e => (
-                  <tr key={e.id} className="border-b border-border-subtle transition-colors duration-fast hover:bg-surface group">
+                  <tr key={e.id} className="border-b border-border-subtle transition-colors duration-fast hover:bg-surface group cursor-pointer"
+                    onClick={() => window.location.hash = ''}
+                  >
                     <td className="py-1.5 pl-2.5 pr-3">
-                      <div className="font-mono text-caption text-text">{e.name}</div>
-                      {e.description && <div className="text-micro text-text-dim truncate max-w-xs">{e.description}</div>}
+                      <Link to={`/experiments/${e.id}`} className="no-underline">
+                        <div className="font-mono text-caption text-text">{e.name}</div>
+                        {e.description && <div className="text-micro text-text-dim truncate max-w-xs">{e.description}</div>}
+                      </Link>
                     </td>
-                    <td className="py-1.5 pr-3"><TechniquePill name={e.experimentTypeName ?? e.technique ?? 'Other'} /></td>
+                    <td className="py-1.5 pr-3"><TechniquePill name={e.experimentTypeName ?? 'Other'} /></td>
                     <td className="py-1.5 pr-3 text-caption text-text-secondary italic">
-                      {e.organismDisplay ?? '\u2014'}
+                      {e.organismDisplay ?? '--'}
                     </td>
-                    <td className="py-1.5 pr-3 text-caption text-text-secondary">{e.projectName ?? '\u2014'}</td>
-                    <td className="py-1.5 pr-3 text-caption text-text-dim">{e.createdBy ?? '\u2014'}</td>
+                    <td className="py-1.5 pr-3 text-caption text-text-secondary">{e.projectName ?? '--'}</td>
+                    <td className="py-1.5 pr-3 text-caption text-text-dim">{e.createdBy ?? '--'}</td>
                     <td className="py-1.5 pr-3 text-caption text-text-dim whitespace-nowrap">
-                      {e.experimentDate ?? '\u2014'}
+                      {e.experimentDate ?? '--'}
                     </td>
                     <td className="py-1.5 pr-3 font-mono text-caption tabular-nums text-text-secondary">
                       {e.fileCount}
@@ -208,19 +213,21 @@ export default function ExperimentsPage() {
               </div>
             )
             : filtered.map(e => (
-              <Card key={e.id} className="p-2.5 flex flex-col gap-1">
-                <div className="flex items-center gap-2">
-                  <TechniquePill name={e.experimentTypeName ?? e.technique ?? 'Other'} />
-                  <span className="font-mono text-caption text-text truncate flex-1 min-w-0">{e.name}</span>
-                </div>
-                {e.description && <Text variant="caption" className="truncate">{e.description}</Text>}
-                <div className="flex items-center gap-2 flex-wrap">
-                  {e.organismDisplay && <Text variant="caption" className="italic">{e.organismDisplay}</Text>}
-                  {e.projectName && <Text variant="caption">{e.projectName}</Text>}
-                  <Text variant="caption">{e.fileCount} files</Text>
-                  {e.experimentDate && <Text variant="caption">{e.experimentDate}</Text>}
-                </div>
-              </Card>
+              <Link key={e.id} to={`/experiments/${e.id}`} className="no-underline">
+                <Card className="p-2.5 flex flex-col gap-1 hover:border-accent transition-colors duration-fast cursor-pointer">
+                  <div className="flex items-center gap-2">
+                    <TechniquePill name={e.experimentTypeName ?? 'Other'} />
+                    <span className="font-mono text-caption text-text truncate flex-1 min-w-0">{e.name}</span>
+                  </div>
+                  {e.description && <Text variant="caption" className="truncate">{e.description}</Text>}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {e.organismDisplay && <Text variant="caption" className="italic">{e.organismDisplay}</Text>}
+                    {e.projectName && <Text variant="caption">{e.projectName}</Text>}
+                    <Text variant="caption">{e.fileCount} files</Text>
+                    {e.experimentDate && <Text variant="caption">{e.experimentDate}</Text>}
+                  </div>
+                </Card>
+              </Link>
             ))
         }
       </div>
