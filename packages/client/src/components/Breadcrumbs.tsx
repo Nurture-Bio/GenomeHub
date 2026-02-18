@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Text } from '../ui';
+import { useAppStore } from '../stores/useAppStore';
 
 const ROUTE_LABELS: Record<string, string> = {
   '': 'Dashboard',
@@ -15,6 +16,7 @@ const ROUTE_LABELS: Record<string, string> = {
 export default function Breadcrumbs() {
   const { pathname } = useLocation();
   const [expanded, setExpanded] = useState(false);
+  const breadcrumbLabels = useAppStore(s => s.breadcrumbLabels);
   const segments = pathname.split('/').filter(Boolean);
 
   if (segments.length === 0) return null;
@@ -32,18 +34,23 @@ export default function Breadcrumbs() {
     if (knownLabel) {
       crumbs.push({ label: knownLabel, to: path });
     } else {
-      const prev = segments[i - 1];
-      const context = prev === 'projects' ? 'Project'
-        : prev === 'experiments' ? 'Experiment'
-        : prev === 'samples' ? 'Sample'
-        : seg;
-      crumbs.push({ label: `${context} ${seg.slice(0, 8)}`, to: path });
+      // Check store for resolved entity name
+      const resolved = breadcrumbLabels[seg];
+      if (resolved) {
+        crumbs.push({ label: resolved, to: path });
+      } else {
+        const prev = segments[i - 1];
+        const context = prev === 'projects' ? 'Project'
+          : prev === 'experiments' ? 'Experiment'
+          : prev === 'samples' ? 'Sample'
+          : seg;
+        crumbs.push({ label: `${context} ${seg.slice(0, 8)}`, to: path });
+      }
     }
   }
 
   // On mobile (handled via CSS): show first, "...", and last when >2 crumbs
   const needsTruncation = crumbs.length > 2;
-  const middleCrumbs = needsTruncation ? crumbs.slice(1, -1) : [];
 
   return (
     <nav className="flex items-center gap-1 px-2 md:px-3 pt-2 pb-0 min-w-0">

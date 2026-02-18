@@ -1,4 +1,4 @@
-import { forwardRef, type InputHTMLAttributes, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
+import { forwardRef, type InputHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { cx } from 'class-variance-authority';
 import { input, type InputVariants } from './recipes';
 
@@ -10,17 +10,6 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
   )
 );
 Input.displayName = 'Input';
-
-type SelectProps = Omit<SelectHTMLAttributes<HTMLSelectElement>, 'size'> & InputVariants;
-
-export const Select = forwardRef<HTMLSelectElement, SelectProps>(
-  ({ variant, size, className, children, ...props }, ref) => (
-    <select ref={ref} className={cx(input({ variant, size }), className)} {...props}>
-      {children}
-    </select>
-  )
-);
-Select.displayName = 'Select';
 
 type TextareaProps = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'size'> & InputVariants;
 

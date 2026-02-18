@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useStorageStats, useProjectsQuery, useOrganismsQuery, useExperimentsQuery } from '../hooks/useGenomicQueries';
 import { FORMAT_META, formatBytes } from '../lib/formats';
 import { Heading, Text, Badge, Card } from '../ui';
@@ -42,21 +43,23 @@ function FormatBar({ items }: { items: { format: string; bytes: number }[] }) {
 
 function ProjectCard({ project }: { project: { id: string; name: string; description: string | null; fileCount: number; totalBytes: number; createdAt: string } }) {
   return (
-    <Card className="p-2.5 flex flex-col gap-1">
-      <div className="font-display text-subheading text-accent">{project.name}</div>
-      {project.description && (
-        <Text variant="caption">{project.description}</Text>
-      )}
-      <div className="flex items-center gap-2 flex-wrap">
-        <Text variant="caption">{project.fileCount.toLocaleString()} files</Text>
-        <Text variant="caption">{formatBytes(project.totalBytes)}</Text>
-        <Text variant="caption">
-          {new Date(project.createdAt).toLocaleDateString('en-US', {
-            year: 'numeric', month: 'short', day: 'numeric',
-          })}
-        </Text>
-      </div>
-    </Card>
+    <Link to={`/projects/${project.id}`} className="no-underline">
+      <Card className="p-2.5 flex flex-col gap-1 hover:border-accent transition-colors duration-fast cursor-pointer">
+        <div className="font-display text-subheading text-accent">{project.name}</div>
+        {project.description && (
+          <Text variant="caption">{project.description}</Text>
+        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Text variant="caption">{project.fileCount.toLocaleString()} files</Text>
+          <Text variant="caption">{formatBytes(project.totalBytes)}</Text>
+          <Text variant="caption">
+            {new Date(project.createdAt).toLocaleDateString('en-US', {
+              year: 'numeric', month: 'short', day: 'numeric',
+            })}
+          </Text>
+        </div>
+      </Card>
+    </Link>
   );
 }
 
@@ -177,7 +180,9 @@ export default function DashboardPage() {
                     <tr key={p.id}
                       className="border-b border-border-subtle last:border-0 hover:bg-surface-2 transition-colors duration-fast">
                       <td className="py-2 px-2.5">
-                        <div className="font-display text-subheading text-accent">{p.name}</div>
+                        <Link to={`/projects/${p.id}`} className="no-underline">
+                          <div className="font-display text-subheading text-accent hover:underline">{p.name}</div>
+                        </Link>
                         {p.description && (
                           <div className="text-caption text-text-dim">{p.description}</div>
                         )}

@@ -1,7 +1,9 @@
-import { useState, useRef, useCallback, useId } from 'react';
+import { useState, useRef, useCallback, useMemo } from 'react';
 import { useMultipartUpload, useProjectsQuery, useOrganismsQuery, useExperimentsQuery } from '../hooks/useGenomicQueries';
 import { detectFormat, FORMAT_META, formatBytes } from '../lib/formats';
-import { Button, Badge, Text, Heading, Select, Input } from '../ui';
+import { Button, Badge, Text, Heading, Input, ComboBox } from '../ui';
+import { ProjectPicker, SamplePicker } from '../ui';
+import type { ComboBoxItem } from '../ui';
 
 // ── Drop zone ─────────────────────────────────────────────
 
@@ -83,16 +85,17 @@ interface QueueItemProps {
   projectId: string;
   organismId: string;
   experimentId: string;
+  sampleId: string;
   description: string;
   tags: string;
   onRemove:  () => void;
-  onChange: (patch: Partial<{ projectId: string; organismId: string; experimentId: string; description: string; tags: string }>) => void;
-  projects:    { id: string; name: string }[];
-  organisms:   { id: string; displayName: string }[];
-  experiments: { id: string; name: string }[];
+  onChange: (patch: Partial<{ projectId: string; organismId: string; experimentId: string; sampleId: string; description: string; tags: string }>) => void;
+  projectItems: ComboBoxItem[];
+  organismItems: ComboBoxItem[];
+  experimentItems: ComboBoxItem[];
 }
 
-function QueueItem({ file, projectId, organismId, experimentId, description, tags, onRemove, onChange, projects, organisms, experiments }: QueueItemProps) {
+function QueueItem({ file, projectId, organismId, experimentId, sampleId, description, tags, onRemove, onChange, projectItems, organismItems, experimentItems }: QueueItemProps) {
   const fmt  = detectFormat(file.name);
   const meta = FORMAT_META[fmt];
 
@@ -113,18 +116,44 @@ function QueueItem({ file, projectId, organismId, experimentId, description, tag
 
       {/* Row 2: assignment selects — stack on mobile */}
       <div className="flex flex-col sm:flex-row gap-2">
-        <Select variant="surface" size="sm" value={projectId} onChange={e => onChange({ projectId: e.target.value })} className="w-full sm:w-40">
-          <option value="">— project —</option>
-          {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </Select>
-        <Select variant="surface" size="sm" value={organismId} onChange={e => onChange({ organismId: e.target.value })} className="w-full sm:w-40">
-          <option value="">— organism —</option>
-          {organisms.map(o => <option key={o.id} value={o.id}>{o.displayName}</option>)}
-        </Select>
-        <Select variant="surface" size="sm" value={experimentId} onChange={e => onChange({ experimentId: e.target.value })} className="w-full sm:w-40">
-          <option value="">— experiment —</option>
-          {experiments.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-        </Select>
+        <ComboBox
+          items={projectItems}
+          value={projectId}
+          onValueChange={v => onChange({ projectId: v })}
+          placeholder="— project —"
+          variant="surface"
+          size="sm"
+          className="w-full sm:w-40"
+        />
+        <ComboBox
+          items={organismItems}
+          value={organismId}
+          onValueChange={v => onChange({ organismId: v })}
+          placeholder="— organism —"
+          variant="surface"
+          size="sm"
+          className="w-full sm:w-40"
+        />
+        <ComboBox
+          items={experimentItems}
+          value={experimentId}
+          onValueChange={v => onChange({ experimentId: v, sampleId: '' })}
+          placeholder="— experiment —"
+          variant="surface"
+          size="sm"
+          className="w-full sm:w-40"
+        />
+        {experimentId && (
+          <SamplePicker
+            value={sampleId}
+            onValueChange={v => onChange({ sampleId: v })}
+            experimentId={experimentId}
+            placeholder="— sample —"
+            variant="surface"
+            size="sm"
+            className="w-full sm:w-40"
+          />
+        )}
       </div>
 
       {/* Row 3: description + tags — stack on mobile */}
@@ -209,7 +238,21 @@ export default function UploadPage() {
   const { data: experiments } = useExperimentsQuery();
   const { uploads, upload, clearDone } = useMultipartUpload();
 
-  type QueueEntry = { file: File; projectId: string; organismId: string; experimentId: string; tags: string; description: string };
+  // Pre-map items for ComboBox (avoids N duplicate mappings in QueueItem)
+  const projectItems = useMemo<ComboBoxItem[]>(() =>
+    (projects ?? []).map(p => ({ id: p.id, label: p.name })),
+    [projects],
+  );
+  const organismItems = useMemo<ComboBoxItem[]>(() =>
+    (organisms ?? []).map(o => ({ id: o.id, label: o.displayName })),
+    [organisms],
+  );
+  const experimentItems = useMemo<ComboBoxItem[]>(() =>
+    (experiments ?? []).map(e => ({ id: e.id, label: e.name, group: e.projectName ?? undefined })),
+    [experiments],
+  );
+
+  type QueueEntry = { file: File; projectId: string; organismId: string; experimentId: string; sampleId: string; tags: string; description: string };
   const [queue,      setQueue]      = useState<QueueEntry[]>([]);
   const [defaultPrj, setDefaultPrj] = useState('');
   const [uploading,  setUploading]  = useState(false);
@@ -217,7 +260,7 @@ export default function UploadPage() {
   const addFiles = useCallback((files: File[]) => {
     setQueue(prev => [
       ...prev,
-      ...files.map(f => ({ file: f, projectId: defaultPrj, organismId: '', experimentId: '', tags: '', description: '' })),
+      ...files.map(f => ({ file: f, projectId: defaultPrj, organismId: '', experimentId: '', sampleId: '', tags: '', description: '' })),
     ]);
   }, [defaultPrj]);
 
@@ -239,6 +282,7 @@ export default function UploadPage() {
         e.tags ? e.tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
         e.organismId || undefined,
         e.experimentId || undefined,
+        e.sampleId || undefined,
       ))
     );
     setUploading(false);
@@ -266,16 +310,14 @@ export default function UploadPage() {
             <div className="flex-1" />
             <div className="flex items-center gap-2">
               <span className="font-body text-caption text-text-secondary shrink-0">Default project:</span>
-              <Select
+              <ProjectPicker
+                value={defaultPrj}
+                onValueChange={setDefaultPrj}
+                placeholder="— none —"
                 variant="surface"
                 size="sm"
-                value={defaultPrj}
-                onChange={e => setDefaultPrj(e.target.value)}
                 className="w-full sm:w-44"
-              >
-                <option value="">— none —</option>
-                {projects?.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </Select>
+              />
             </div>
           </div>
 
@@ -287,11 +329,12 @@ export default function UploadPage() {
                 projectId={e.projectId}
                 organismId={e.organismId}
                 experimentId={e.experimentId}
+                sampleId={e.sampleId}
                 description={e.description}
                 tags={e.tags}
-                projects={projects ?? []}
-                organisms={organisms ?? []}
-                experiments={experiments ?? []}
+                projectItems={projectItems}
+                organismItems={organismItems}
+                experimentItems={experimentItems}
                 onRemove={() => removeFromQueue(i)}
                 onChange={patch => updateQueueItem(i, patch)}
               />

@@ -1,8 +1,14 @@
 export { default as Button }          from './Button';
-export { Input, Select, Textarea }    from './Input';
+export { Input, Textarea }            from './Input';
 export { default as Card }            from './Card';
 export { Text, Heading }              from './Text';
 export { default as Badge }           from './Badge';
+export { default as ComboBox }        from './ComboBox';
+export type { ComboBoxItem }          from './ComboBox';
+export {
+  ProjectPicker, ExperimentPicker, OrganismPicker,
+  SamplePicker, ExperimentTypePicker,
+} from './EntityPicker';
 
 export {
   button, input, card, text, heading, badge,

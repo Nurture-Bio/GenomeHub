@@ -14,12 +14,14 @@ interface PersistedState {
 
 interface AppState extends PersistedState {
   selectedFileIds: Set<string>;
+  breadcrumbLabels: Record<string, string>;
 
   toggleFileSelection: (id: string) => void;
   selectAllFiles: (ids: string[]) => void;
   clearSelection: () => void;
   toggleSidebar: () => void;
   addRecentSelection: (kind: keyof RecentSelections, id: string) => void;
+  setBreadcrumbLabel: (id: string, label: string) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -28,6 +30,7 @@ export const useAppStore = create<AppState>()(
       selectedFileIds: new Set<string>(),
       sidebarOpen: true,
       recentSelections: { projects: [], experiments: [], samples: [] },
+      breadcrumbLabels: {},
 
       toggleFileSelection: (id) =>
         set((s) => {
@@ -56,6 +59,11 @@ export const useAppStore = create<AppState>()(
             },
           };
         }),
+
+      setBreadcrumbLabel: (id, label) =>
+        set((s) => ({
+          breadcrumbLabels: { ...s.breadcrumbLabels, [id]: label },
+        })),
     }),
     {
       name: 'genomehub-app',

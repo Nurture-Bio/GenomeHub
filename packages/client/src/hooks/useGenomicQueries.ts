@@ -59,6 +59,8 @@ export interface GenomicFile {
   organismDisplay: string | null;
   experimentId:    string | null;
   experimentName:  string | null;
+  sampleId:        string | null;
+  sampleName:      string | null;
   uploadedBy:      string | null;
 }
 
@@ -68,22 +70,105 @@ export interface StorageStats {
   byFormat:    { format: string; count: number; bytes: number }[];
 }
 
+export interface Sample {
+  id:           string;
+  experimentId: string;
+  name:         string;
+  description:  string | null;
+  condition:    string | null;
+  replicate:    number | null;
+  metadata:     Record<string, unknown> | null;
+  createdAt:    string;
+  fileCount?:   number;
+  experimentName?: string;
+}
+
+export interface ExperimentType {
+  id:          string;
+  name:        string;
+  description: string | null;
+  defaultTags: string[];
+  createdAt:   string;
+}
+
+export type LinkParentType = 'project' | 'experiment' | 'sample';
+export type LinkServiceType =
+  | 'jira' | 'confluence' | 'slack'
+  | 'google-doc' | 'google-sheet' | 'google-drive'
+  | 'github' | 'notion' | 'benchling'
+  | 'ncbi' | 'ebi' | 'protocols-io'
+  | 'link';
+
+export interface ExternalLink {
+  id:         string;
+  parentType: LinkParentType;
+  parentId:   string;
+  url:        string;
+  service:    LinkServiceType;
+  label:      string | null;
+  createdAt:  string;
+}
+
+export interface ProjectTree {
+  id:          string;
+  name:        string;
+  description: string | null;
+  createdAt:   string;
+  fileCount:   number;
+  links:       ExternalLink[];
+  experiments: ProjectTreeExperiment[];
+}
+
+export interface ProjectTreeExperiment {
+  id:              string;
+  name:            string;
+  description:     string | null;
+  experimentType:  { id: string; name: string } | null;
+  technique:       string | null;
+  organism:        string | null;
+  referenceGenome: string | null;
+  status:          string;
+  fileCount:       number;
+  links:           ExternalLink[];
+  samples:         ProjectTreeSample[];
+}
+
+export interface ProjectTreeSample {
+  id:          string;
+  name:        string;
+  description: string | null;
+  condition:   string | null;
+  replicate:   number | null;
+  metadata:    Record<string, unknown> | null;
+  fileCount:   number;
+  links:       ExternalLink[];
+}
+
 // ─── Files ────────────────────────────────────────────────
 
-export function useFilesQuery(projectId?: string) {
+export function useFilesQuery(filters?: { projectId?: string; experimentId?: string; sampleId?: string } | string) {
+  // Support legacy string (projectId) or object filters
+  const projectId = typeof filters === 'string' ? filters : filters?.projectId;
+  const experimentId = typeof filters === 'string' ? undefined : filters?.experimentId;
+  const sampleId = typeof filters === 'string' ? undefined : filters?.sampleId;
+
   const [data, setData] = useState<GenomicFile[] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   const refetch = useCallback(() => {
     setIsLoading(true);
-    const url = projectId ? `/api/files?projectId=${projectId}` : '/api/files';
-    apiFetch(url)
+    const params = new URLSearchParams();
+    if (projectId) params.set('projectId', projectId);
+    if (experimentId) params.set('experimentId', experimentId);
+    if (sampleId) params.set('sampleId', sampleId);
+    const qs = params.toString();
+    apiFetch(`/api/files${qs ? '?' + qs : ''}`)
       .then(r => r.ok ? r.json() : Promise.reject(r))
       .then(d => { setData(d); setError(null); })
       .catch(e => setError(e))
       .finally(() => setIsLoading(false));
-  }, [projectId]);
+  }, [projectId, experimentId, sampleId]);
 
   useEffect(() => { refetch(); }, [refetch]);
 
@@ -105,6 +190,28 @@ export function useProjectsQuery() {
       .catch(e => setError(e))
       .finally(() => setIsLoading(false));
   }, []);
+
+  useEffect(() => { refetch(); }, [refetch]);
+
+  return { data, isLoading, error, refetch };
+}
+
+// ─── Project tree ─────────────────────────────────────────
+
+export function useProjectTreeQuery(projectId?: string) {
+  const [data, setData] = useState<ProjectTree | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  const refetch = useCallback(() => {
+    if (!projectId) { setIsLoading(false); return; }
+    setIsLoading(true);
+    apiFetch(`/api/projects/${projectId}/tree`)
+      .then(r => r.ok ? r.json() : Promise.reject(r))
+      .then(d => { setData(d); setError(null); })
+      .catch(e => setError(e))
+      .finally(() => setIsLoading(false));
+  }, [projectId]);
 
   useEffect(() => { refetch(); }, [refetch]);
 
@@ -191,6 +298,7 @@ export function useCreateExperimentMutation(onSuccess?: () => void) {
   const createExperiment = useCallback(async (body: {
     name: string; technique: string; projectId: string;
     description?: string; experimentDate?: string; organismId?: string;
+    experimentTypeId?: string;
   }) => {
     setPending(true);
     try {
@@ -211,6 +319,149 @@ export function useCreateExperimentMutation(onSuccess?: () => void) {
   }, [onSuccess]);
 
   return { createExperiment, pending };
+}
+
+// ─── Experiment types ────────────────────────────────────
+
+export function useExperimentTypesQuery() {
+  const [data, setData] = useState<ExperimentType[] | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  const refetch = useCallback(() => {
+    setIsLoading(true);
+    apiFetch('/api/experiment-types')
+      .then(r => r.ok ? r.json() : Promise.reject(r))
+      .then(d => { setData(d); setError(null); })
+      .catch(e => setError(e))
+      .finally(() => setIsLoading(false));
+  }, []);
+
+  useEffect(() => { refetch(); }, [refetch]);
+
+  return { data, isLoading, error, refetch };
+}
+
+// ─── Samples ──────────────────────────────────────────────
+
+export function useSamplesQuery(experimentId?: string) {
+  const [data, setData] = useState<Sample[] | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  const refetch = useCallback(() => {
+    setIsLoading(true);
+    const url = experimentId ? `/api/samples?experimentId=${experimentId}` : '/api/samples';
+    apiFetch(url)
+      .then(r => r.ok ? r.json() : Promise.reject(r))
+      .then(d => { setData(d); setError(null); })
+      .catch(e => setError(e))
+      .finally(() => setIsLoading(false));
+  }, [experimentId]);
+
+  useEffect(() => { refetch(); }, [refetch]);
+
+  return { data, isLoading, error, refetch };
+}
+
+export function useCreateSampleMutation(onSuccess?: () => void) {
+  const [pending, setPending] = useState(false);
+
+  const createSample = useCallback(async (body: {
+    experimentId: string; name: string;
+    description?: string; condition?: string; replicate?: number;
+    metadata?: Record<string, unknown>;
+  }) => {
+    setPending(true);
+    try {
+      const r = await apiFetch('/api/samples', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) throw new Error('Create failed');
+      onSuccess?.();
+      toast.success('Sample created');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create sample');
+      throw err;
+    } finally {
+      setPending(false);
+    }
+  }, [onSuccess]);
+
+  return { createSample, pending };
+}
+
+// ─── External links ──────────────────────────────────────
+
+export function useLinksQuery(parentType?: LinkParentType, parentId?: string) {
+  const [data, setData] = useState<ExternalLink[] | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+
+  const refetch = useCallback(() => {
+    if (!parentType || !parentId) { setData([]); setIsLoading(false); return; }
+    setIsLoading(true);
+    apiFetch(`/api/links?parentType=${parentType}&parentId=${parentId}`)
+      .then(r => r.ok ? r.json() : Promise.reject(r))
+      .then(d => { setData(d); setError(null); })
+      .catch(e => setError(e))
+      .finally(() => setIsLoading(false));
+  }, [parentType, parentId]);
+
+  useEffect(() => { refetch(); }, [refetch]);
+
+  return { data, isLoading, error, refetch };
+}
+
+export function useCreateLinkMutation(onSuccess?: () => void) {
+  const [pending, setPending] = useState(false);
+
+  const createLink = useCallback(async (body: {
+    parentType: LinkParentType; parentId: string;
+    url: string; label?: string;
+  }) => {
+    setPending(true);
+    try {
+      const r = await apiFetch('/api/links', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) throw new Error('Create failed');
+      onSuccess?.();
+      toast.success('Link added');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to add link');
+      throw err;
+    } finally {
+      setPending(false);
+    }
+  }, [onSuccess]);
+
+  return { createLink, pending };
+}
+
+export function useDeleteLinkMutation(onSuccess?: () => void) {
+  const [pending, setPending] = useState(false);
+
+  const deleteLink = useCallback(async (linkId: string) => {
+    setPending(true);
+    try {
+      const r = await apiFetch(`/api/links/${linkId}`, { method: 'DELETE' });
+      if (!r.ok) throw new Error('Delete failed');
+      onSuccess?.();
+      toast.success('Link removed');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to remove link');
+      throw err;
+    } finally {
+      setPending(false);
+    }
+  }, [onSuccess]);
+
+  return { deleteLink, pending };
 }
 
 // ─── Storage stats ────────────────────────────────────────
@@ -304,6 +555,7 @@ export function useMultipartUpload() {
     tags?: string[],
     organismId?: string,
     experimentId?: string,
+    sampleId?: string,
   ) => {
     const tmpId = crypto.randomUUID();
 
@@ -325,7 +577,7 @@ export function useMultipartUpload() {
           filename: file.name, projectId,
           contentType: file.type || 'application/octet-stream',
           sizeBytes: file.size, description, tags,
-          organismId, experimentId,
+          organismId, experimentId, sampleId,
         }),
       });
       const { fileId, uploadId, s3Key } = await initRes.json();

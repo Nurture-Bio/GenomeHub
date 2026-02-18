@@ -1,11 +1,11 @@
 import { useState, useMemo } from 'react';
 import {
   useExperimentsQuery, useCreateExperimentMutation,
-  useProjectsQuery, useOrganismsQuery,
 } from '../hooks/useGenomicQueries';
 import { TECHNIQUE_META, TECHNIQUE_LIST, type Technique } from '../lib/techniques';
 import { formatRelativeTime } from '../lib/formats';
-import { Button, Badge, Input, Text, Heading, Select, Card } from '../ui';
+import { Button, Badge, Input, Text, Heading, Card } from '../ui';
+import { ExperimentTypePicker, ProjectPicker, OrganismPicker } from '../ui';
 
 // ── Technique pill ───────────────────────────────────────
 
@@ -39,8 +39,6 @@ const TECHNIQUE_FILTERS = ['all', ...TECHNIQUE_LIST] as const;
 
 export default function ExperimentsPage() {
   const { data, isLoading, refetch } = useExperimentsQuery();
-  const { data: projects } = useProjectsQuery();
-  const { data: organisms } = useOrganismsQuery();
   const { createExperiment, pending } = useCreateExperimentMutation(refetch);
 
   const [techFilter, setTechFilter] = useState<string>('all');
@@ -89,26 +87,36 @@ export default function ExperimentsPage() {
         </div>
         <div className="flex flex-col gap-0.5 w-[calc(50%-4px)] sm:w-auto">
           <Text variant="overline">Technique</Text>
-          <Select variant="surface" size="sm" value={technique} onChange={e => setTechnique(e.target.value)} className="w-full sm:w-36">
-            <option value="">-- select --</option>
-            {TECHNIQUE_LIST.map(t => (
-              <option key={t} value={t}>{TECHNIQUE_META[t].label}</option>
-            ))}
-          </Select>
+          <ExperimentTypePicker
+            value={technique}
+            onValueChange={setTechnique}
+            placeholder="-- select --"
+            variant="surface"
+            size="sm"
+            className="w-full sm:w-36"
+          />
         </div>
         <div className="flex flex-col gap-0.5 w-[calc(50%-4px)] sm:w-auto">
           <Text variant="overline">Project</Text>
-          <Select variant="surface" size="sm" value={projectId} onChange={e => setProjectId(e.target.value)} className="w-full sm:w-36">
-            <option value="">-- select --</option>
-            {projects?.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </Select>
+          <ProjectPicker
+            value={projectId}
+            onValueChange={setProjectId}
+            placeholder="-- select --"
+            variant="surface"
+            size="sm"
+            className="w-full sm:w-36"
+          />
         </div>
         <div className="flex flex-col gap-0.5 w-[calc(50%-4px)] sm:w-auto">
           <Text variant="overline">Organism</Text>
-          <Select variant="surface" size="sm" value={organismId} onChange={e => setOrganismId(e.target.value)} className="w-full sm:w-40">
-            <option value="">-- none --</option>
-            {organisms?.map(o => <option key={o.id} value={o.id}>{o.displayName}</option>)}
-          </Select>
+          <OrganismPicker
+            value={organismId}
+            onValueChange={setOrganismId}
+            placeholder="-- none --"
+            variant="surface"
+            size="sm"
+            className="w-full sm:w-40"
+          />
         </div>
         <div className="flex flex-col gap-0.5 w-[calc(50%-4px)] sm:w-auto">
           <Text variant="overline">Date</Text>

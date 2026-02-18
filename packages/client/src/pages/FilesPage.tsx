@@ -5,6 +5,7 @@ import { useFilesQuery, useDeleteFileMutation, usePresignedUrl } from '../hooks/
 import { useConfirm } from '../hooks/useConfirm';
 import { detectFormat, FORMAT_META, formatBytes, formatRelativeTime } from '../lib/formats';
 import { Button, Badge, Input, Text, Heading, Card } from '../ui';
+import { ProjectPicker, ExperimentPicker, SamplePicker } from '../ui';
 
 // ── Format icon ──────────────────────────────────────────
 
@@ -223,8 +224,15 @@ const FORMAT_FILTERS = ['all', 'fastq', 'bam', 'cram', 'vcf', 'bed', 'fasta', 'o
 
 export default function FilesPage() {
   const [searchParams] = useSearchParams();
-  const projectParam = searchParams.get('project') ?? undefined;
-  const { data, isLoading, refetch } = useFilesQuery(projectParam);
+  const [filterProjectId, setFilterProjectId] = useState(searchParams.get('project') ?? '');
+  const [filterExperimentId, setFilterExperimentId] = useState('');
+  const [filterSampleId, setFilterSampleId] = useState('');
+
+  const { data, isLoading, refetch } = useFilesQuery({
+    projectId: filterProjectId || undefined,
+    experimentId: filterExperimentId || undefined,
+    sampleId: filterSampleId || undefined,
+  });
   const { deleteFile, pending: deletePending } = useDeleteFileMutation(refetch);
   const { getUrl, pending: urlPending } = usePresignedUrl();
   const { confirm, dialog } = useConfirm();
@@ -232,6 +240,17 @@ export default function FilesPage() {
   const [search,     setSearch]     = useState('');
   const [fmtFilter,  setFmtFilter]  = useState<string>('all');
   const [selected,   setSelected]   = useState<Set<string>>(new Set());
+
+  // Cascading clears
+  const handleProjectChange = (id: string) => {
+    setFilterProjectId(id);
+    setFilterExperimentId('');
+    setFilterSampleId('');
+  };
+  const handleExperimentChange = (id: string) => {
+    setFilterExperimentId(id);
+    setFilterSampleId('');
+  };
 
   const files = useMemo(() => {
     if (!data) return [];
@@ -303,6 +322,39 @@ export default function FilesPage() {
           className="w-full md:w-64"
         />
 
+        <ProjectPicker
+          value={filterProjectId}
+          onValueChange={handleProjectChange}
+          placeholder="All projects"
+          variant="surface"
+          size="md"
+          className="w-full sm:w-44"
+        />
+
+        {filterProjectId && (
+          <ExperimentPicker
+            value={filterExperimentId}
+            onValueChange={handleExperimentChange}
+            projectId={filterProjectId}
+            placeholder="All experiments"
+            variant="surface"
+            size="md"
+            className="w-full sm:w-44"
+          />
+        )}
+
+        {filterExperimentId && (
+          <SamplePicker
+            value={filterSampleId}
+            onValueChange={setFilterSampleId}
+            experimentId={filterExperimentId}
+            placeholder="All samples"
+            variant="surface"
+            size="md"
+            className="w-full sm:w-44"
+          />
+        )}
+
         <div className="flex gap-1 flex-wrap">
           {FORMAT_FILTERS.map(f => (
             <button
@@ -348,7 +400,7 @@ export default function FilesPage() {
                 ? (
                   <tr>
                     <td colSpan={11} className="py-12 text-center text-text-dim font-body text-body">
-                      {search || fmtFilter !== 'all' ? 'No files match your filters.' : 'No files yet. Upload some to get started.'}
+                      {search || fmtFilter !== 'all' || filterProjectId ? 'No files match your filters.' : 'No files yet. Upload some to get started.'}
                     </td>
                   </tr>
                 )
@@ -387,7 +439,7 @@ export default function FilesPage() {
           : files.length === 0
             ? (
               <div className="py-8 text-center text-text-dim font-body text-body">
-                {search || fmtFilter !== 'all' ? 'No files match your filters.' : 'No files yet. Upload some to get started.'}
+                {search || fmtFilter !== 'all' || filterProjectId ? 'No files match your filters.' : 'No files yet. Upload some to get started.'}
               </div>
             )
             : files.map(f => (
