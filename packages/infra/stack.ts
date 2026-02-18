@@ -163,7 +163,6 @@ export class GenomeHubStack extends cdk.Stack {
           AWS_REGION:       this.region,
           S3_BUCKET:        bucket.bucketName,
           GOOGLE_CLIENT_ID: '631098657995-b6gm7u609caa7si5h8ep3tj1cf8m9in2.apps.googleusercontent.com',
-          SESSION_SECRET:   'Dgj43XzyZ5cwv1fDfuRUODTLKeDyEtnZTIHrwHa+hSk=',
         },
         secrets: {
           DATABASE_URL: ecs.Secret.fromSecretsManager(db.secret!),

@@ -11,14 +11,12 @@
  */
 
 import 'dotenv/config';
+import crypto              from 'crypto';
 import express, { Request, Response, NextFunction } from 'express';
-import session             from 'express-session';
-import connectPgSimple     from 'connect-pg-simple';
-import { OAuth2Client }    from 'google-auth-library';
 import { createServer }    from 'http';
 import path                from 'path';
 import { fileURLToPath }   from 'url';
-import { AppDataSource, buildDatabaseUrl } from './app_data.js';
+import { AppDataSource }   from './app_data.js';
 import { User, Project, Organism, Experiment, GenomicFile } from './entities/index.js';
 import {
   buildS3Key, initiateMultipartUpload, presignPartUrl,
@@ -39,33 +37,23 @@ app.use('/api', (_req, res, next) => {
   next();
 });
 
-// ─── Session ──────────────────────────────────────────────
-
-const PgSession = connectPgSimple(session);
-
-app.use(session({
-  store: new PgSession({
-    conString: buildDatabaseUrl(process.env.DATABASE_URL),
-    createTableIfMissing: true,
-  }),
-  secret: process.env.SESSION_SECRET || 'dev-secret-change-me',
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-  },
-}));
-
-const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-
 // ─── Helper ────────────────────────────────────────────────
 
 function asyncWrap(fn: (req: Request, res: Response) => Promise<void>) {
   return (req: Request, res: Response, next: NextFunction) =>
     fn(req, res).catch(next);
+}
+
+// ─── Auth helpers ───────────────────────────────────────────
+
+/** Look up the authenticated user from the Authorization header. */
+async function resolveUser(req: Request): Promise<User | null> {
+  const header = req.headers.authorization;
+  if (!header?.startsWith('Bearer ')) return null;
+  const token = header.slice(7);
+  if (!token) return null;
+  const repo = AppDataSource.getRepository(User);
+  return repo.findOneBy({ authToken: token });
 }
 
 // ─── Auth routes ────────────────────────────────────────────
@@ -91,6 +79,8 @@ app.post('/api/auth/google', asyncWrap(async (req, res) => {
   }
 
   const userRepo = AppDataSource.getRepository(User);
+  const authToken = crypto.randomBytes(32).toString('hex');
+
   let user = await userRepo.findOneBy({ googleId: info.sub });
   if (user) {
     user.name = info.name ?? user.name;
@@ -98,6 +88,7 @@ app.post('/api/auth/google', asyncWrap(async (req, res) => {
     user.familyName = info.family_name ?? user.familyName;
     user.picture = info.picture ?? user.picture;
     user.lastLoginAt = new Date();
+    user.authToken = authToken;
     await userRepo.save(user);
   } else {
     user = userRepo.create({
@@ -109,43 +100,40 @@ app.post('/api/auth/google', asyncWrap(async (req, res) => {
       picture: info.picture ?? null,
       hd: info.hd ?? null,
       lastLoginAt: new Date(),
+      authToken,
     });
     await userRepo.save(user);
   }
 
-  req.session.userId = user.id;
-  req.session.email = user.email;
-  req.session.name = user.name;
-  req.session.picture = user.picture;
+  res.json({ id: user.id, email: user.email, name: user.name, picture: user.picture, token: authToken });
+}));
 
+app.get('/api/auth/me', asyncWrap(async (req, res) => {
+  const user = await resolveUser(req);
+  if (!user) { res.status(401).json({ error: 'not authenticated' }); return; }
   res.json({ id: user.id, email: user.email, name: user.name, picture: user.picture });
 }));
 
-app.get('/api/auth/me', (req, res) => {
-  if (!req.session.userId) { res.status(401).json({ error: 'not authenticated' }); return; }
-  res.json({
-    id: req.session.userId,
-    email: req.session.email,
-    name: req.session.name,
-    picture: req.session.picture,
-  });
-});
-
-app.post('/api/auth/logout', (req, res) => {
-  req.session.destroy(() => {
-    res.clearCookie('connect.sid');
-    res.json({ ok: true });
-  });
-});
+app.post('/api/auth/logout', asyncWrap(async (req, res) => {
+  const user = await resolveUser(req);
+  if (user) {
+    user.authToken = null;
+    await AppDataSource.getRepository(User).save(user);
+  }
+  res.json({ ok: true });
+}));
 
 // ─── Auth guard ─────────────────────────────────────────────
 
-app.use('/api', (req, res, next) => {
-  if (!req.session.userId) {
-    res.status(401).json({ error: 'not authenticated' });
-    return;
-  }
-  next();
+app.use('/api', (req: Request, res: Response, next: NextFunction) => {
+  resolveUser(req).then(user => {
+    if (!user) {
+      res.status(401).json({ error: 'not authenticated' });
+      return;
+    }
+    res.locals.user = user;
+    next();
+  }).catch(next);
 });
 
 // ─── Projects ──────────────────────────────────────────────
@@ -302,7 +290,7 @@ app.post('/api/experiments', asyncWrap(async (req, res) => {
     name, technique, projectId,
     description: description ?? null,
     experimentDate: experimentDate ?? null,
-    createdBy: req.session.email ?? createdBy ?? null,
+    createdBy: (res.locals.user as User)?.email ?? createdBy ?? null,
     organismId: organismId ?? null,
   });
   await repo.save(exp);
@@ -441,7 +429,7 @@ app.post('/api/uploads/initiate', asyncWrap(async (req, res) => {
     format: detectFormat(filename),
     organismId: organismId ?? null,
     experimentId: experimentId ?? null,
-    uploadedBy: req.session.email ?? null,
+    uploadedBy: (res.locals.user as User)?.email ?? null,
   });
   await repo.save(file);
 

@@ -1,16 +1,22 @@
 import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import { AuthContext, type AuthUser } from '../hooks/useAuth';
+import { apiFetch, getToken, setToken, clearToken } from '../lib/api';
 
 export default function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Check existing session on mount
+  // Check existing token on mount
   useEffect(() => {
-    fetch('/api/auth/me')
+    const token = getToken();
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+    apiFetch('/api/auth/me')
       .then(r => (r.ok ? r.json() : null))
       .then(data => setUser(data))
-      .catch(() => setUser(null))
+      .catch(() => { clearToken(); setUser(null); })
       .finally(() => setLoading(false));
   }, []);
 
@@ -31,12 +37,14 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
       const body = await res.json().catch(() => ({ error: 'Login failed' }));
       throw new Error(body.error ?? 'Login failed');
     }
-    const data: AuthUser = await res.json();
-    setUser(data);
+    const data = await res.json() as AuthUser & { token: string };
+    setToken(data.token);
+    setUser({ id: data.id, email: data.email, name: data.name, picture: data.picture });
   }, []);
 
   const logout = useCallback(async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
+    await apiFetch('/api/auth/logout', { method: 'POST' });
+    clearToken();
     setUser(null);
   }, []);
 
