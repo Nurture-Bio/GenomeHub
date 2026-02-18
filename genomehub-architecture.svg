@@ -1,0 +1,238 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 880" font-family="Inter, -apple-system, system-ui, sans-serif">
+  <defs>
+    <filter id="shadow" x="-4%" y="-4%" width="108%" height="112%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-opacity="0.12"/>
+    </filter>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0f1117"/>
+      <stop offset="100%" stop-color="#161822"/>
+    </linearGradient>
+    <marker id="arrowGreen" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 4 L 0 8 z" fill="#34d399"/>
+    </marker>
+    <marker id="arrowPurple" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 4 L 0 8 z" fill="#8b5cf6"/>
+    </marker>
+    <marker id="arrowIndigo" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 4 L 0 8 z" fill="#6366f1"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 4 L 0 8 z" fill="#3b82f6"/>
+    </marker>
+    <marker id="arrowYellow" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 4 L 0 8 z" fill="#f59e0b"/>
+    </marker>
+    <marker id="arrowGray" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="8" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 4 L 0 8 z" fill="#6b7280"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1100" height="880" fill="url(#bgGrad)" rx="12"/>
+
+  <!-- Title -->
+  <text x="550" y="44" text-anchor="middle" fill="#34d399" font-size="22" font-weight="700" letter-spacing="0.5">GenomeHub — AWS Architecture</text>
+  <text x="550" y="66" text-anchor="middle" fill="#6b7280" font-size="13">us-west-2 · Account 564002100817</text>
+
+  <!--
+    ALL MAIN FLOW BOXES: width=320, centered on x=400
+    Left edge = 240, right edge = 560
+  -->
+
+  <!-- BROWSER -->
+  <rect x="240" y="90" width="320" height="52" rx="10" fill="#1e2130" stroke="#34d399" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="400" y="112" text-anchor="middle" fill="#e5e7eb" font-size="14" font-weight="600">Browser / CLI</text>
+  <text x="400" y="130" text-anchor="middle" fill="#6b7280" font-size="11">React SPA · wget · curl</text>
+
+  <!-- CLOUDFRONT -->
+  <rect x="240" y="188" width="320" height="48" rx="10" fill="#1e2130" stroke="#8b5cf6" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="400" y="210" text-anchor="middle" fill="#e5e7eb" font-size="14" font-weight="600">CloudFront CDN</text>
+  <text x="400" y="226" text-anchor="middle" fill="#6b7280" font-size="11">HTTPS termination · Cache disabled for API</text>
+
+  <!-- ════════════ VPC BOX ════════════ -->
+  <rect x="190" y="264" width="420" height="310" rx="10" fill="none" stroke="#374151" stroke-width="1.5" stroke-dasharray="8 4"/>
+  <text x="210" y="286" fill="#4b5563" font-size="11" font-weight="600">VPC · 2 AZs</text>
+
+  <!-- PUBLIC SUBNET -->
+  <rect x="210" y="294" width="380" height="52" rx="8" fill="#1a1d2e" opacity="0.5"/>
+  <text x="222" y="310" fill="#374151" font-size="10" font-weight="600">PUBLIC</text>
+  <!-- ALB -->
+  <rect x="240" y="312" width="320" height="30" rx="8" fill="#1e2130" stroke="#6366f1" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="400" y="332" text-anchor="middle" fill="#e5e7eb" font-size="13" font-weight="600">Application Load Balancer</text>
+
+  <!-- PRIVATE SUBNET -->
+  <rect x="210" y="356" width="380" height="100" rx="8" fill="#1a1d2e" opacity="0.5"/>
+  <text x="222" y="372" fill="#374151" font-size="10" font-weight="600">PRIVATE (NAT)</text>
+  <!-- ECS -->
+  <rect x="240" y="382" width="320" height="62" rx="10" fill="#1e2130" stroke="#34d399" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="400" y="404" text-anchor="middle" fill="#e5e7eb" font-size="14" font-weight="700">ECS Fargate Service</text>
+  <text x="400" y="422" text-anchor="middle" fill="#6b7280" font-size="11">Node.js · 512 CPU · 1 GB · Auto-scales 1–4</text>
+  <text x="400" y="438" text-anchor="middle" fill="#6b7280" font-size="10">Express API + React client · Port 3000</text>
+
+  <!-- ISOLATED SUBNET -->
+  <rect x="210" y="466" width="380" height="56" rx="8" fill="#1a1d2e" opacity="0.5"/>
+  <text x="222" y="482" fill="#374151" font-size="10" font-weight="600">ISOLATED</text>
+  <!-- RDS -->
+  <rect x="240" y="490" width="320" height="28" rx="8" fill="#1e2130" stroke="#3b82f6" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="400" y="509" text-anchor="middle" fill="#e5e7eb" font-size="12" font-weight="600">RDS PostgreSQL 16 · db.t4g.small · Encrypted</text>
+
+  <!-- ════════════ RIGHT SIDE SERVICES ════════════ -->
+
+  <!-- S3 BUCKET -->
+  <rect x="810" y="90" width="240" height="182" rx="10" fill="#1e2130" stroke="#f59e0b" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="930" y="118" text-anchor="middle" fill="#e5e7eb" font-size="14" font-weight="700">S3 Bucket</text>
+  <text x="930" y="136" text-anchor="middle" fill="#6b7280" font-size="11">genome-hub-files-*</text>
+  <line x1="828" y1="148" x2="1032" y2="148" stroke="#2a2d3a" stroke-width="1"/>
+  <text x="828" y="168" fill="#9ca3af" font-size="10">Block all public access</text>
+  <text x="828" y="184" fill="#9ca3af" font-size="10">S3-managed encryption</text>
+  <text x="828" y="200" fill="#9ca3af" font-size="10">→ Intelligent Tiering at 30d</text>
+  <text x="828" y="216" fill="#9ca3af" font-size="10">→ Glacier at 180d</text>
+  <text x="828" y="232" fill="#9ca3af" font-size="10">Abort partial uploads at 1d</text>
+  <text x="828" y="248" fill="#9ca3af" font-size="10">CORS enabled for multipart</text>
+  <text x="828" y="264" fill="#9ca3af" font-size="10">Data retained on stack delete</text>
+
+  <!-- CLOUDWATCH -->
+  <rect x="810" y="310" width="240" height="46" rx="10" fill="#1e2130" stroke="#6b7280" stroke-width="1" filter="url(#shadow)"/>
+  <text x="930" y="332" text-anchor="middle" fill="#e5e7eb" font-size="13" font-weight="600">CloudWatch Logs</text>
+  <text x="930" y="348" text-anchor="middle" fill="#6b7280" font-size="11">/genome-hub/app · 30d retention</text>
+
+  <!-- SECRETS MANAGER -->
+  <rect x="810" y="376" width="240" height="46" rx="10" fill="#1e2130" stroke="#6b7280" stroke-width="1" filter="url(#shadow)"/>
+  <text x="930" y="398" text-anchor="middle" fill="#e5e7eb" font-size="13" font-weight="600">Secrets Manager</text>
+  <text x="930" y="414" text-anchor="middle" fill="#6b7280" font-size="11">DB credentials (auto-generated)</text>
+
+  <!-- ════════════ NUMBERED ARROWS ════════════ -->
+
+  <!-- 1: Browser → CloudFront (vertical center line) -->
+  <line x1="400" y1="142" x2="400" y2="186" stroke="#34d399" stroke-width="2" marker-end="url(#arrowGreen)"/>
+  <circle cx="386" cy="164" r="9" fill="#34d399"/>
+  <text x="386" y="168" text-anchor="middle" fill="#0f1117" font-size="10" font-weight="700">1</text>
+
+  <!-- 2: CloudFront → ALB -->
+  <line x1="400" y1="236" x2="400" y2="310" stroke="#8b5cf6" stroke-width="2" marker-end="url(#arrowPurple)"/>
+  <circle cx="386" cy="274" r="9" fill="#8b5cf6"/>
+  <text x="386" y="278" text-anchor="middle" fill="#fff" font-size="10" font-weight="700">2</text>
+
+  <!-- 3: ALB → ECS -->
+  <line x1="400" y1="342" x2="400" y2="380" stroke="#6366f1" stroke-width="2" marker-end="url(#arrowIndigo)"/>
+  <circle cx="386" cy="362" r="9" fill="#6366f1"/>
+  <text x="386" y="366" text-anchor="middle" fill="#fff" font-size="10" font-weight="700">3</text>
+
+  <!-- 4: ECS → RDS -->
+  <line x1="400" y1="444" x2="400" y2="488" stroke="#3b82f6" stroke-width="2" marker-end="url(#arrowBlue)"/>
+  <circle cx="386" cy="466" r="9" fill="#3b82f6"/>
+  <text x="386" y="470" text-anchor="middle" fill="#fff" font-size="10" font-weight="700">4</text>
+
+  <!-- 5: ECS → S3 -->
+  <path d="M 562 400 L 808 200" fill="none" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrowYellow)"/>
+  <circle cx="685" cy="300" r="9" fill="#f59e0b"/>
+  <text x="685" y="304" text-anchor="middle" fill="#0f1117" font-size="10" font-weight="700">5</text>
+
+  <!-- 6: Browser → S3 (direct upload, dashed) -->
+  <path d="M 560 110 L 808 140" fill="none" stroke="#f59e0b" stroke-width="2" stroke-dasharray="6 3" marker-end="url(#arrowYellow)"/>
+  <circle cx="684" cy="122" r="9" fill="#f59e0b"/>
+  <text x="684" y="126" text-anchor="middle" fill="#0f1117" font-size="10" font-weight="700">6</text>
+
+  <!-- 7: S3 → Browser (direct download, dashed) -->
+  <path d="M 808 168 L 560 134" fill="none" stroke="#f59e0b" stroke-width="2" stroke-dasharray="6 3" marker-end="url(#arrowYellow)"/>
+  <circle cx="684" cy="154" r="9" fill="#f59e0b"/>
+  <text x="684" y="158" text-anchor="middle" fill="#0f1117" font-size="10" font-weight="700">7</text>
+
+  <!-- 8: ECS → CloudWatch -->
+  <path d="M 562 420 L 808 335" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arrowGray)"/>
+  <circle cx="685" cy="378" r="9" fill="#4b5563"/>
+  <text x="685" y="382" text-anchor="middle" fill="#e5e7eb" font-size="10" font-weight="700">8</text>
+
+  <!-- 9: Secrets → ECS -->
+  <path d="M 808 399 L 562 432" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arrowGray)"/>
+  <circle cx="685" cy="418" r="9" fill="#4b5563"/>
+  <text x="685" y="422" text-anchor="middle" fill="#e5e7eb" font-size="10" font-weight="700">9</text>
+
+  <!-- ════════════ REFERENCE TABLE ════════════ -->
+  <rect x="60" y="580" width="1000" height="286" rx="10" fill="#13151f" stroke="#2a2d3a" stroke-width="1"/>
+  <text x="80" y="606" fill="#34d399" font-size="14" font-weight="700">Connection Reference</text>
+
+  <!-- Column headers -->
+  <text x="88" y="632" fill="#6b7280" font-size="10" font-weight="700">#</text>
+  <text x="118" y="632" fill="#6b7280" font-size="10" font-weight="700">FROM</text>
+  <text x="300" y="632" fill="#6b7280" font-size="10" font-weight="700">TO</text>
+  <text x="490" y="632" fill="#6b7280" font-size="10" font-weight="700">PROTOCOL</text>
+  <text x="650" y="632" fill="#6b7280" font-size="10" font-weight="700">DESCRIPTION</text>
+  <line x1="80" y1="640" x2="1040" y2="640" stroke="#2a2d3a" stroke-width="1"/>
+
+  <!-- Row 1 -->
+  <circle cx="93" cy="658" r="8" fill="#34d399"/>
+  <text x="93" y="662" text-anchor="middle" fill="#0f1117" font-size="9" font-weight="700">1</text>
+  <text x="118" y="662" fill="#e5e7eb" font-size="11">Browser / CLI</text>
+  <text x="300" y="662" fill="#e5e7eb" font-size="11">CloudFront</text>
+  <text x="490" y="662" fill="#9ca3af" font-size="11">HTTPS (443)</text>
+  <text x="650" y="662" fill="#9ca3af" font-size="11">All web requests enter through CloudFront</text>
+
+  <!-- Row 2 -->
+  <circle cx="93" cy="682" r="8" fill="#8b5cf6"/>
+  <text x="93" y="686" text-anchor="middle" fill="#fff" font-size="9" font-weight="700">2</text>
+  <text x="118" y="686" fill="#e5e7eb" font-size="11">CloudFront</text>
+  <text x="300" y="686" fill="#e5e7eb" font-size="11">ALB</text>
+  <text x="490" y="686" fill="#9ca3af" font-size="11">HTTP (80)</text>
+  <text x="650" y="686" fill="#9ca3af" font-size="11">Forwards to load balancer, SSL terminated at edge</text>
+
+  <!-- Row 3 -->
+  <circle cx="93" cy="706" r="8" fill="#6366f1"/>
+  <text x="93" y="710" text-anchor="middle" fill="#fff" font-size="9" font-weight="700">3</text>
+  <text x="118" y="710" fill="#e5e7eb" font-size="11">ALB</text>
+  <text x="300" y="710" fill="#e5e7eb" font-size="11">ECS Fargate</text>
+  <text x="490" y="710" fill="#9ca3af" font-size="11">HTTP (3000)</text>
+  <text x="650" y="710" fill="#9ca3af" font-size="11">Routes to healthy container targets</text>
+
+  <!-- Row 4 -->
+  <circle cx="93" cy="730" r="8" fill="#3b82f6"/>
+  <text x="93" y="734" text-anchor="middle" fill="#fff" font-size="9" font-weight="700">4</text>
+  <text x="118" y="734" fill="#e5e7eb" font-size="11">ECS Fargate</text>
+  <text x="300" y="734" fill="#e5e7eb" font-size="11">RDS PostgreSQL</text>
+  <text x="490" y="734" fill="#9ca3af" font-size="11">TCP (5432)</text>
+  <text x="650" y="734" fill="#9ca3af" font-size="11">File metadata, projects, experiments, samples</text>
+
+  <!-- Row 5 -->
+  <circle cx="93" cy="754" r="8" fill="#f59e0b"/>
+  <text x="93" y="758" text-anchor="middle" fill="#0f1117" font-size="9" font-weight="700">5</text>
+  <text x="118" y="758" fill="#e5e7eb" font-size="11">ECS Fargate</text>
+  <text x="300" y="758" fill="#e5e7eb" font-size="11">S3</text>
+  <text x="490" y="758" fill="#9ca3af" font-size="11">HTTPS (AWS SDK)</text>
+  <text x="650" y="758" fill="#9ca3af" font-size="11">Generates presigned URLs for upload and download</text>
+
+  <!-- Row 6 -->
+  <circle cx="93" cy="778" r="8" fill="#f59e0b"/>
+  <text x="93" y="782" text-anchor="middle" fill="#0f1117" font-size="9" font-weight="700">6</text>
+  <text x="118" y="782" fill="#e5e7eb" font-size="11">Browser / CLI</text>
+  <text x="300" y="782" fill="#e5e7eb" font-size="11">S3 (direct)</text>
+  <text x="490" y="782" fill="#9ca3af" font-size="11">HTTPS (presigned)</text>
+  <text x="650" y="782" fill="#9ca3af" font-size="11">Multipart file upload — bypasses CDN, no size limit</text>
+
+  <!-- Row 7 -->
+  <circle cx="93" cy="802" r="8" fill="#f59e0b"/>
+  <text x="93" y="806" text-anchor="middle" fill="#0f1117" font-size="9" font-weight="700">7</text>
+  <text x="118" y="806" fill="#e5e7eb" font-size="11">S3 (direct)</text>
+  <text x="300" y="806" fill="#e5e7eb" font-size="11">Browser / CLI</text>
+  <text x="490" y="806" fill="#9ca3af" font-size="11">HTTPS (presigned)</text>
+  <text x="650" y="806" fill="#9ca3af" font-size="11">File download — bypasses CDN to avoid 2x transfer cost</text>
+
+  <!-- Divider -->
+  <line x1="80" y1="818" x2="1040" y2="818" stroke="#2a2d3a" stroke-width="0.5"/>
+
+  <!-- Row 8 -->
+  <circle cx="93" cy="836" r="8" fill="#4b5563"/>
+  <text x="93" y="840" text-anchor="middle" fill="#e5e7eb" font-size="9" font-weight="700">8</text>
+  <text x="118" y="840" fill="#e5e7eb" font-size="11">ECS Fargate</text>
+  <text x="300" y="840" fill="#e5e7eb" font-size="11">CloudWatch</text>
+  <text x="490" y="840" fill="#9ca3af" font-size="11">AWS API</text>
+  <text x="650" y="840" fill="#9ca3af" font-size="11">Application logs, 30-day retention</text>
+
+  <!-- Row 9 -->
+  <circle cx="93" cy="856" r="8" fill="#4b5563"/>
+  <text x="93" y="860" text-anchor="middle" fill="#e5e7eb" font-size="9" font-weight="700">9</text>
+  <text x="118" y="860" fill="#e5e7eb" font-size="11">Secrets Manager</text>
+  <text x="300" y="860" fill="#e5e7eb" font-size="11">ECS Fargate</text>
+  <text x="490" y="860" fill="#9ca3af" font-size="11">AWS API</text>
+  <text x="650" y="860" fill="#9ca3af" font-size="11">Injects DB credentials at task launch</text>
+
+</svg>

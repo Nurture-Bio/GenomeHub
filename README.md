@@ -21,20 +21,7 @@ GenomeHub is the data layer in a broader ecosystem for computational genomics:
 
 ## Architecture
 
-```mermaid
-flowchart TB
-    Browser([Browser])
-    CF[CloudFront<br/>HTTPS]
-    ALB[ALB<br/>public]
-    ECS[ECS Fargate<br/>Node.js / Express]
-    RDS[(RDS PostgreSQL<br/>isolated subnet)]
-    S3[(S3 Bucket<br/>presigned URLs)]
-
-    Browser --> CF --> ALB --> ECS
-    ECS --> RDS
-    ECS --> S3
-    Browser -. "direct multipart upload<br/>(presigned URLs)" .-> S3
-```
+![GenomeHub AWS Architecture](genomehub-architecture.svg)
 
 The browser uploads directly to S3 via presigned multipart URLs. The server only coordinates metadata, so a 50 GB BAM file never touches the application server.
 
