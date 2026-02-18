@@ -21,28 +21,19 @@ GenomeHub is the **data layer** in a broader ecosystem for computational genomic
 
 ## Architecture
 
-```
-                         ┌──────────────┐
-                         │  CloudFront  │
-                         │   (HTTPS)    │
-                         └──────┬───────┘
-                                │
-                    ┌───────────▼──────────┐
-                    │   ALB (public)       │
-                    └───────────┬──────────┘
-                                │
-                    ┌───────────▼──────────┐
-                    │   ECS Fargate        │
-                    │   Node.js / Express  │
-                    └──┬────────────────┬──┘
-                       │                │
-          ┌────────────▼───┐    ┌───────▼────────┐
-          │  RDS Postgres  │    │   S3 Bucket    │
-          │  (isolated)    │    │  (presigned)   │
-          └────────────────┘    └───────▲────────┘
-                                        │
-                                   Browser uploads
-                                   directly to S3
+```mermaid
+flowchart TB
+    Browser([Browser])
+    CF[CloudFront<br/>HTTPS]
+    ALB[ALB<br/>public]
+    ECS[ECS Fargate<br/>Node.js / Express]
+    RDS[(RDS PostgreSQL<br/>isolated subnet)]
+    S3[(S3 Bucket<br/>presigned URLs)]
+
+    Browser --> CF --> ALB --> ECS
+    ECS --> RDS
+    ECS --> S3
+    Browser -. "direct multipart upload<br/>(presigned URLs)" .-> S3
 ```
 
 **Key design choice:** the browser uploads directly to S3 via presigned multipart URLs. The server only coordinates metadata. This means a 50 GB BAM file never touches the application server.
@@ -101,17 +92,17 @@ Builds the Docker image, pushes to ECR, and provisions:
 
 ```
 packages/
-├── client/          React SPA (Vite)
-│   └── src/
-│       ├── pages/   Dashboard, Files, Upload
-│       ├── hooks/   Data-fetching hooks
-│       └── ui/      Reusable components
-├── server/          Express API
-│   └── src/
-│       ├── entities/   TypeORM models (Project, GenomicFile)
-│       ├── lib/        S3 helpers (presign, multipart)
-│       └── migrations/ SQL schema
-└── infra/           AWS CDK stack
+  client/            React SPA (Vite)
+    src/
+      pages/         Dashboard, Files, Upload
+      hooks/         Data-fetching hooks
+      ui/            Reusable components
+  server/            Express API
+    src/
+      entities/      TypeORM models (Project, GenomicFile)
+      lib/           S3 helpers (presign, multipart)
+      migrations/    SQL schema
+  infra/             AWS CDK stack
 ```
 
 ## API reference
@@ -173,16 +164,20 @@ FASTQ, BAM, CRAM, VCF, BCF, BED, GFF/GFF3, GTF, FASTA, SAM, BigWig, BigBed — a
 
 ### End-to-end vision
 
-```
-   Raw sequencing data          Analysis              Biological insight
-  ┌────────────────┐      ┌──────────────┐      ┌─────────────────────┐
-  │   GenomeHub    │ ───▶ │   SeqChain   │ ───▶ │ Epigenome2Phenome   │
-  │                │      │              │      │                     │
-  │  FASTQ / BAM   │      │  Annotate    │      │  Visualize flux     │
-  │  VCF / BED     │ ◀─── │  Quantify    │ ◀─── │  Design guides      │
-  │  Catalog       │      │  Compare     │      │  Predict phenotype  │
-  └────────────────┘      └──────────────┘      └─────────────────────┘
-       Storage              Computation              Interpretation
+```mermaid
+flowchart LR
+    subgraph Storage
+        GH[GenomeHub<br/>FASTQ / BAM / VCF / BED<br/>Catalog]
+    end
+    subgraph Computation
+        SC[SeqChain<br/>Annotate / Quantify / Compare]
+    end
+    subgraph Interpretation
+        E2P[Epigenome2Phenome<br/>Visualize flux / Design guides<br/>Predict phenotype]
+    end
+
+    GH --> SC --> E2P
+    E2P -.-> SC -.-> GH
 ```
 
 ---
