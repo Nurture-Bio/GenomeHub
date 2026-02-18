@@ -1,6 +1,8 @@
 import type { GenomicFile } from "../hooks/useGenomicQueries";
 import { useState, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useFilesQuery, useDeleteFileMutation, usePresignedUrl } from '../hooks/useGenomicQueries';
+import { useConfirm } from '../hooks/useConfirm';
 import { detectFormat, FORMAT_META, formatBytes, formatRelativeTime } from '../lib/formats';
 import { Button, Badge, Input, Text, Heading } from '../ui';
 
@@ -146,9 +148,12 @@ function SkeletonRow() {
 const FORMAT_FILTERS = ['all', 'fastq', 'bam', 'cram', 'vcf', 'bed', 'fasta', 'other'] as const;
 
 export default function FilesPage() {
-  const { data, isLoading, refetch } = useFilesQuery();
+  const [searchParams] = useSearchParams();
+  const projectParam = searchParams.get('project') ?? undefined;
+  const { data, isLoading, refetch } = useFilesQuery(projectParam);
   const { deleteFile, pending: deletePending } = useDeleteFileMutation(refetch);
   const { getUrl, pending: urlPending } = usePresignedUrl();
+  const { confirm, dialog } = useConfirm();
 
   const [search,     setSearch]     = useState('');
   const [fmtFilter,  setFmtFilter]  = useState<string>('all');
@@ -183,13 +188,20 @@ export default function FilesPage() {
   };
 
   const handleBulkDelete = async () => {
-    if (!confirm(`Delete ${selected.size} file(s)?`)) return;
+    const ok = await confirm({
+      title: 'Delete files',
+      message: `Are you sure you want to delete ${selected.size} file(s)? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
     for (const id of selected) await deleteFile(id);
     setSelected(new Set());
   };
 
   return (
     <div className="flex flex-col gap-3 p-3 h-full min-h-0">
+      {dialog}
       {/* Header */}
       <div className="flex items-center gap-3 shrink-0">
         <div className="flex-1">

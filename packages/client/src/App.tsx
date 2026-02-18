@@ -1,13 +1,19 @@
-import { useState } from 'react';
+import type { ReactNode } from 'react';
+import { Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import { cx } from 'class-variance-authority';
 import { navLink } from './ui/recipes';
 import { useAuth } from './hooks/useAuth';
-import LoginPage       from './pages/LoginPage';
-import DashboardPage   from './pages/DashboardPage';
-import FilesPage       from './pages/FilesPage';
-import UploadPage      from './pages/UploadPage';
-import OrganismsPage   from './pages/OrganismsPage';
-import ExperimentsPage from './pages/ExperimentsPage';
+import LoginPage            from './pages/LoginPage';
+import DashboardPage        from './pages/DashboardPage';
+import FilesPage            from './pages/FilesPage';
+import UploadPage           from './pages/UploadPage';
+import OrganismsPage        from './pages/OrganismsPage';
+import ExperimentsPage      from './pages/ExperimentsPage';
+import ProjectDetailPage    from './pages/ProjectDetailPage';
+import ExperimentDetailPage from './pages/ExperimentDetailPage';
+import SampleDetailPage     from './pages/SampleDetailPage';
+import PageErrorBoundary    from './components/PageErrorBoundary';
+import Breadcrumbs          from './components/Breadcrumbs';
 
 // ── DNA helix icon ────────────────────────────────────────
 const GenomicIcon = () => (
@@ -28,7 +34,7 @@ const GenomicIcon = () => (
 
 // ── Navigation icons ──────────────────────────────────────
 
-const icons = {
+const icons: Record<string, ReactNode> = {
   dashboard: (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
       strokeWidth="2" strokeLinecap="round">
@@ -68,21 +74,18 @@ const icons = {
   ),
 };
 
-type Page = 'dashboard' | 'files' | 'upload' | 'organisms' | 'experiments';
-
-const NAV_ITEMS: { id: Page; label: string }[] = [
-  { id: 'dashboard',   label: 'Dashboard' },
-  { id: 'organisms',   label: 'Organisms' },
-  { id: 'experiments', label: 'Experiments' },
-  { id: 'files',       label: 'Files' },
-  { id: 'upload',      label: 'Upload' },
+const NAV_ITEMS: { to: string; label: string; icon: string; end?: boolean }[] = [
+  { to: '/',            label: 'Dashboard',   icon: 'dashboard', end: true },
+  { to: '/organisms',   label: 'Organisms',   icon: 'organisms' },
+  { to: '/experiments', label: 'Experiments', icon: 'experiments' },
+  { to: '/files',       label: 'Files',       icon: 'files' },
+  { to: '/upload',      label: 'Upload',      icon: 'upload' },
 ];
 
 // ── App ───────────────────────────────────────────────────
 
 export default function App() {
   const { user, loading, logout } = useAuth();
-  const [page, setPage] = useState<Page>('dashboard');
 
   if (loading) {
     return (
@@ -112,18 +115,21 @@ export default function App() {
         {/* Nav */}
         <nav className="flex flex-col gap-0.5 p-1.5 flex-1">
           {NAV_ITEMS.map(item => (
-            <button
-              key={item.id}
-              onClick={() => setPage(item.id)}
-              className={cx(
-                navLink({ active: page === item.id }),
-                'rounded-sm gap-2 w-full text-left border-none cursor-pointer bg-transparent',
-                page === item.id && 'bg-surface'
-              )}
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              className={({ isActive }) =>
+                cx(
+                  navLink({ active: isActive }),
+                  'rounded-sm gap-2 w-full text-left border-none cursor-pointer bg-transparent no-underline',
+                  isActive && 'bg-surface'
+                )
+              }
             >
-              {icons[item.id]}
+              {icons[item.icon]}
               {item.label}
-            </button>
+            </NavLink>
           ))}
         </nav>
 
@@ -163,11 +169,18 @@ export default function App() {
 
       {/* Main */}
       <main className="flex-1 overflow-auto">
-        {page === 'dashboard'   && <DashboardPage />}
-        {page === 'organisms'   && <OrganismsPage />}
-        {page === 'experiments' && <ExperimentsPage />}
-        {page === 'files'       && <FilesPage />}
-        {page === 'upload'      && <UploadPage />}
+        <Breadcrumbs />
+        <Routes>
+          <Route path="/" element={<PageErrorBoundary><DashboardPage /></PageErrorBoundary>} />
+          <Route path="/organisms" element={<PageErrorBoundary><OrganismsPage /></PageErrorBoundary>} />
+          <Route path="/experiments" element={<PageErrorBoundary><ExperimentsPage /></PageErrorBoundary>} />
+          <Route path="/files" element={<PageErrorBoundary><FilesPage /></PageErrorBoundary>} />
+          <Route path="/upload" element={<PageErrorBoundary><UploadPage /></PageErrorBoundary>} />
+          <Route path="/projects/:projectId" element={<PageErrorBoundary><ProjectDetailPage /></PageErrorBoundary>} />
+          <Route path="/projects/:projectId/experiments/:experimentId" element={<PageErrorBoundary><ExperimentDetailPage /></PageErrorBoundary>} />
+          <Route path="/projects/:projectId/experiments/:experimentId/samples/:sampleId" element={<PageErrorBoundary><SampleDetailPage /></PageErrorBoundary>} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </main>
     </div>
   );

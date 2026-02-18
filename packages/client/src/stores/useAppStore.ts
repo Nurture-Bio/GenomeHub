@@ -1,0 +1,69 @@
+import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+
+interface RecentSelections {
+  projects: string[];
+  experiments: string[];
+  samples: string[];
+}
+
+interface PersistedState {
+  sidebarOpen: boolean;
+  recentSelections: RecentSelections;
+}
+
+interface AppState extends PersistedState {
+  selectedFileIds: Set<string>;
+
+  toggleFileSelection: (id: string) => void;
+  selectAllFiles: (ids: string[]) => void;
+  clearSelection: () => void;
+  toggleSidebar: () => void;
+  addRecentSelection: (kind: keyof RecentSelections, id: string) => void;
+}
+
+export const useAppStore = create<AppState>()(
+  persist(
+    (set) => ({
+      selectedFileIds: new Set<string>(),
+      sidebarOpen: true,
+      recentSelections: { projects: [], experiments: [], samples: [] },
+
+      toggleFileSelection: (id) =>
+        set((s) => {
+          const next = new Set(s.selectedFileIds);
+          next.has(id) ? next.delete(id) : next.add(id);
+          return { selectedFileIds: next };
+        }),
+
+      selectAllFiles: (ids) =>
+        set({ selectedFileIds: new Set(ids) }),
+
+      clearSelection: () =>
+        set({ selectedFileIds: new Set<string>() }),
+
+      toggleSidebar: () =>
+        set((s) => ({ sidebarOpen: !s.sidebarOpen })),
+
+      addRecentSelection: (kind, id) =>
+        set((s) => {
+          const list = s.recentSelections[kind].filter((x) => x !== id);
+          list.push(id);
+          return {
+            recentSelections: {
+              ...s.recentSelections,
+              [kind]: list.slice(-5),
+            },
+          };
+        }),
+    }),
+    {
+      name: 'genomehub-app',
+      storage: createJSONStorage(() => localStorage),
+      partialize: (state): PersistedState => ({
+        sidebarOpen: state.sidebarOpen,
+        recentSelections: state.recentSelections,
+      }),
+    }
+  )
+);

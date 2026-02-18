@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { toast } from 'sonner';
 import { apiFetch } from '../lib/api';
 
 // ─── Types ────────────────────────────────────────────────
@@ -147,6 +148,10 @@ export function useCreateOrganismMutation(onSuccess?: () => void) {
       });
       if (!r.ok) throw new Error('Create failed');
       onSuccess?.();
+      toast.success('Organism created');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create organism');
+      throw err;
     } finally {
       setPending(false);
     }
@@ -196,6 +201,10 @@ export function useCreateExperimentMutation(onSuccess?: () => void) {
       });
       if (!r.ok) throw new Error('Create failed');
       onSuccess?.();
+      toast.success('Experiment created');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create experiment');
+      throw err;
     } finally {
       setPending(false);
     }
@@ -231,6 +240,10 @@ export function useDeleteFileMutation(onSuccess?: () => void) {
       const r = await apiFetch(`/api/files/${fileId}`, { method: 'DELETE' });
       if (!r.ok) throw new Error('Delete failed');
       onSuccess?.();
+      toast.success('File deleted');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete file');
+      throw err;
     } finally {
       setPending(false);
     }
@@ -250,6 +263,9 @@ export function usePresignedUrl() {
       const r = await apiFetch(`/api/files/${fileId}/download`);
       const { url } = await r.json();
       return url;
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to generate download link');
+      throw err;
     } finally {
       setPending(false);
     }
@@ -352,11 +368,13 @@ export function useMultipartUpload() {
       });
 
       updateUpload(tmpId, { status: 'done', loaded: file.size });
+      toast.success(`Upload complete: ${file.name}`);
     } catch (err: unknown) {
       updateUpload(tmpId, {
         status: 'error',
         error: err instanceof Error ? err.message : 'Upload failed',
       });
+      toast.error(`Upload failed: ${file.name}`);
     }
   }, [updateUpload]);
 
