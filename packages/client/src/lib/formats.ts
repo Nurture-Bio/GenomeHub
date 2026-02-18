@@ -63,9 +63,40 @@ function toMeta(entry: FormatEntry): FormatMeta {
   };
 }
 
-export const FORMAT_META: Record<string, FormatMeta> = Object.fromEntries(
+const _knownMeta: Record<string, FormatMeta> = Object.fromEntries(
   FORMAT_REGISTRY.map(e => [e.id, toMeta(e)])
 );
+
+/**
+ * Deterministic hue from a string — same string always gets the same color.
+ * Used for unknown file formats so they get stable, distinguishable colors.
+ */
+function hashHue(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  return ((h % 360) + 360) % 360;
+}
+
+/**
+ * FORMAT_META with dynamic fallback — known formats use registry colors,
+ * unknown formats (e.g. 'json', 'csv') get a deterministic color from their extension.
+ */
+export const FORMAT_META: Record<string, FormatMeta> = new Proxy(_knownMeta, {
+  get(target, prop: string) {
+    if (prop in target) return target[prop];
+    // Generate and cache a FormatMeta for this unknown extension
+    const hue = hashHue(prop);
+    const meta: FormatMeta = {
+      label:       prop.toUpperCase(),
+      ext:         [`.${prop}`],
+      color:       `oklch(0.60 0.10 ${hue})`,
+      bg:          `oklch(0.18 0.02 ${hue})`,
+      description: `${prop.toUpperCase()} file`,
+    };
+    target[prop] = meta;
+    return meta;
+  },
+});
 
 // ── Client-only helpers ──────────────────────────────────
 

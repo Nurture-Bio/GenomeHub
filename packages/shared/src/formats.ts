@@ -83,12 +83,23 @@ export function getFormatMeta(id: string): FormatEntry {
 /**
  * Detect file format from a filename using extension matching.
  * Checks compound extensions first (e.g. '.fastq.gz' before '.gz').
+ * For unrecognized formats, returns the raw extension (e.g. 'json', 'csv')
+ * so the UI can display it meaningfully instead of a generic "FILE" label.
  */
 export function detectFormat(filename: string): string {
   const lower = filename.toLowerCase();
   for (const entry of FORMAT_REGISTRY) {
     if (entry.id === 'other') continue;
     if (entry.extensions.some(ext => lower.endsWith(ext))) return entry.id;
+  }
+  // Extract raw extension for unknown formats
+  const dot = lower.lastIndexOf('.');
+  if (dot > 0) {
+    const ext = lower.slice(dot + 1);
+    if (ext !== 'gz') return ext;
+    // For .gz, try the extension before it (e.g. 'csv' from 'data.csv.gz')
+    const prevDot = lower.lastIndexOf('.', dot - 1);
+    if (prevDot > 0) return lower.slice(prevDot + 1, dot);
   }
   return 'other';
 }

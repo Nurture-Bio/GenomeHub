@@ -6,18 +6,9 @@ import {
   usePresignedUrl, useAddFilesToCollection, useRemoveFilesFromCollection,
 } from '../hooks/useGenomicQueries';
 import { useConfirm } from '../hooks/useConfirm';
-import { detectFormat, FORMAT_META, FORMAT_REGISTRY, formatBytes, formatRelativeTime } from '../lib/formats';
-import { Button, Badge, Input, Text, Heading, Card, ComboBox } from '../ui';
+import { detectFormat, FORMAT_META, formatBytes, formatRelativeTime } from '../lib/formats';
+import { Button, Badge, Input, Text, Heading, Card } from '../ui';
 import { CollectionPicker, OrganismPicker, FileKindPicker } from '../ui';
-import type { ComboBoxItem } from '../ui';
-
-// ── Format picker items (built once) ────────────────────
-
-const FORMAT_ITEMS: ComboBoxItem[] = FORMAT_REGISTRY.map(e => ({
-  id: e.id,
-  label: e.label,
-  description: e.description,
-}));
 
 // ── Format icon ──────────────────────────────────────────
 
@@ -215,7 +206,7 @@ function FileRow({ file, onDownload, onUpdate, onAddToCollection, onRemoveFromCo
       style={{ background: selected ? 'var(--color-surface-2)' : undefined }}
     >
       {/* Checkbox */}
-      <td className="pl-3 pr-1 py-1.5 w-6">
+      <td className="pl-3 pr-1 py-1.5 w-6 align-top pt-2.5">
         <input
           type="checkbox"
           checked={selected}
@@ -224,23 +215,29 @@ function FileRow({ file, onDownload, onUpdate, onAddToCollection, onRemoveFromCo
         />
       </td>
 
-      {/* Icon + name */}
+      {/* File: icon + name (line 1), size · status · date (line 2) */}
       <td className="py-1.5 pr-3">
         <div className="flex items-center gap-2">
           <FormatIcon filename={file.filename} format={file.format} size={28} />
-          <div className="min-w-0">
-            <Link to={`/files/${file.id}`} className="no-underline font-mono text-caption text-text truncate max-w-xs block hover:text-accent transition-colors duration-fast">
+          <div className="min-w-0 flex-1">
+            <Link to={`/files/${file.id}`} className="no-underline font-mono text-caption text-text truncate block hover:text-accent transition-colors duration-fast">
               {file.filename}
             </Link>
-            {file.description && (
-              <div className="text-micro text-text-dim truncate">{file.description}</div>
-            )}
+            <div className="flex items-center gap-1.5 text-micro text-text-dim">
+              <span className="font-mono tabular-nums">{formatBytes(file.sizeBytes)}</span>
+              <span>·</span>
+              {file.status === 'ready'   && <Badge variant="status" color="green">ready</Badge>}
+              {file.status === 'pending' && <Badge variant="status" color="yellow">uploading</Badge>}
+              {file.status === 'error'   && <Badge variant="status" color="red">error</Badge>}
+              <span>·</span>
+              <span>{formatRelativeTime(file.uploadedAt)}</span>
+            </div>
           </div>
         </div>
       </td>
 
       {/* Organism — always-rendered dropdown */}
-      <td className="py-1.5 pr-3 w-36">
+      <td className="py-1.5 pr-3 w-36 align-top pt-2">
         <OrganismPicker
           value={file.organismId ?? ''}
           onValueChange={v => onUpdate(file.id, { organismId: v || null })}
@@ -248,18 +245,8 @@ function FileRow({ file, onDownload, onUpdate, onAddToCollection, onRemoveFromCo
         />
       </td>
 
-      {/* Collections — inline add/remove */}
-      <td className="py-1.5 pr-3">
-        <InlineCollectionEditor
-          fileId={file.id}
-          collections={file.collections}
-          onAdd={onAddToCollection}
-          onRemove={onRemoveFromCollection}
-        />
-      </td>
-
       {/* Kind — always-rendered dropdown */}
-      <td className="py-1.5 pr-3 w-28">
+      <td className="py-1.5 pr-3 w-28 align-top pt-2">
         <FileKindPicker
           value={file.kind}
           onValueChange={v => onUpdate(file.id, { kind: v })}
@@ -267,44 +254,24 @@ function FileRow({ file, onDownload, onUpdate, onAddToCollection, onRemoveFromCo
         />
       </td>
 
-      {/* Format — always-rendered dropdown */}
-      <td className="py-1.5 pr-3 w-24">
-        <ComboBox
-          items={FORMAT_ITEMS}
-          value={file.format}
-          onValueChange={v => { if (v) onUpdate(file.id, { format: v }); }}
-          placeholder="Format"
-          variant="surface" size="sm" className="w-full"
+      {/* Collections (line 1) + Tags (line 2) */}
+      <td className="py-1.5 pr-3">
+        <InlineCollectionEditor
+          fileId={file.id}
+          collections={file.collections}
+          onAdd={onAddToCollection}
+          onRemove={onRemoveFromCollection}
         />
+        <div className="mt-0.5">
+          <InlineTagEditor
+            tags={file.tags}
+            onUpdate={tags => onUpdate(file.id, { tags })}
+          />
+        </div>
       </td>
 
-      {/* Size */}
-      <td className="py-1.5 pr-3 text-caption font-mono text-text-secondary tabular-nums whitespace-nowrap">
-        {formatBytes(file.sizeBytes)}
-      </td>
-
-      {/* Status */}
-      <td className="py-1.5 pr-3">
-        {file.status === 'ready'   && <Badge variant="status" color="green">ready</Badge>}
-        {file.status === 'pending' && <Badge variant="status" color="yellow">uploading</Badge>}
-        {file.status === 'error'   && <Badge variant="status" color="red">error</Badge>}
-      </td>
-
-      {/* Uploaded */}
-      <td className="py-1.5 pr-3 text-caption text-text-dim whitespace-nowrap">
-        {formatRelativeTime(file.uploadedAt)}
-      </td>
-
-      {/* Tags — inline edit */}
-      <td className="py-1.5 pr-3">
-        <InlineTagEditor
-          tags={file.tags}
-          onUpdate={tags => onUpdate(file.id, { tags })}
-        />
-      </td>
-
-      {/* Download only — no per-row delete (use bulk select) */}
-      <td className="py-1.5 pr-3">
+      {/* Download */}
+      <td className="py-1.5 pr-3 w-6 align-top pt-2">
         <button
           onClick={() => onDownload(file.id)}
           className="text-caption text-text-dim hover:text-accent cursor-pointer bg-transparent border-none p-0 font-body opacity-0 group-hover:opacity-100 transition-opacity duration-fast"
@@ -322,7 +289,7 @@ function FileRow({ file, onDownload, onUpdate, onAddToCollection, onRemoveFromCo
 function SkeletonRow() {
   return (
     <tr className="border-b border-border-subtle">
-      {[...Array(11)].map((_, i) => (
+      {[...Array(6)].map((_, i) => (
         <td key={i} className="py-2 pr-3">
           <div className="skeleton h-4 rounded-sm" style={{ width: `${40 + Math.random() * 40}%` }} />
         </td>
@@ -553,7 +520,7 @@ export default function FilesPage() {
                   className="accent-accent cursor-pointer"
                 />
               </th>
-              {['File', 'Organism', 'Collection', 'Kind', 'Format', 'Size', 'Status', 'Uploaded', 'Tags', ''].map(h => (
+              {['File', 'Organism', 'Kind', 'Collections / Tags', ''].map(h => (
                 <th key={h} className="py-1.5 pr-3 font-body text-micro uppercase tracking-overline text-text-dim font-semibold whitespace-nowrap">
                   {h}
                 </th>
@@ -566,7 +533,7 @@ export default function FilesPage() {
               : files.length === 0
                 ? (
                   <tr>
-                    <td colSpan={11} className="py-12 text-center text-text-dim font-body text-body">
+                    <td colSpan={6} className="py-12 text-center text-text-dim font-body text-body">
                       {search || fmtFilter !== 'all' || filterCollectionId ? 'No files match your filters.' : 'No files yet. Upload some to get started.'}
                     </td>
                   </tr>

@@ -18,12 +18,11 @@ interface EditableRowProps {
   id: string;
   name: string;
   description: string | null;
-  extra?: string;
   onSave: (id: string, patch: { name?: string; description?: string }) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }
 
-function EditableRow({ id, name, description, extra, onSave, onDelete }: EditableRowProps) {
+function EditableRow({ id, name, description, onSave, onDelete }: EditableRowProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [pending, setPending] = useState(false);
 
@@ -35,10 +34,7 @@ function EditableRow({ id, name, description, extra, onSave, onDelete }: Editabl
   return (
     <tr className="border-b border-border-subtle group hover:bg-surface transition-colors duration-fast">
       <td className="py-1.5 pl-2.5 pr-3">
-        <div className="flex items-baseline gap-1.5">
-          <InlineInput value={name} mono fullWidth className="font-semibold" onCommit={val => onSave(id, { name: val })} />
-          {extra && <span className="font-mono text-micro text-text-dim shrink-0">{extra}</span>}
-        </div>
+        <InlineInput value={name} mono fullWidth className="font-semibold" onCommit={val => onSave(id, { name: val })} />
       </td>
       <td className="py-1.5 pr-3">
         <InlineInput value={description ?? ''} placeholder="add description" fullWidth onCommit={val => onSave(id, { description: val })} />
@@ -215,7 +211,6 @@ export default function SettingsPage() {
       <SectionTable title="Techniques" subtitle="Sequencing techniques linked to collections">
         {(techniques ?? []).map(t => (
           <EditableRow key={t.id} id={t.id} name={t.name} description={t.description}
-            extra={t.defaultTags?.length ? `[${t.defaultTags.join(', ')}]` : undefined}
             onSave={saveTechnique} onDelete={deleteTechnique} />
         ))}
         <AddRow placeholder="+ new technique" onAdd={addTechnique} />
