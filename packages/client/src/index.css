@@ -605,12 +605,6 @@
   line-height: 1;
 }
 
-  /* ── Genomic file type colors ──────────────────────────── */
-  --color-fastq: oklch(0.68 0.18 145);
-  --color-bam:   oklch(0.68 0.16 250);
-  --color-vcf:   oklch(0.70 0.18 300);
-  --color-bed:   oklch(0.72 0.16 55);
-  --color-fasta: oklch(0.65 0.14 168);
 
 @keyframes progress-stripe {
   from { background-position: 40px 0; }

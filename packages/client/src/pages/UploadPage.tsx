@@ -104,7 +104,7 @@ function QueueItem({ file, organismId, collectionId, kind, description, tags, on
         </div>
         <div className="flex-1 min-w-0">
           <div className="font-mono text-caption text-text truncate">{file.name}</div>
-          <div className="text-micro text-text-dim">{formatBytes(file.size)} · {meta.description}</div>
+          <div className="text-micro text-text-dim">{formatBytes(file.size)} · {meta.label}</div>
         </div>
         <Button intent="ghost" size="sm" onClick={onRemove}>×</Button>
       </div>

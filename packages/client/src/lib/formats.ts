@@ -1,104 +1,53 @@
 /**
  * Client-side format utilities.
- *
- * Re-exports the canonical registry from @genome-hub/shared and adds
- * client-only helpers (CSS-variable color overrides, byte formatting, etc.).
+ * Format = file extension. Colors are deterministic from the extension string.
  */
 
-export {
-  FORMAT_REGISTRY,
-  detectFormat,
-  getAllExtensions,
-  getFormatMeta,
-  type FormatEntry,
-  type FormatId,
-} from '@genome-hub/shared';
+export { detectFormat } from '@genome-hub/shared';
 
-import { FORMAT_REGISTRY, type FormatEntry } from '@genome-hub/shared';
+// ── Deterministic color from string ─────────────────────
 
-// ── Client-side display types ────────────────────────────
-
-export type FileFormat = string;
-
-export interface FormatMeta {
-  label: string;
-  ext:   string[];
-  color: string;
-  bg:    string;
-  description: string;
-}
-
-/**
- * FORMAT_META — keyed lookup for backward compatibility with existing UI code.
- *
- * Client pages reference `FORMAT_META[format]` extensively, so we build this
- * once from the canonical registry. Colors use CSS custom properties when
- * available (overrides in index.css), falling back to the raw oklch values
- * from the registry for new formats.
- */
-
-const CSS_VAR_OVERRIDES: Record<string, string> = {
-  fastq:  'var(--color-fastq)',
-  bam:    'var(--color-bam)',
-  cram:   'var(--color-bam)',
-  sam:    'var(--color-bam)',
-  vcf:    'var(--color-vcf)',
-  bcf:    'var(--color-vcf)',
-  bed:    'var(--color-bed)',
-  gff:    'var(--color-bed)',
-  gtf:    'var(--color-bed)',
-  fasta:  'var(--color-fasta)',
-  bigwig: 'var(--color-accent)',
-  bigbed: 'var(--color-accent)',
-  other:  'var(--color-text-dim)',
-};
-
-function toMeta(entry: FormatEntry): FormatMeta {
-  return {
-    label:       entry.label,
-    ext:         [...entry.extensions],
-    color:       CSS_VAR_OVERRIDES[entry.id] ?? entry.color,
-    bg:          entry.bg,
-    description: entry.description,
-  };
-}
-
-const _knownMeta: Record<string, FormatMeta> = Object.fromEntries(
-  FORMAT_REGISTRY.map(e => [e.id, toMeta(e)])
-);
-
-/**
- * Deterministic hue from a string — same string always gets the same color.
- * Used for unknown file formats so they get stable, distinguishable colors.
- */
 function hashHue(s: string): number {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
   return ((h % 360) + 360) % 360;
 }
 
+export interface FormatMeta {
+  label: string;
+  color: string;
+  bg:    string;
+}
+
+const _cache: Record<string, FormatMeta> = {};
+
 /**
- * FORMAT_META with dynamic fallback — known formats use registry colors,
- * unknown formats (e.g. 'json', 'csv') get a deterministic color from their extension.
+ * Get display metadata for a format id (file extension).
+ * Deterministic color hashing — same extension always gets the same color.
  */
-export const FORMAT_META: Record<string, FormatMeta> = new Proxy(_knownMeta, {
-  get(target, prop: string) {
-    if (prop in target) return target[prop];
-    // Generate and cache a FormatMeta for this unknown extension
-    const hue = hashHue(prop);
-    const meta: FormatMeta = {
-      label:       prop.toUpperCase(),
-      ext:         [`.${prop}`],
-      color:       `oklch(0.60 0.10 ${hue})`,
-      bg:          `oklch(0.18 0.02 ${hue})`,
-      description: `${prop.toUpperCase()} file`,
-    };
-    target[prop] = meta;
-    return meta;
+export function formatMeta(fmt: string): FormatMeta {
+  if (_cache[fmt]) return _cache[fmt];
+  const hue = hashHue(fmt);
+  const meta: FormatMeta = {
+    label: fmt === 'other' ? 'FILE' : fmt.toUpperCase(),
+    color: `oklch(0.65 0.15 ${hue})`,
+    bg:    `oklch(0.18 0.02 ${hue})`,
+  };
+  _cache[fmt] = meta;
+  return meta;
+}
+
+/**
+ * FORMAT_META — Proxy that auto-generates entries on access.
+ * Lets existing code keep using FORMAT_META[fmt] syntax.
+ */
+export const FORMAT_META: Record<string, FormatMeta> = new Proxy(_cache, {
+  get(_target, prop: string) {
+    return formatMeta(prop);
   },
 });
 
-// ── Client-only helpers ──────────────────────────────────
+// ── Formatting helpers ──────────────────────────────────
 
 export function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
