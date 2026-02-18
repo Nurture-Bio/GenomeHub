@@ -29,9 +29,9 @@ export const button = cva(
       size: {
         xs: 'text-micro py-0.5 px-1 rounded-sm',
         sm: 'text-caption py-0.5 px-1.5 rounded-sm min-h-6',
-        md: 'text-caption py-1 px-2 rounded-sm',
-        lg: 'text-body py-1 px-3 rounded-sm',
-        xl: 'text-body py-1.5 px-4 rounded-md font-bold',
+        md: 'text-caption py-1 px-2 rounded-sm min-h-5.5',
+        lg: 'text-body py-1 px-3 rounded-sm min-h-5.5',
+        xl: 'text-body py-1.5 px-4 rounded-md font-bold min-h-5.5',
       },
       pending: {
         true: 'opacity-60 cursor-wait pointer-events-none',
@@ -62,8 +62,8 @@ export const input = cva(
       },
       size: {
         sm: 'text-caption py-0.5 px-1.5 min-h-6',
-        md: 'text-caption py-1 px-1.5',
-        lg: 'text-body py-1 px-2',
+        md: 'text-caption py-1 px-1.5 min-h-5.5',
+        lg: 'text-body py-1 px-2 min-h-5.5',
       },
     },
     defaultVariants: {

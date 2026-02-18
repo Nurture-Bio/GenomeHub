@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useOrganismsQuery, useCreateOrganismMutation } from '../hooks/useGenomicQueries';
 import { formatRelativeTime } from '../lib/formats';
-import { Button, Badge, Input, Text, Heading } from '../ui';
+import { Button, Badge, Input, Text, Heading, Card } from '../ui';
 
 // ── Skeleton row ─────────────────────────────────────────
 
@@ -44,7 +44,7 @@ export default function OrganismsPage() {
   };
 
   return (
-    <div className="flex flex-col gap-3 p-3 h-full min-h-0">
+    <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 h-full min-h-0">
       {/* Header */}
       <div className="shrink-0">
         <Heading level="heading">Organisms</Heading>
@@ -53,39 +53,39 @@ export default function OrganismsPage() {
         </Text>
       </div>
 
-      {/* Create form */}
+      {/* Create form — wraps on all sizes, full-width inputs on mobile */}
       <div className="flex items-end gap-2 shrink-0 flex-wrap bg-surface border border-border rounded-md p-2.5">
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-0.5 w-full sm:w-auto">
           <Text variant="overline">Genus</Text>
-          <Input variant="surface" size="sm" placeholder="Saccharomyces" value={genus} onChange={e => setGenus(e.target.value)} className="w-36" />
+          <Input variant="surface" size="sm" placeholder="Saccharomyces" value={genus} onChange={e => setGenus(e.target.value)} className="w-full sm:w-36" />
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-0.5 w-full sm:w-auto">
           <Text variant="overline">Species</Text>
-          <Input variant="surface" size="sm" placeholder="cerevisiae" value={species} onChange={e => setSpecies(e.target.value)} className="w-36" />
+          <Input variant="surface" size="sm" placeholder="cerevisiae" value={species} onChange={e => setSpecies(e.target.value)} className="w-full sm:w-36" />
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-0.5 w-[calc(50%-4px)] sm:w-auto">
           <Text variant="overline">Strain</Text>
-          <Input variant="surface" size="sm" placeholder="BY4741" value={strain} onChange={e => setStrain(e.target.value)} className="w-28" />
+          <Input variant="surface" size="sm" placeholder="BY4741" value={strain} onChange={e => setStrain(e.target.value)} className="w-full sm:w-28" />
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-0.5 w-[calc(50%-4px)] sm:w-auto">
           <Text variant="overline">Common Name</Text>
-          <Input variant="surface" size="sm" placeholder="Baker's yeast" value={commonName} onChange={e => setCommonName(e.target.value)} className="w-32" />
+          <Input variant="surface" size="sm" placeholder="Baker's yeast" value={commonName} onChange={e => setCommonName(e.target.value)} className="w-full sm:w-32" />
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-0.5 w-[calc(50%-4px)] sm:w-auto">
           <Text variant="overline">NCBI Tax ID</Text>
-          <Input variant="surface" size="sm" placeholder="559292" value={ncbiTaxId} onChange={e => setNcbiTaxId(e.target.value)} className="w-24" />
+          <Input variant="surface" size="sm" placeholder="559292" value={ncbiTaxId} onChange={e => setNcbiTaxId(e.target.value)} className="w-full sm:w-24" />
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-0.5 w-[calc(50%-4px)] sm:w-auto">
           <Text variant="overline">Ref. Genome</Text>
-          <Input variant="surface" size="sm" placeholder="sacCer3" value={referenceGenome} onChange={e => setReferenceGenome(e.target.value)} className="w-24" />
+          <Input variant="surface" size="sm" placeholder="sacCer3" value={referenceGenome} onChange={e => setReferenceGenome(e.target.value)} className="w-full sm:w-24" />
         </div>
-        <Button intent="primary" size="sm" pending={pending} onClick={handleCreate} disabled={!genus || !species}>
+        <Button intent="primary" size="sm" pending={pending} onClick={handleCreate} disabled={!genus || !species} className="w-full sm:w-auto">
           Add
         </Button>
       </div>
 
-      {/* Table */}
-      <div className="flex-1 overflow-auto min-h-0 border border-border rounded-md bg-surface">
+      {/* Desktop table */}
+      <div className="hidden md:block flex-1 overflow-auto min-h-0 border border-border rounded-md bg-surface">
         <table className="w-full border-collapse text-left">
           <thead className="sticky top-0 bg-surface-2 z-10">
             <tr className="border-b border-border">
@@ -140,6 +140,41 @@ export default function OrganismsPage() {
             }
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile cards */}
+      <div className="flex flex-col gap-1.5 md:hidden flex-1 overflow-auto min-h-0">
+        {isLoading
+          ? [...Array(4)].map((_, i) => (
+            <Card key={i} className="p-2.5">
+              <div className="skeleton h-4 rounded-sm w-1/2 mb-1" />
+              <div className="skeleton h-3 rounded-sm w-3/4" />
+            </Card>
+          ))
+          : !data?.length
+            ? (
+              <div className="py-8 text-center text-text-dim text-body font-body">
+                No organisms yet. Add one above.
+              </div>
+            )
+            : data.map(o => (
+              <Card key={o.id} className="p-2.5 flex flex-col gap-1">
+                <div className="font-mono text-caption text-text">
+                  <span className="text-text-dim italic">{o.genus.charAt(0)}.</span>{' '}
+                  <span className="font-semibold">{o.species}</span>
+                  {o.strain && <span className="text-text-secondary ml-1">{o.strain}</span>}
+                </div>
+                {o.commonName && <Text variant="caption">{o.commonName}</Text>}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {o.referenceGenome && <Badge variant="count" color="dim">{o.referenceGenome}</Badge>}
+                  {o.ncbiTaxId && <Text variant="caption">NCBI: {o.ncbiTaxId}</Text>}
+                  <Text variant="caption">{o.experimentCount} exp</Text>
+                  <Text variant="caption">{o.fileCount} files</Text>
+                  <Text variant="caption">{formatRelativeTime(o.createdAt)}</Text>
+                </div>
+              </Card>
+            ))
+        }
       </div>
     </div>
   );

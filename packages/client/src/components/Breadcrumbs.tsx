@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Text } from '../ui';
 
@@ -13,6 +14,7 @@ const ROUTE_LABELS: Record<string, string> = {
 
 export default function Breadcrumbs() {
   const { pathname } = useLocation();
+  const [expanded, setExpanded] = useState(false);
   const segments = pathname.split('/').filter(Boolean);
 
   if (segments.length === 0) return null;
@@ -30,7 +32,6 @@ export default function Breadcrumbs() {
     if (knownLabel) {
       crumbs.push({ label: knownLabel, to: path });
     } else {
-      // Param-based segment — label it with context from previous segment
       const prev = segments[i - 1];
       const context = prev === 'projects' ? 'Project'
         : prev === 'experiments' ? 'Experiment'
@@ -40,23 +41,52 @@ export default function Breadcrumbs() {
     }
   }
 
+  // On mobile (handled via CSS): show first, "...", and last when >2 crumbs
+  const needsTruncation = crumbs.length > 2;
+  const middleCrumbs = needsTruncation ? crumbs.slice(1, -1) : [];
+
   return (
-    <nav className="flex items-center gap-1 px-3 pt-2 pb-0">
-      {crumbs.map((crumb, i) => (
-        <span key={crumb.to} className="flex items-center gap-1">
-          {i > 0 && <Text variant="caption">&gt;</Text>}
-          {i < crumbs.length - 1 ? (
-            <Link
-              to={crumb.to}
-              className="no-underline text-text-dim font-body text-caption hover:text-text transition-colors duration-fast"
-            >
-              {crumb.label}
-            </Link>
-          ) : (
-            <Text variant="caption" className="text-text">{crumb.label}</Text>
-          )}
+    <nav className="flex items-center gap-1 px-2 md:px-3 pt-2 pb-0 min-w-0">
+      {crumbs.map((crumb, i) => {
+        const isFirst = i === 0;
+        const isLast = i === crumbs.length - 1;
+        const isMiddle = !isFirst && !isLast;
+
+        // On mobile: hide middle crumbs unless expanded
+        const mobileHidden = isMiddle && needsTruncation && !expanded;
+
+        return (
+          <span
+            key={crumb.to}
+            className={`flex items-center gap-1 min-w-0 ${mobileHidden ? 'hidden md:flex' : 'flex'}`}
+          >
+            {i > 0 && <Text variant="caption" className={mobileHidden ? 'hidden md:inline' : ''}>&gt;</Text>}
+            {isLast ? (
+              <Text variant="caption" className="text-text truncate">{crumb.label}</Text>
+            ) : (
+              <Link
+                to={crumb.to}
+                className="no-underline text-text-dim font-body text-caption hover:text-text transition-colors duration-fast whitespace-nowrap"
+              >
+                {crumb.label}
+              </Link>
+            )}
+          </span>
+        );
+      })}
+
+      {/* Mobile "..." button — only shown when middle crumbs are truncated */}
+      {needsTruncation && !expanded && (
+        <span className="flex items-center gap-1 md:hidden">
+          <Text variant="caption">&gt;</Text>
+          <button
+            onClick={() => setExpanded(true)}
+            className="bg-transparent border-none cursor-pointer text-text-dim hover:text-text font-body text-caption px-0.5 min-h-5.5"
+          >
+            ...
+          </button>
         </span>
-      ))}
+      )}
     </nav>
   );
 }

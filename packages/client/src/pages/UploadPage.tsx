@@ -26,7 +26,7 @@ function DropZone({ onFiles }: DropZoneProps) {
       onDragLeave={() => setDragging(false)}
       onDrop={handleDrop}
       onClick={() => inputRef.current?.click()}
-      className="relative border-2 border-dashed rounded-lg p-8 flex flex-col items-center gap-3 cursor-pointer transition-colors duration-fast"
+      className="relative border-2 border-dashed rounded-lg p-4 md:p-8 flex flex-col items-center gap-2 md:gap-3 cursor-pointer transition-colors duration-fast"
       style={{
         borderColor: dragging ? 'var(--color-accent)' : 'var(--color-border)',
         background:  dragging ? 'oklch(0.70 0.18 168 / 0.06)' : 'var(--color-surface)',
@@ -53,8 +53,11 @@ function DropZone({ onFiles }: DropZoneProps) {
         <Text variant="secondary">
           Drop genomic files here, or <span style={{ color: 'var(--color-accent)' }}>browse</span>
         </Text>
-        <Text variant="caption">
+        <Text variant="caption" as="div" className="hidden sm:block">
           FASTQ, BAM, CRAM, VCF, BED, GFF, FASTA, BigWig · No file size limit
+        </Text>
+        <Text variant="caption" as="div" className="sm:hidden">
+          FASTQ, BAM, VCF, BED, FASTA · No limit
         </Text>
       </div>
 
@@ -96,7 +99,7 @@ function QueueItem({ file, projectId, organismId, experimentId, description, tag
   return (
     <div className="flex flex-col gap-2 p-2.5 bg-surface border border-border rounded-md">
       {/* Row 1: identity */}
-      <div className="flex items-center gap-2.5">
+      <div className="flex items-center gap-2">
         <div className="font-mono text-micro px-1.5 py-0.5 rounded-sm shrink-0 font-bold"
           style={{ background: meta.bg, color: meta.color }}>
           {meta.label}
@@ -105,27 +108,27 @@ function QueueItem({ file, projectId, organismId, experimentId, description, tag
           <div className="font-mono text-caption text-text truncate">{file.name}</div>
           <div className="text-micro text-text-dim">{formatBytes(file.size)} · {meta.description}</div>
         </div>
-        <Button intent="ghost" size="xs" onClick={onRemove}>×</Button>
+        <Button intent="ghost" size="sm" onClick={onRemove}>×</Button>
       </div>
 
-      {/* Row 2: assignment selects */}
-      <div className="flex gap-2 flex-wrap">
-        <Select variant="surface" size="sm" value={projectId} onChange={e => onChange({ projectId: e.target.value })} className="w-40">
+      {/* Row 2: assignment selects — stack on mobile */}
+      <div className="flex flex-col sm:flex-row gap-2">
+        <Select variant="surface" size="sm" value={projectId} onChange={e => onChange({ projectId: e.target.value })} className="w-full sm:w-40">
           <option value="">— project —</option>
           {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         </Select>
-        <Select variant="surface" size="sm" value={organismId} onChange={e => onChange({ organismId: e.target.value })} className="w-40">
+        <Select variant="surface" size="sm" value={organismId} onChange={e => onChange({ organismId: e.target.value })} className="w-full sm:w-40">
           <option value="">— organism —</option>
           {organisms.map(o => <option key={o.id} value={o.id}>{o.displayName}</option>)}
         </Select>
-        <Select variant="surface" size="sm" value={experimentId} onChange={e => onChange({ experimentId: e.target.value })} className="w-40">
+        <Select variant="surface" size="sm" value={experimentId} onChange={e => onChange({ experimentId: e.target.value })} className="w-full sm:w-40">
           <option value="">— experiment —</option>
           {experiments.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
         </Select>
       </div>
 
-      {/* Row 3: description + tags */}
-      <div className="flex gap-2">
+      {/* Row 3: description + tags — stack on mobile */}
+      <div className="flex flex-col sm:flex-row gap-2">
         <Input
           variant="surface" size="sm"
           placeholder="Description (optional)"
@@ -138,7 +141,7 @@ function QueueItem({ file, projectId, organismId, experimentId, description, tag
           placeholder="Tags (comma-separated)"
           value={tags}
           onChange={e => onChange({ tags: e.target.value })}
-          className="w-48"
+          className="w-full sm:w-48"
         />
       </div>
     </div>
@@ -167,7 +170,7 @@ function ProgressBar({ filename, loaded, total, status, error }: ProgressBarProp
           style={{ background: meta.bg, color: meta.color }}>
           {meta.label}
         </div>
-        <span className="font-mono text-caption text-text flex-1 truncate">{filename}</span>
+        <span className="font-mono text-caption text-text flex-1 truncate min-w-0">{filename}</span>
         <span className="font-mono text-micro text-text-dim tabular-nums shrink-0">
           {status === 'done' ? '✓' : status === 'error' ? '✗' : `${pct}%`}
         </span>
@@ -246,7 +249,7 @@ export default function UploadPage() {
   const errorUploads   = [...uploads.values()].filter(u => u.status === 'error');
 
   return (
-    <div className="flex flex-col gap-3 p-3 max-w-3xl mx-auto w-full">
+    <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 max-w-3xl mx-auto w-full">
       <div>
         <Heading level="heading">Upload Files</Heading>
         <Text variant="caption">Files are uploaded directly to S3 via multipart presigned URLs</Text>
@@ -257,20 +260,23 @@ export default function UploadPage() {
       {/* Queue */}
       {queue.length > 0 && (
         <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
+          {/* Queue header — stack on mobile */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
             <Text variant="overline">Queued ({queue.length})</Text>
             <div className="flex-1" />
-            <span className="font-body text-caption text-text-secondary">Default project:</span>
-            <Select
-              variant="surface"
-              size="sm"
-              value={defaultPrj}
-              onChange={e => setDefaultPrj(e.target.value)}
-              className="w-44"
-            >
-              <option value="">— none —</option>
-              {projects?.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </Select>
+            <div className="flex items-center gap-2">
+              <span className="font-body text-caption text-text-secondary shrink-0">Default project:</span>
+              <Select
+                variant="surface"
+                size="sm"
+                value={defaultPrj}
+                onChange={e => setDefaultPrj(e.target.value)}
+                className="w-full sm:w-44"
+              >
+                <option value="">— none —</option>
+                {projects?.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </Select>
+            </div>
           </div>
 
           <div className="flex flex-col gap-1">

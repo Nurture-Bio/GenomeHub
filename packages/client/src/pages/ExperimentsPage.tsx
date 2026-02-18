@@ -5,7 +5,7 @@ import {
 } from '../hooks/useGenomicQueries';
 import { TECHNIQUE_META, TECHNIQUE_LIST, type Technique } from '../lib/techniques';
 import { formatRelativeTime } from '../lib/formats';
-import { Button, Badge, Input, Text, Heading, Select } from '../ui';
+import { Button, Badge, Input, Text, Heading, Select, Card } from '../ui';
 
 // ── Technique pill ───────────────────────────────────────
 
@@ -72,7 +72,7 @@ export default function ExperimentsPage() {
   };
 
   return (
-    <div className="flex flex-col gap-3 p-3 h-full min-h-0">
+    <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 h-full min-h-0">
       {/* Header */}
       <div className="shrink-0">
         <Heading level="heading">Experiments</Heading>
@@ -81,45 +81,45 @@ export default function ExperimentsPage() {
         </Text>
       </div>
 
-      {/* Create form */}
+      {/* Create form — wraps, full-width inputs on mobile */}
       <div className="flex items-end gap-2 shrink-0 flex-wrap bg-surface border border-border rounded-md p-2.5">
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-0.5 w-full sm:w-auto">
           <Text variant="overline">Name</Text>
-          <Input variant="surface" size="sm" placeholder="Esa1 depletion timecourse" value={name} onChange={e => setName(e.target.value)} className="w-52" />
+          <Input variant="surface" size="sm" placeholder="Esa1 depletion timecourse" value={name} onChange={e => setName(e.target.value)} className="w-full sm:w-52" />
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-0.5 w-[calc(50%-4px)] sm:w-auto">
           <Text variant="overline">Technique</Text>
-          <Select variant="surface" size="sm" value={technique} onChange={e => setTechnique(e.target.value)} className="w-36">
+          <Select variant="surface" size="sm" value={technique} onChange={e => setTechnique(e.target.value)} className="w-full sm:w-36">
             <option value="">-- select --</option>
             {TECHNIQUE_LIST.map(t => (
               <option key={t} value={t}>{TECHNIQUE_META[t].label}</option>
             ))}
           </Select>
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-0.5 w-[calc(50%-4px)] sm:w-auto">
           <Text variant="overline">Project</Text>
-          <Select variant="surface" size="sm" value={projectId} onChange={e => setProjectId(e.target.value)} className="w-36">
+          <Select variant="surface" size="sm" value={projectId} onChange={e => setProjectId(e.target.value)} className="w-full sm:w-36">
             <option value="">-- select --</option>
             {projects?.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </Select>
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-0.5 w-[calc(50%-4px)] sm:w-auto">
           <Text variant="overline">Organism</Text>
-          <Select variant="surface" size="sm" value={organismId} onChange={e => setOrganismId(e.target.value)} className="w-40">
+          <Select variant="surface" size="sm" value={organismId} onChange={e => setOrganismId(e.target.value)} className="w-full sm:w-40">
             <option value="">-- none --</option>
             {organisms?.map(o => <option key={o.id} value={o.id}>{o.displayName}</option>)}
           </Select>
         </div>
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-0.5 w-[calc(50%-4px)] sm:w-auto">
           <Text variant="overline">Date</Text>
-          <Input variant="surface" size="sm" type="date" value={experimentDate} onChange={e => setExperimentDate(e.target.value)} className="w-32" />
+          <Input variant="surface" size="sm" type="date" value={experimentDate} onChange={e => setExperimentDate(e.target.value)} className="w-full sm:w-32" />
         </div>
-        <Button intent="primary" size="sm" pending={pending} onClick={handleCreate} disabled={!name || !technique || !projectId}>
+        <Button intent="primary" size="sm" pending={pending} onClick={handleCreate} disabled={!name || !technique || !projectId} className="w-full sm:w-auto">
           Add
         </Button>
       </div>
 
-      {/* Technique filters */}
+      {/* Technique filters — touch-friendly on mobile */}
       <div className="flex gap-1 flex-wrap shrink-0">
         {TECHNIQUE_FILTERS.map(t => {
           const meta = t === 'all' ? null : TECHNIQUE_META[t as Technique];
@@ -127,7 +127,7 @@ export default function ExperimentsPage() {
             <button
               key={t}
               onClick={() => setTechFilter(t)}
-              className="font-body text-micro px-1.5 py-0.5 rounded-sm border transition-colors duration-fast cursor-pointer"
+              className="font-body text-micro px-1.5 py-1 md:py-0.5 rounded-sm border transition-colors duration-fast cursor-pointer min-h-5.5 md:min-h-0"
               style={{
                 background: techFilter === t
                   ? (meta?.color ?? 'var(--color-accent)')
@@ -142,8 +142,8 @@ export default function ExperimentsPage() {
         })}
       </div>
 
-      {/* Table */}
-      <div className="flex-1 overflow-auto min-h-0 border border-border rounded-md bg-surface">
+      {/* Desktop table */}
+      <div className="hidden md:block flex-1 overflow-auto min-h-0 border border-border rounded-md bg-surface">
         <table className="w-full border-collapse text-left">
           <thead className="sticky top-0 bg-surface-2 z-10">
             <tr className="border-b border-border">
@@ -188,6 +188,39 @@ export default function ExperimentsPage() {
             }
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile cards */}
+      <div className="flex flex-col gap-1.5 md:hidden flex-1 overflow-auto min-h-0">
+        {isLoading
+          ? [...Array(4)].map((_, i) => (
+            <Card key={i} className="p-2.5">
+              <div className="skeleton h-4 rounded-sm w-1/2 mb-1" />
+              <div className="skeleton h-3 rounded-sm w-3/4" />
+            </Card>
+          ))
+          : !filtered.length
+            ? (
+              <div className="py-8 text-center text-text-dim text-body font-body">
+                {techFilter !== 'all' ? 'No experiments match this technique.' : 'No experiments yet. Create one above.'}
+              </div>
+            )
+            : filtered.map(e => (
+              <Card key={e.id} className="p-2.5 flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <TechniquePill technique={e.technique} />
+                  <span className="font-mono text-caption text-text truncate flex-1 min-w-0">{e.name}</span>
+                </div>
+                {e.description && <Text variant="caption" className="truncate">{e.description}</Text>}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {e.organismDisplay && <Text variant="caption" className="italic">{e.organismDisplay}</Text>}
+                  {e.projectName && <Text variant="caption">{e.projectName}</Text>}
+                  <Text variant="caption">{e.fileCount} files</Text>
+                  {e.experimentDate && <Text variant="caption">{e.experimentDate}</Text>}
+                </div>
+              </Card>
+            ))
+        }
       </div>
     </div>
   );
