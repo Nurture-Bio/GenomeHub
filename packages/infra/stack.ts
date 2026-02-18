@@ -191,12 +191,13 @@ export class GenomeHubStack extends cdk.Stack {
 
     // ── CloudFront distribution ────────────────────────────
 
-    // Custom cache policy: no caching (TTL=0), but includes cookies so
-    // CloudFront preserves Set-Cookie headers for session auth.
+    // Custom cache policy: minimal TTL with cookies so CloudFront preserves
+    // Set-Cookie headers for session auth.  Origin sends Cache-Control: no-store
+    // to prevent actual caching.
     const noCacheWithCookies = new cloudfront.CachePolicy(this, 'NoCacheWithCookies', {
       cachePolicyName: `GenomeHub-NoCacheWithCookies-${this.account}`,
       minTtl:     cdk.Duration.seconds(0),
-      maxTtl:     cdk.Duration.seconds(0),
+      maxTtl:     cdk.Duration.seconds(1),
       defaultTtl: cdk.Duration.seconds(0),
       cookieBehavior:      cloudfront.CacheCookieBehavior.all(),
       headerBehavior:      cloudfront.CacheHeaderBehavior.none(),

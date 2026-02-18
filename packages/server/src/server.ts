@@ -33,6 +33,12 @@ const server    = createServer(app);
 app.set('trust proxy', 1);
 app.use(express.json());
 
+// Prevent CloudFront from caching API responses
+app.use('/api', (_req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
+
 // ─── Session ──────────────────────────────────────────────
 
 const PgSession = connectPgSimple(session);
