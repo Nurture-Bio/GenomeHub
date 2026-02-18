@@ -18,7 +18,7 @@ import { OAuth2Client }    from 'google-auth-library';
 import { createServer }    from 'http';
 import path                from 'path';
 import { fileURLToPath }   from 'url';
-import { AppDataSource }   from './app_data.js';
+import { AppDataSource, buildDatabaseUrl } from './app_data.js';
 import { User, Project, Organism, Experiment, GenomicFile } from './entities/index.js';
 import {
   buildS3Key, initiateMultipartUpload, presignPartUrl,
@@ -39,7 +39,7 @@ const PgSession = connectPgSimple(session);
 
 app.use(session({
   store: new PgSession({
-    conString: process.env.DATABASE_URL,
+    conString: buildDatabaseUrl(process.env.DATABASE_URL),
     createTableIfMissing: true,
   }),
   secret: process.env.SESSION_SECRET || 'dev-secret-change-me',

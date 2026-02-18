@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { DataSource } from 'typeorm';
 import { User, Project, Organism, Experiment, GenomicFile } from './entities/index.js';
 
-function buildDatabaseUrl(raw: string | undefined): string | undefined {
+export function buildDatabaseUrl(raw: string | undefined): string | undefined {
   if (!raw) return undefined;
   try {
     const parsed = JSON.parse(raw);
