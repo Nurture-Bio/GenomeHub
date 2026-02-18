@@ -14,6 +14,13 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
+  // Listen for 401s from apiFetch and clear user state
+  useEffect(() => {
+    const handler = () => setUser(null);
+    window.addEventListener('auth:unauthorized', handler);
+    return () => window.removeEventListener('auth:unauthorized', handler);
+  }, []);
+
   const login = useCallback(async (accessToken: string) => {
     const res = await fetch('/api/auth/google', {
       method: 'POST',

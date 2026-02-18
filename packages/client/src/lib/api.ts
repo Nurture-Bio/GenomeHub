@@ -1,13 +1,11 @@
 /**
  * Thin wrapper around fetch() for /api/ calls.
- * On 401, reloads the page so AuthProvider re-checks and shows LoginPage.
+ * On 401, dispatches an event so AuthProvider clears user state and shows LoginPage.
  */
 export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const res = await fetch(input, init);
   if (res.status === 401) {
-    window.location.reload();
-    // Return the response anyway so callers don't hang
-    return res;
+    window.dispatchEvent(new Event('auth:unauthorized'));
   }
   return res;
 }

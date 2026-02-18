@@ -145,7 +145,12 @@ export class GenomeHubStack extends cdk.Stack {
       memoryLimitMiB: 1024,
 
       taskImageOptions: {
-        image: ecs.ContainerImage.fromAsset('../..', { exclude: ['**/cdk.out'] }),   // builds from project root Dockerfile
+        image: ecs.ContainerImage.fromAsset('../..', {
+          exclude: ['**/cdk.out'],
+          buildArgs: {
+            VITE_GOOGLE_CLIENT_ID: '631098657995-b6gm7u609caa7si5h8ep3tj1cf8m9in2.apps.googleusercontent.com',
+          },
+        }),
         containerPort: 3000,
         taskRole,
         logDriver: ecs.LogDrivers.awsLogs({
@@ -153,10 +158,12 @@ export class GenomeHubStack extends cdk.Stack {
           streamPrefix: 'app',
         }),
         environment: {
-          NODE_ENV:    'production',
-          PORT:        '3000',
-          AWS_REGION:  this.region,
-          S3_BUCKET:   bucket.bucketName,
+          NODE_ENV:         'production',
+          PORT:             '3000',
+          AWS_REGION:       this.region,
+          S3_BUCKET:        bucket.bucketName,
+          GOOGLE_CLIENT_ID: '631098657995-b6gm7u609caa7si5h8ep3tj1cf8m9in2.apps.googleusercontent.com',
+          SESSION_SECRET:   'Dgj43XzyZ5cwv1fDfuRUODTLKeDyEtnZTIHrwHa+hSk=',
         },
         secrets: {
           DATABASE_URL: ecs.Secret.fromSecretsManager(db.secret!),
@@ -183,13 +190,26 @@ export class GenomeHubStack extends cdk.Stack {
     });
 
     // ── CloudFront distribution ────────────────────────────
+
+    // Custom cache policy: no caching (TTL=0), but includes cookies so
+    // CloudFront preserves Set-Cookie headers for session auth.
+    const noCacheWithCookies = new cloudfront.CachePolicy(this, 'NoCacheWithCookies', {
+      cachePolicyName: `GenomeHub-NoCacheWithCookies-${this.account}`,
+      minTtl:     cdk.Duration.seconds(0),
+      maxTtl:     cdk.Duration.seconds(0),
+      defaultTtl: cdk.Duration.seconds(0),
+      cookieBehavior:      cloudfront.CacheCookieBehavior.all(),
+      headerBehavior:      cloudfront.CacheHeaderBehavior.none(),
+      queryStringBehavior: cloudfront.CacheQueryStringBehavior.all(),
+    });
+
     const distribution = new cloudfront.Distribution(this, 'Cdn', {
       defaultBehavior: {
         origin:                 new origins.LoadBalancerV2Origin(service.loadBalancer, {
           protocolPolicy: cloudfront.OriginProtocolPolicy.HTTP_ONLY,
         }),
         viewerProtocolPolicy:   cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-        cachePolicy:            cloudfront.CachePolicy.CACHING_DISABLED,  // API responses not cached
+        cachePolicy:            noCacheWithCookies,
         allowedMethods:         cloudfront.AllowedMethods.ALLOW_ALL,
         cachedMethods:          cloudfront.CachedMethods.CACHE_GET_HEAD,
         originRequestPolicy:    cloudfront.OriginRequestPolicy.ALL_VIEWER,
