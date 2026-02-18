@@ -27,6 +27,7 @@ import {
   deleteObject, presignDownloadUrl, headObject,
 } from './lib/s3.js';
 import { detectLinkService } from './lib/link_service.js';
+import { detectFormat } from '@genome-hub/shared';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app       = express();
@@ -906,9 +907,33 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 
 const PORT = parseInt(process.env.PORT ?? '3000');
 
+async function seedExperimentTypes() {
+  const repo = AppDataSource.getRepository(ExperimentType);
+  const count = await repo.count();
+  if (count > 0) return;
+
+  const defaults: { name: string; description: string; defaultTags: string[] }[] = [
+    { name: 'ChIP-seq',      description: 'Chromatin immunoprecipitation sequencing',              defaultTags: ['fastq', 'bam'] },
+    { name: 'ATAC-seq',      description: 'Assay for transposase-accessible chromatin',            defaultTags: ['fastq', 'bam'] },
+    { name: 'RNA-seq',       description: 'Transcriptome sequencing',                              defaultTags: ['fastq', 'bam', 'counts'] },
+    { name: 'MNase-seq',     description: 'Micrococcal nuclease sequencing',                       defaultTags: ['fastq', 'bam'] },
+    { name: 'WGS',           description: 'Whole genome sequencing',                               defaultTags: ['fastq', 'bam', 'vcf'] },
+    { name: 'Tn-seq',        description: 'Transposon insertion sequencing',                       defaultTags: ['fastq', 'bam'] },
+    { name: 'Hi-C',          description: 'Chromosome conformation capture',                       defaultTags: ['fastq', 'pairs', 'cool'] },
+    { name: 'CUT&Tag',       description: 'Cleavage under targets & tagmentation',                 defaultTags: ['fastq', 'bam'] },
+    { name: 'CUT&Run',       description: 'Cleavage under targets & release using nuclease',       defaultTags: ['fastq', 'bam'] },
+    { name: 'CRISPR-screen', description: 'CRISPR genetic screen',                                 defaultTags: ['fastq', 'counts'] },
+    { name: 'Other',         description: 'Other technique',                                       defaultTags: [] },
+  ];
+
+  await repo.save(defaults.map(d => repo.create(d)));
+  console.log(`Seeded ${defaults.length} experiment types`);
+}
+
 async function main() {
   await AppDataSource.initialize();
   await AppDataSource.synchronize();
+  await seedExperimentTypes();
   console.log('Database connected');
 
   server.listen(PORT, () => {
@@ -921,24 +946,3 @@ main().catch(err => {
   process.exit(1);
 });
 
-// ─── Inline format helper (mirrors client lib/formats.ts) ──
-
-function detectFormat(filename: string): string {
-  const lower = filename.toLowerCase();
-  if (lower.endsWith('.fastq') || lower.endsWith('.fastq.gz') ||
-      lower.endsWith('.fq')    || lower.endsWith('.fq.gz'))     return 'fastq';
-  if (lower.endsWith('.bam'))                                    return 'bam';
-  if (lower.endsWith('.cram'))                                   return 'cram';
-  if (lower.endsWith('.vcf') || lower.endsWith('.vcf.gz'))      return 'vcf';
-  if (lower.endsWith('.bcf'))                                    return 'bcf';
-  if (lower.endsWith('.bed') || lower.endsWith('.bed.gz'))      return 'bed';
-  if (lower.endsWith('.gff') || lower.endsWith('.gff3') ||
-      lower.endsWith('.gff.gz'))                                 return 'gff';
-  if (lower.endsWith('.gtf') || lower.endsWith('.gtf.gz'))      return 'gtf';
-  if (lower.endsWith('.fa')  || lower.endsWith('.fasta') ||
-      lower.endsWith('.fa.gz') || lower.endsWith('.fasta.gz'))  return 'fasta';
-  if (lower.endsWith('.sam'))                                    return 'sam';
-  if (lower.endsWith('.bw')  || lower.endsWith('.bigwig'))      return 'bigwig';
-  if (lower.endsWith('.bb')  || lower.endsWith('.bigbed'))      return 'bigbed';
-  return 'other';
-}

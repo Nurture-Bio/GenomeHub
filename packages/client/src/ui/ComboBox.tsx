@@ -24,13 +24,14 @@ export interface ComboBoxProps {
   className?: string;
   disabled?: boolean;
   loading?: boolean;
+  onCreate?: (search: string) => void;
 }
 
 export default function ComboBox({
   items,
   value,
   onValueChange,
-  placeholder = 'Select\u2026',
+  placeholder = '\u2026',
   emptyMessage = 'No results.',
   recentIds,
   size = 'md',
@@ -38,12 +39,15 @@ export default function ComboBox({
   className,
   disabled,
   loading,
+  onCreate,
 }: ComboBoxProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   const selected = items.find(i => i.id === value);
+  const hasExactMatch = items.some(i => i.label.toLowerCase() === search.toLowerCase());
+  const showCreate = onCreate && search.trim() && !hasExactMatch;
 
   // Reset search when popover closes
   useEffect(() => {
@@ -97,7 +101,7 @@ export default function ComboBox({
               <Command.Input
                 value={search}
                 onValueChange={setSearch}
-                placeholder="Search\u2026"
+                placeholder="Filter\u2026"
                 className="w-full bg-transparent border-none outline-none font-body text-caption text-text placeholder:text-text-dim"
               />
             </div>
@@ -140,6 +144,18 @@ export default function ComboBox({
                     ))}
                   </Command.Group>
                 ))
+              )}
+
+              {/* Inline creation option */}
+              {showCreate && (
+                <Command.Item
+                  value={`__create__${search}`}
+                  onSelect={() => { onCreate(search.trim()); setOpen(false); setSearch(''); }}
+                  className="px-2 py-1.5 text-caption font-body cursor-pointer hover:bg-surface-2 transition-colors duration-fast min-h-5.5 flex items-center gap-1 border-t border-border-subtle"
+                  style={{ color: 'var(--color-accent)' }}
+                >
+                  + Create &ldquo;{search.trim()}&rdquo;
+                </Command.Item>
               )}
             </Command.List>
           </Command>

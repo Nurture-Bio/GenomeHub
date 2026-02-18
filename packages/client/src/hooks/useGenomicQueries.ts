@@ -28,18 +28,21 @@ export interface Organism {
 }
 
 export interface Experiment {
-  id:              string;
-  name:            string;
-  description:     string | null;
-  technique:       string;
-  experimentDate:  string | null;
-  createdBy:       string | null;
-  projectId:       string;
-  projectName:     string | null;
-  organismId:      string | null;
-  organismDisplay: string | null;
-  fileCount:       number;
-  createdAt:       string;
+  id:                  string;
+  name:                string;
+  description:         string | null;
+  technique:           string;
+  experimentTypeId:    string | null;
+  experimentTypeName:  string | null;
+  experimentDate:      string | null;
+  createdBy:           string | null;
+  projectId:           string;
+  projectName:         string | null;
+  organismId:          string | null;
+  organismDisplay:     string | null;
+  fileCount:           number;
+  sampleCount?:        number;
+  createdAt:           string;
 }
 
 export interface GenomicFile {
@@ -196,6 +199,33 @@ export function useProjectsQuery() {
   return { data, isLoading, error, refetch };
 }
 
+export function useCreateProjectMutation(onSuccess?: () => void) {
+  const [pending, setPending] = useState(false);
+
+  const createProject = useCallback(async (body: {
+    name: string; description?: string;
+  }) => {
+    setPending(true);
+    try {
+      const r = await apiFetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) throw new Error('Create failed');
+      onSuccess?.();
+      toast.success('Project created');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create project');
+      throw err;
+    } finally {
+      setPending(false);
+    }
+  }, [onSuccess]);
+
+  return { createProject, pending };
+}
+
 // ─── Project tree ─────────────────────────────────────────
 
 export function useProjectTreeQuery(projectId?: string) {
@@ -296,9 +326,9 @@ export function useCreateExperimentMutation(onSuccess?: () => void) {
   const [pending, setPending] = useState(false);
 
   const createExperiment = useCallback(async (body: {
-    name: string; technique: string; projectId: string;
+    name: string; projectId: string;
+    technique?: string; experimentTypeId?: string;
     description?: string; experimentDate?: string; organismId?: string;
-    experimentTypeId?: string;
   }) => {
     setPending(true);
     try {
@@ -340,6 +370,35 @@ export function useExperimentTypesQuery() {
   useEffect(() => { refetch(); }, [refetch]);
 
   return { data, isLoading, error, refetch };
+}
+
+export function useCreateExperimentTypeMutation(onSuccess?: () => void) {
+  const [pending, setPending] = useState(false);
+
+  const createExperimentType = useCallback(async (body: {
+    name: string; description?: string; defaultTags?: string[];
+  }) => {
+    setPending(true);
+    try {
+      const r = await apiFetch('/api/experiment-types', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) throw new Error('Create failed');
+      const data = await r.json() as ExperimentType;
+      onSuccess?.();
+      toast.success('Experiment type created');
+      return data;
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create experiment type');
+      throw err;
+    } finally {
+      setPending(false);
+    }
+  }, [onSuccess]);
+
+  return { createExperimentType, pending };
 }
 
 // ─── Samples ──────────────────────────────────────────────

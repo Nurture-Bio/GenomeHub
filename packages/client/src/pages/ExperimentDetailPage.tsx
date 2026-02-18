@@ -1,28 +1,24 @@
-import { useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { useProjectTreeQuery } from '../hooks/useGenomicQueries';
-import { TECHNIQUE_META, type Technique } from '../lib/techniques';
-import { Heading, Text, Card, Badge } from '../ui';
+import { useProjectTreeQuery, useCreateSampleMutation } from '../hooks/useGenomicQueries';
+import { TechniquePill } from '../lib/techniqueColors';
+import { Heading, Text, Card, Badge, Input, Button } from '../ui';
 import LinksList from '../components/LinksList';
 import { useAppStore } from '../stores/useAppStore';
-
-function TechniquePill({ technique }: { technique: string }) {
-  const meta = TECHNIQUE_META[technique as Technique] ?? TECHNIQUE_META.other;
-  return (
-    <span className="font-mono text-micro px-1.5 py-0.5 rounded-sm inline-block"
-      style={{ background: meta.bg, color: meta.color }}>
-      {meta.label}
-    </span>
-  );
-}
 
 export default function ExperimentDetailPage() {
   const { projectId, experimentId } = useParams<{
     projectId: string;
     experimentId: string;
   }>();
-  const { data: tree, isLoading } = useProjectTreeQuery(projectId);
+  const { data: tree, isLoading, refetch } = useProjectTreeQuery(projectId);
+  const { createSample, pending } = useCreateSampleMutation(refetch);
   const setBreadcrumbLabel = useAppStore(s => s.setBreadcrumbLabel);
+
+  // Create sample form state
+  const [name, setName] = useState('');
+  const [condition, setCondition] = useState('');
+  const [replicate, setReplicate] = useState('');
 
   const experiment = useMemo(() =>
     tree?.experiments.find(e => e.id === experimentId),
@@ -33,6 +29,17 @@ export default function ExperimentDetailPage() {
     if (tree && projectId) setBreadcrumbLabel(projectId, tree.name);
     if (experiment && experimentId) setBreadcrumbLabel(experimentId, experiment.name);
   }, [tree, experiment, projectId, experimentId, setBreadcrumbLabel]);
+
+  const handleCreate = async () => {
+    if (!name || !experimentId) return;
+    await createSample({
+      experimentId,
+      name,
+      condition: condition || undefined,
+      replicate: replicate ? Number(replicate) : undefined,
+    });
+    setName(''); setCondition(''); setReplicate('');
+  };
 
   if (isLoading) {
     return (
@@ -62,9 +69,8 @@ export default function ExperimentDetailPage() {
       {/* Header */}
       <div>
         <div className="flex items-center gap-2 mb-1">
-          {experiment.technique && <TechniquePill technique={experiment.technique} />}
-          {experiment.experimentType && (
-            <Badge variant="filter">{experiment.experimentType.name}</Badge>
+          {(experiment.experimentType?.name || experiment.technique) && (
+            <TechniquePill name={experiment.experimentType?.name ?? experiment.technique!} />
           )}
           <Badge variant="status" color={
             experiment.status === 'active' ? 'green'
@@ -83,8 +89,24 @@ export default function ExperimentDetailPage() {
         </div>
       </div>
 
-      {/* Links */}
-      <LinksList parentType="experiment" parentId={experimentId!} />
+      {/* Add Sample form */}
+      <div className="flex items-end gap-2 flex-wrap bg-surface border border-border rounded-md p-2.5">
+        <div className="flex flex-col gap-0.5 w-full sm:w-auto">
+          <Text variant="overline">Name</Text>
+          <Input variant="surface" size="sm" placeholder="Sample name" value={name} onChange={e => setName(e.target.value)} className="w-full sm:w-52" />
+        </div>
+        <div className="flex flex-col gap-0.5 w-[calc(50%-4px)] sm:w-auto">
+          <Text variant="overline">Condition</Text>
+          <Input variant="surface" size="sm" placeholder="e.g. treated" value={condition} onChange={e => setCondition(e.target.value)} className="w-full sm:w-36" />
+        </div>
+        <div className="flex flex-col gap-0.5 w-[calc(50%-4px)] sm:w-auto">
+          <Text variant="overline">Replicate</Text>
+          <Input variant="surface" size="sm" type="number" placeholder="#" value={replicate} onChange={e => setReplicate(e.target.value)} className="w-full sm:w-20" />
+        </div>
+        <Button intent="primary" size="sm" pending={pending} onClick={handleCreate} disabled={!name} className="w-full sm:w-auto">
+          Add Sample
+        </Button>
+      </div>
 
       {/* Samples grid */}
       <div>
@@ -113,6 +135,9 @@ export default function ExperimentDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Links */}
+      <LinksList parentType="experiment" parentId={experimentId!} />
     </div>
   );
 }

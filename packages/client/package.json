@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@genome-hub/shared": "*",
     "@radix-ui/react-popover": "^1.1.15",
     "@react-oauth/google": "^0.13.4",
     "class-variance-authority": "^0.7.0",

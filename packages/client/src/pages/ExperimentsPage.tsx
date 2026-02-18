@@ -1,23 +1,12 @@
 import { useState, useMemo } from 'react';
 import {
   useExperimentsQuery, useCreateExperimentMutation,
+  useExperimentTypesQuery,
 } from '../hooks/useGenomicQueries';
-import { TECHNIQUE_META, TECHNIQUE_LIST, type Technique } from '../lib/techniques';
+import { techniqueColor, TechniquePill } from '../lib/techniqueColors';
 import { formatRelativeTime } from '../lib/formats';
 import { Button, Badge, Input, Text, Heading, Card } from '../ui';
 import { ExperimentTypePicker, ProjectPicker, OrganismPicker } from '../ui';
-
-// ── Technique pill ───────────────────────────────────────
-
-function TechniquePill({ technique }: { technique: string }) {
-  const meta = TECHNIQUE_META[technique as Technique] ?? TECHNIQUE_META.other;
-  return (
-    <span className="font-mono text-micro px-1.5 py-0.5 rounded-sm inline-block"
-      style={{ background: meta.bg, color: meta.color }}>
-      {meta.label}
-    </span>
-  );
-}
 
 // ── Skeleton row ─────────────────────────────────────────
 
@@ -35,39 +24,43 @@ function SkeletonRow() {
 
 // ── ExperimentsPage ──────────────────────────────────────
 
-const TECHNIQUE_FILTERS = ['all', ...TECHNIQUE_LIST] as const;
-
 export default function ExperimentsPage() {
   const { data, isLoading, refetch } = useExperimentsQuery();
   const { createExperiment, pending } = useCreateExperimentMutation(refetch);
+  const { data: experimentTypes } = useExperimentTypesQuery();
 
   const [techFilter, setTechFilter] = useState<string>('all');
 
   // Create form state
-  const [name,           setName]           = useState('');
-  const [technique,      setTechnique]      = useState<string>('');
-  const [projectId,      setProjectId]      = useState('');
-  const [organismId,     setOrganismId]     = useState('');
-  const [description,    setDescription]    = useState('');
-  const [experimentDate, setExperimentDate] = useState('');
+  const [name,             setName]             = useState('');
+  const [experimentTypeId, setExperimentTypeId] = useState('');
+  const [projectId,        setProjectId]        = useState('');
+  const [organismId,       setOrganismId]       = useState('');
+  const [description,      setDescription]      = useState('');
+  const [experimentDate,   setExperimentDate]   = useState('');
 
   const filtered = useMemo(() => {
     if (!data) return [];
     if (techFilter === 'all') return data;
-    return data.filter(e => e.technique === techFilter);
+    return data.filter(e => e.experimentTypeName === techFilter);
   }, [data, techFilter]);
 
   const handleCreate = async () => {
-    if (!name || !technique || !projectId) return;
+    if (!name || !experimentTypeId || !projectId) return;
     await createExperiment({
-      name, technique, projectId,
+      name, projectId, experimentTypeId,
       description: description || undefined,
       experimentDate: experimentDate || undefined,
       organismId: organismId || undefined,
     });
-    setName(''); setTechnique(''); setProjectId('');
+    setName(''); setExperimentTypeId(''); setProjectId('');
     setOrganismId(''); setDescription(''); setExperimentDate('');
   };
+
+  // Build filter list from DB experiment types
+  const techniqueFilters = useMemo(() => {
+    return ['all', ...(experimentTypes ?? []).map(t => t.name)];
+  }, [experimentTypes]);
 
   return (
     <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 h-full min-h-0">
@@ -83,14 +76,13 @@ export default function ExperimentsPage() {
       <div className="flex items-end gap-2 shrink-0 flex-wrap bg-surface border border-border rounded-md p-2.5">
         <div className="flex flex-col gap-0.5 w-full sm:w-auto">
           <Text variant="overline">Name</Text>
-          <Input variant="surface" size="sm" placeholder="Esa1 depletion timecourse" value={name} onChange={e => setName(e.target.value)} className="w-full sm:w-52" />
+          <Input variant="surface" size="sm" placeholder="Name" value={name} onChange={e => setName(e.target.value)} className="w-full sm:w-52" />
         </div>
         <div className="flex flex-col gap-0.5 w-[calc(50%-4px)] sm:w-auto">
           <Text variant="overline">Technique</Text>
           <ExperimentTypePicker
-            value={technique}
-            onValueChange={setTechnique}
-            placeholder="-- select --"
+            value={experimentTypeId}
+            onValueChange={setExperimentTypeId}
             variant="surface"
             size="sm"
             className="w-full sm:w-36"
@@ -101,7 +93,6 @@ export default function ExperimentsPage() {
           <ProjectPicker
             value={projectId}
             onValueChange={setProjectId}
-            placeholder="-- select --"
             variant="surface"
             size="sm"
             className="w-full sm:w-36"
@@ -112,25 +103,28 @@ export default function ExperimentsPage() {
           <OrganismPicker
             value={organismId}
             onValueChange={setOrganismId}
-            placeholder="-- none --"
             variant="surface"
             size="sm"
             className="w-full sm:w-40"
           />
         </div>
+        <div className="flex flex-col gap-0.5 w-full sm:w-auto">
+          <Text variant="overline">Description</Text>
+          <Input variant="surface" size="sm" placeholder="Description" value={description} onChange={e => setDescription(e.target.value)} className="w-full sm:w-52" />
+        </div>
         <div className="flex flex-col gap-0.5 w-[calc(50%-4px)] sm:w-auto">
           <Text variant="overline">Date</Text>
           <Input variant="surface" size="sm" type="date" value={experimentDate} onChange={e => setExperimentDate(e.target.value)} className="w-full sm:w-32" />
         </div>
-        <Button intent="primary" size="sm" pending={pending} onClick={handleCreate} disabled={!name || !technique || !projectId} className="w-full sm:w-auto">
+        <Button intent="primary" size="sm" pending={pending} onClick={handleCreate} disabled={!name || !experimentTypeId || !projectId} className="w-full sm:w-auto">
           Add
         </Button>
       </div>
 
       {/* Technique filters — touch-friendly on mobile */}
       <div className="flex gap-1 flex-wrap shrink-0">
-        {TECHNIQUE_FILTERS.map(t => {
-          const meta = t === 'all' ? null : TECHNIQUE_META[t as Technique];
+        {techniqueFilters.map(t => {
+          const colors = t === 'all' ? null : techniqueColor(t);
           return (
             <button
               key={t}
@@ -138,13 +132,13 @@ export default function ExperimentsPage() {
               className="font-body text-micro px-1.5 py-1 md:py-0.5 rounded-sm border transition-colors duration-fast cursor-pointer min-h-5.5 md:min-h-0"
               style={{
                 background: techFilter === t
-                  ? (meta?.color ?? 'var(--color-accent)')
+                  ? (colors?.color ?? 'var(--color-accent)')
                   : 'var(--color-surface-2)',
                 color: techFilter === t ? 'var(--color-bg)' : 'var(--color-text-secondary)',
                 borderColor: techFilter === t ? 'transparent' : 'var(--color-border)',
               }}
             >
-              {t === 'all' ? 'All' : meta?.label ?? t}
+              {t === 'all' ? 'All' : t}
             </button>
           );
         })}
@@ -179,14 +173,14 @@ export default function ExperimentsPage() {
                       <div className="font-mono text-caption text-text">{e.name}</div>
                       {e.description && <div className="text-micro text-text-dim truncate max-w-xs">{e.description}</div>}
                     </td>
-                    <td className="py-1.5 pr-3"><TechniquePill technique={e.technique} /></td>
+                    <td className="py-1.5 pr-3"><TechniquePill name={e.experimentTypeName ?? e.technique ?? 'Other'} /></td>
                     <td className="py-1.5 pr-3 text-caption text-text-secondary italic">
-                      {e.organismDisplay ?? '—'}
+                      {e.organismDisplay ?? '\u2014'}
                     </td>
-                    <td className="py-1.5 pr-3 text-caption text-text-secondary">{e.projectName ?? '—'}</td>
-                    <td className="py-1.5 pr-3 text-caption text-text-dim">{e.createdBy ?? '—'}</td>
+                    <td className="py-1.5 pr-3 text-caption text-text-secondary">{e.projectName ?? '\u2014'}</td>
+                    <td className="py-1.5 pr-3 text-caption text-text-dim">{e.createdBy ?? '\u2014'}</td>
                     <td className="py-1.5 pr-3 text-caption text-text-dim whitespace-nowrap">
-                      {e.experimentDate ?? '—'}
+                      {e.experimentDate ?? '\u2014'}
                     </td>
                     <td className="py-1.5 pr-3 font-mono text-caption tabular-nums text-text-secondary">
                       {e.fileCount}
@@ -216,7 +210,7 @@ export default function ExperimentsPage() {
             : filtered.map(e => (
               <Card key={e.id} className="p-2.5 flex flex-col gap-1">
                 <div className="flex items-center gap-2">
-                  <TechniquePill technique={e.technique} />
+                  <TechniquePill name={e.experimentTypeName ?? e.technique ?? 'Other'} />
                   <span className="font-mono text-caption text-text truncate flex-1 min-w-0">{e.name}</span>
                 </div>
                 {e.description && <Text variant="caption" className="truncate">{e.description}</Text>}

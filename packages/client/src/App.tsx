@@ -9,6 +9,7 @@ import DashboardPage        from './pages/DashboardPage';
 import FilesPage            from './pages/FilesPage';
 import UploadPage           from './pages/UploadPage';
 import OrganismsPage        from './pages/OrganismsPage';
+import ProjectsPage         from './pages/ProjectsPage';
 import ExperimentsPage      from './pages/ExperimentsPage';
 import ProjectDetailPage    from './pages/ProjectDetailPage';
 import ExperimentDetailPage from './pages/ExperimentDetailPage';
@@ -58,6 +59,12 @@ const icons: Record<string, ReactNode> = {
       <path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3" />
     </svg>
   ),
+  projects: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round">
+      <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
+    </svg>
+  ),
   organisms: (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
       strokeWidth="2" strokeLinecap="round">
@@ -77,6 +84,7 @@ const icons: Record<string, ReactNode> = {
 
 const NAV_ITEMS: { to: string; label: string; icon: string; end?: boolean }[] = [
   { to: '/',            label: 'Dashboard',   icon: 'dashboard', end: true },
+  { to: '/projects',    label: 'Projects',    icon: 'projects' },
   { to: '/organisms',   label: 'Organisms',   icon: 'organisms' },
   { to: '/experiments', label: 'Experiments', icon: 'experiments' },
   { to: '/files',       label: 'Files',       icon: 'files' },
@@ -232,6 +240,7 @@ export default function App() {
         <Breadcrumbs />
         <Routes>
           <Route path="/" element={<PageErrorBoundary><DashboardPage /></PageErrorBoundary>} />
+          <Route path="/projects" element={<PageErrorBoundary><ProjectsPage /></PageErrorBoundary>} />
           <Route path="/organisms" element={<PageErrorBoundary><OrganismsPage /></PageErrorBoundary>} />
           <Route path="/experiments" element={<PageErrorBoundary><ExperimentsPage /></PageErrorBoundary>} />
           <Route path="/files" element={<PageErrorBoundary><FilesPage /></PageErrorBoundary>} />

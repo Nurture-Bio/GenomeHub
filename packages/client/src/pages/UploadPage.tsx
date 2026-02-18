@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useMemo } from 'react';
-import { useMultipartUpload, useProjectsQuery, useOrganismsQuery, useExperimentsQuery } from '../hooks/useGenomicQueries';
+import { useMultipartUpload, useProjectsQuery, useOrganismsQuery, useExperimentsQuery, useExperimentTypesQuery } from '../hooks/useGenomicQueries';
+import type { Experiment, ExperimentType } from '../hooks/useGenomicQueries';
 import { detectFormat, FORMAT_META, formatBytes } from '../lib/formats';
 import { Button, Badge, Text, Heading, Input, ComboBox } from '../ui';
 import { ProjectPicker, SamplePicker } from '../ui';
@@ -56,10 +57,10 @@ function DropZone({ onFiles }: DropZoneProps) {
           Drop genomic files here, or <span style={{ color: 'var(--color-accent)' }}>browse</span>
         </Text>
         <Text variant="caption" as="div" className="hidden sm:block">
-          FASTQ, BAM, CRAM, VCF, BED, GFF, FASTA, BigWig · No file size limit
+          FASTQ, BAM, CRAM, VCF, BED, GFF, FASTA, H5AD, Cool, Parquet &amp; more · No file size limit
         </Text>
         <Text variant="caption" as="div" className="sm:hidden">
-          FASTQ, BAM, VCF, BED, FASTA · No limit
+          Any genomic file format · No limit
         </Text>
       </div>
 
@@ -68,7 +69,6 @@ function DropZone({ onFiles }: DropZoneProps) {
         type="file"
         multiple
         className="hidden"
-        accept=".fastq,.fastq.gz,.fq,.fq.gz,.bam,.cram,.vcf,.vcf.gz,.bcf,.bed,.bed.gz,.gff,.gff3,.gtf,.fa,.fasta,.fa.gz,.fasta.gz,.sam,.bw,.bigwig,.bb,.bigbed"
         onChange={e => {
           const files = Array.from(e.target.files ?? []);
           if (files.length) onFiles(files);
@@ -120,7 +120,7 @@ function QueueItem({ file, projectId, organismId, experimentId, sampleId, descri
           items={projectItems}
           value={projectId}
           onValueChange={v => onChange({ projectId: v })}
-          placeholder="— project —"
+          placeholder="Project"
           variant="surface"
           size="sm"
           className="w-full sm:w-40"
@@ -129,7 +129,7 @@ function QueueItem({ file, projectId, organismId, experimentId, sampleId, descri
           items={organismItems}
           value={organismId}
           onValueChange={v => onChange({ organismId: v })}
-          placeholder="— organism —"
+          placeholder="Organism"
           variant="surface"
           size="sm"
           className="w-full sm:w-40"
@@ -138,7 +138,7 @@ function QueueItem({ file, projectId, organismId, experimentId, sampleId, descri
           items={experimentItems}
           value={experimentId}
           onValueChange={v => onChange({ experimentId: v, sampleId: '' })}
-          placeholder="— experiment —"
+          placeholder="Experiment"
           variant="surface"
           size="sm"
           className="w-full sm:w-40"
@@ -148,7 +148,7 @@ function QueueItem({ file, projectId, organismId, experimentId, sampleId, descri
             value={sampleId}
             onValueChange={v => onChange({ sampleId: v })}
             experimentId={experimentId}
-            placeholder="— sample —"
+            placeholder="Sample"
             variant="surface"
             size="sm"
             className="w-full sm:w-40"
@@ -236,6 +236,7 @@ export default function UploadPage() {
   const { data: projects } = useProjectsQuery();
   const { data: organisms } = useOrganismsQuery();
   const { data: experiments } = useExperimentsQuery();
+  const { data: experimentTypes } = useExperimentTypesQuery();
   const { uploads, upload, clearDone } = useMultipartUpload();
 
   // Pre-map items for ComboBox (avoids N duplicate mappings in QueueItem)
@@ -251,6 +252,21 @@ export default function UploadPage() {
     (experiments ?? []).map(e => ({ id: e.id, label: e.name, group: e.projectName ?? undefined })),
     [experiments],
   );
+
+  // Build lookup: experimentId → defaultTags from its experiment type
+  const suggestedTagsMap = useMemo(() => {
+    const map = new Map<string, string[]>();
+    if (!experiments || !experimentTypes) return map;
+    const typeMap = new Map<string, ExperimentType>();
+    for (const et of experimentTypes) typeMap.set(et.id, et);
+    for (const exp of experiments) {
+      if (exp.experimentTypeId) {
+        const et = typeMap.get(exp.experimentTypeId);
+        if (et?.defaultTags?.length) map.set(exp.id, et.defaultTags);
+      }
+    }
+    return map;
+  }, [experiments, experimentTypes]);
 
   type QueueEntry = { file: File; projectId: string; organismId: string; experimentId: string; sampleId: string; tags: string; description: string };
   const [queue,      setQueue]      = useState<QueueEntry[]>([]);
@@ -268,7 +284,16 @@ export default function UploadPage() {
     setQueue(prev => prev.filter((_, i) => i !== idx));
 
   const updateQueueItem = (idx: number, patch: Partial<QueueEntry>) =>
-    setQueue(prev => prev.map((e, i) => i === idx ? { ...e, ...patch } : e));
+    setQueue(prev => prev.map((e, i) => {
+      if (i !== idx) return e;
+      const updated = { ...e, ...patch };
+      // Auto-suggest tags when experiment changes and tags are empty
+      if (patch.experimentId && patch.experimentId !== e.experimentId && !e.tags) {
+        const suggested = suggestedTagsMap.get(patch.experimentId);
+        if (suggested?.length) updated.tags = suggested.join(', ');
+      }
+      return updated;
+    }));
 
   const startUploads = async () => {
     const ready = queue.filter(e => e.projectId);
@@ -313,7 +338,7 @@ export default function UploadPage() {
               <ProjectPicker
                 value={defaultPrj}
                 onValueChange={setDefaultPrj}
-                placeholder="— none —"
+                placeholder="Project"
                 variant="surface"
                 size="sm"
                 className="w-full sm:w-44"

@@ -80,9 +80,6 @@ export default function SampleDetailPage() {
         </div>
       )}
 
-      {/* Links */}
-      <LinksList parentType="sample" parentId={sampleId!} />
-
       {/* Files */}
       <div>
         <Text variant="overline" className="mb-1.5 block">Files</Text>
@@ -102,6 +99,9 @@ export default function SampleDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Links */}
+      <LinksList parentType="sample" parentId={sampleId!} />
     </div>
   );
 }

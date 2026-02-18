@@ -1,29 +1,38 @@
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { useProjectTreeQuery } from '../hooks/useGenomicQueries';
-import { TECHNIQUE_META, type Technique } from '../lib/techniques';
-import { Heading, Text, Card, Badge } from '../ui';
+import {
+  useProjectTreeQuery, useCreateExperimentMutation,
+  useExperimentTypesQuery,
+} from '../hooks/useGenomicQueries';
+import { TechniquePill } from '../lib/techniqueColors';
+import { Heading, Text, Card, Badge, Input, Button } from '../ui';
+import { ExperimentTypePicker, OrganismPicker } from '../ui';
 import LinksList from '../components/LinksList';
 import { useAppStore } from '../stores/useAppStore';
 
-function TechniquePill({ technique }: { technique: string }) {
-  const meta = TECHNIQUE_META[technique as Technique] ?? TECHNIQUE_META.other;
-  return (
-    <span className="font-mono text-micro px-1.5 py-0.5 rounded-sm inline-block"
-      style={{ background: meta.bg, color: meta.color }}>
-      {meta.label}
-    </span>
-  );
-}
-
 export default function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>();
-  const { data: tree, isLoading } = useProjectTreeQuery(projectId);
+  const { data: tree, isLoading, refetch } = useProjectTreeQuery(projectId);
+  const { createExperiment, pending } = useCreateExperimentMutation(refetch);
   const setBreadcrumbLabel = useAppStore(s => s.setBreadcrumbLabel);
+
+  // Create experiment form state
+  const [name, setName] = useState('');
+  const [experimentTypeId, setExperimentTypeId] = useState('');
+  const [organismId, setOrganismId] = useState('');
 
   useEffect(() => {
     if (tree && projectId) setBreadcrumbLabel(projectId, tree.name);
   }, [tree, projectId, setBreadcrumbLabel]);
+
+  const handleCreate = async () => {
+    if (!name || !experimentTypeId || !projectId) return;
+    await createExperiment({
+      name, projectId, experimentTypeId,
+      organismId: organismId || undefined,
+    });
+    setName(''); setExperimentTypeId(''); setOrganismId('');
+  };
 
   if (isLoading) {
     return (
@@ -60,8 +69,36 @@ export default function ProjectDetailPage() {
         </div>
       </div>
 
-      {/* Links */}
-      <LinksList parentType="project" parentId={projectId!} />
+      {/* Add Experiment form */}
+      <div className="flex items-end gap-2 flex-wrap bg-surface border border-border rounded-md p-2.5">
+        <div className="flex flex-col gap-0.5 w-full sm:w-auto">
+          <Text variant="overline">Name</Text>
+          <Input variant="surface" size="sm" placeholder="Experiment name" value={name} onChange={e => setName(e.target.value)} className="w-full sm:w-52" />
+        </div>
+        <div className="flex flex-col gap-0.5 w-[calc(50%-4px)] sm:w-auto">
+          <Text variant="overline">Technique</Text>
+          <ExperimentTypePicker
+            value={experimentTypeId}
+            onValueChange={setExperimentTypeId}
+            variant="surface"
+            size="sm"
+            className="w-full sm:w-36"
+          />
+        </div>
+        <div className="flex flex-col gap-0.5 w-[calc(50%-4px)] sm:w-auto">
+          <Text variant="overline">Organism</Text>
+          <OrganismPicker
+            value={organismId}
+            onValueChange={setOrganismId}
+            variant="surface"
+            size="sm"
+            className="w-full sm:w-40"
+          />
+        </div>
+        <Button intent="primary" size="sm" pending={pending} onClick={handleCreate} disabled={!name || !experimentTypeId} className="w-full sm:w-auto">
+          Add Experiment
+        </Button>
+      </div>
 
       {/* Experiments grid */}
       <div>
@@ -78,9 +115,8 @@ export default function ProjectDetailPage() {
               >
                 <Card className="p-2.5 flex flex-col gap-1.5 hover:border-accent transition-colors duration-fast cursor-pointer h-full">
                   <div className="flex items-center gap-2">
-                    {exp.technique && <TechniquePill technique={exp.technique} />}
-                    {exp.experimentType && !exp.technique && (
-                      <Badge variant="filter">{exp.experimentType.name}</Badge>
+                    {(exp.experimentType?.name || exp.technique) && (
+                      <TechniquePill name={exp.experimentType?.name ?? exp.technique!} />
                     )}
                     <span className="font-mono text-caption text-text truncate flex-1 min-w-0">{exp.name}</span>
                   </div>
@@ -96,6 +132,9 @@ export default function ProjectDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Links */}
+      <LinksList parentType="project" parentId={projectId!} />
     </div>
   );
 }

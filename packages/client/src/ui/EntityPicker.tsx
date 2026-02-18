@@ -3,6 +3,7 @@ import ComboBox, { type ComboBoxItem } from './ComboBox';
 import {
   useProjectsQuery, useOrganismsQuery, useExperimentsQuery,
   useSamplesQuery, useExperimentTypesQuery,
+  useCreateExperimentTypeMutation,
 } from '../hooks/useGenomicQueries';
 import { formatBytes } from '../lib/formats';
 import { useAppStore } from '../stores/useAppStore';
@@ -33,7 +34,7 @@ function useTrackSelection(kind: 'projects' | 'experiments' | 'samples') {
 
 // ── ProjectPicker ────────────────────────────────────────
 
-export function ProjectPicker({ value, onValueChange, placeholder = 'Select project\u2026', items: overrideItems, ...rest }: PickerBaseProps) {
+export function ProjectPicker({ value, onValueChange, placeholder = 'Project', items: overrideItems, ...rest }: PickerBaseProps) {
   const { data, isLoading } = useProjectsQuery();
   const recentIds = useRecent('projects');
   const track = useTrackSelection('projects');
@@ -66,7 +67,7 @@ interface ExperimentPickerProps extends PickerBaseProps {
   projectId?: string;
 }
 
-export function ExperimentPicker({ value, onValueChange, projectId, placeholder = 'Select experiment\u2026', items: overrideItems, ...rest }: ExperimentPickerProps) {
+export function ExperimentPicker({ value, onValueChange, projectId, placeholder = 'Experiment', items: overrideItems, ...rest }: ExperimentPickerProps) {
   const { data, isLoading } = useExperimentsQuery(projectId ? { projectId } : undefined);
   const recentIds = useRecent('experiments');
   const track = useTrackSelection('experiments');
@@ -96,7 +97,7 @@ export function ExperimentPicker({ value, onValueChange, projectId, placeholder 
 
 // ── OrganismPicker ───────────────────────────────────────
 
-export function OrganismPicker({ value, onValueChange, placeholder = 'Select organism\u2026', items: overrideItems, ...rest }: PickerBaseProps) {
+export function OrganismPicker({ value, onValueChange, placeholder = 'Organism', items: overrideItems, ...rest }: PickerBaseProps) {
   const { data, isLoading } = useOrganismsQuery();
 
   const items = useMemo(() => {
@@ -126,7 +127,7 @@ interface SamplePickerProps extends PickerBaseProps {
   experimentId?: string;
 }
 
-export function SamplePicker({ value, onValueChange, experimentId, placeholder = 'Select sample\u2026', items: overrideItems, ...rest }: SamplePickerProps) {
+export function SamplePicker({ value, onValueChange, experimentId, placeholder = 'Sample', items: overrideItems, ...rest }: SamplePickerProps) {
   const { data, isLoading } = useSamplesQuery(experimentId);
   const recentIds = useRecent('samples');
   const track = useTrackSelection('samples');
@@ -156,8 +157,9 @@ export function SamplePicker({ value, onValueChange, experimentId, placeholder =
 
 // ── ExperimentTypePicker ─────────────────────────────────
 
-export function ExperimentTypePicker({ value, onValueChange, placeholder = 'Select technique\u2026', items: overrideItems, ...rest }: PickerBaseProps) {
-  const { data, isLoading } = useExperimentTypesQuery();
+export function ExperimentTypePicker({ value, onValueChange, placeholder = 'Technique', items: overrideItems, ...rest }: PickerBaseProps) {
+  const { data, isLoading, refetch } = useExperimentTypesQuery();
+  const { createExperimentType } = useCreateExperimentTypeMutation(refetch);
 
   const items = useMemo(() => {
     if (overrideItems) return overrideItems;
@@ -168,6 +170,14 @@ export function ExperimentTypePicker({ value, onValueChange, placeholder = 'Sele
     }));
   }, [data, overrideItems]);
 
+  const handleCreate = async (name: string) => {
+    try {
+      const created = await createExperimentType({ name });
+      await refetch();
+      onValueChange(created.id);
+    } catch { /* toast already shown */ }
+  };
+
   return (
     <ComboBox
       items={items}
@@ -175,6 +185,7 @@ export function ExperimentTypePicker({ value, onValueChange, placeholder = 'Sele
       onValueChange={onValueChange}
       placeholder={placeholder}
       loading={!overrideItems && isLoading}
+      onCreate={overrideItems ? undefined : handleCreate}
       {...rest}
     />
   );

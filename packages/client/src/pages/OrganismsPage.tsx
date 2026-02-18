@@ -57,27 +57,27 @@ export default function OrganismsPage() {
       <div className="flex items-end gap-2 shrink-0 flex-wrap bg-surface border border-border rounded-md p-2.5">
         <div className="flex flex-col gap-0.5 w-full sm:w-auto">
           <Text variant="overline">Genus</Text>
-          <Input variant="surface" size="sm" placeholder="Saccharomyces" value={genus} onChange={e => setGenus(e.target.value)} className="w-full sm:w-36" />
+          <Input variant="surface" size="sm" placeholder="Genus" value={genus} onChange={e => setGenus(e.target.value)} className="w-full sm:w-36" />
         </div>
         <div className="flex flex-col gap-0.5 w-full sm:w-auto">
           <Text variant="overline">Species</Text>
-          <Input variant="surface" size="sm" placeholder="cerevisiae" value={species} onChange={e => setSpecies(e.target.value)} className="w-full sm:w-36" />
+          <Input variant="surface" size="sm" placeholder="Species" value={species} onChange={e => setSpecies(e.target.value)} className="w-full sm:w-36" />
         </div>
         <div className="flex flex-col gap-0.5 w-[calc(50%-4px)] sm:w-auto">
           <Text variant="overline">Strain</Text>
-          <Input variant="surface" size="sm" placeholder="BY4741" value={strain} onChange={e => setStrain(e.target.value)} className="w-full sm:w-28" />
+          <Input variant="surface" size="sm" placeholder="Strain" value={strain} onChange={e => setStrain(e.target.value)} className="w-full sm:w-28" />
         </div>
         <div className="flex flex-col gap-0.5 w-[calc(50%-4px)] sm:w-auto">
           <Text variant="overline">Common Name</Text>
-          <Input variant="surface" size="sm" placeholder="Baker's yeast" value={commonName} onChange={e => setCommonName(e.target.value)} className="w-full sm:w-32" />
+          <Input variant="surface" size="sm" placeholder="Common name" value={commonName} onChange={e => setCommonName(e.target.value)} className="w-full sm:w-32" />
         </div>
         <div className="flex flex-col gap-0.5 w-[calc(50%-4px)] sm:w-auto">
           <Text variant="overline">NCBI Tax ID</Text>
-          <Input variant="surface" size="sm" placeholder="559292" value={ncbiTaxId} onChange={e => setNcbiTaxId(e.target.value)} className="w-full sm:w-24" />
+          <Input variant="surface" size="sm" placeholder="Tax ID" value={ncbiTaxId} onChange={e => setNcbiTaxId(e.target.value)} className="w-full sm:w-24" />
         </div>
         <div className="flex flex-col gap-0.5 w-[calc(50%-4px)] sm:w-auto">
           <Text variant="overline">Ref. Genome</Text>
-          <Input variant="surface" size="sm" placeholder="sacCer3" value={referenceGenome} onChange={e => setReferenceGenome(e.target.value)} className="w-full sm:w-24" />
+          <Input variant="surface" size="sm" placeholder="Genome" value={referenceGenome} onChange={e => setReferenceGenome(e.target.value)} className="w-full sm:w-24" />
         </div>
         <Button intent="primary" size="sm" pending={pending} onClick={handleCreate} disabled={!genus || !species} className="w-full sm:w-auto">
           Add
