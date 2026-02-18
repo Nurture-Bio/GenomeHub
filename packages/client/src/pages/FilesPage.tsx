@@ -149,13 +149,12 @@ function InlineCollectionEditor({
 
 interface FileCardProps {
   file: GenomicFile;
-  onDelete: (id: string) => void;
   onDownload: (id: string) => void;
   selected: boolean;
   onSelect: (id: string, sel: boolean) => void;
 }
 
-function FileCard({ file, onDelete, onDownload, selected, onSelect }: FileCardProps) {
+function FileCard({ file, onDownload, selected, onSelect }: FileCardProps) {
   const meta = FORMAT_META[file.format] ?? FORMAT_META['other'];
 
   return (
@@ -192,7 +191,6 @@ function FileCard({ file, onDelete, onDownload, selected, onSelect }: FileCardPr
       {/* Actions */}
       <div className="flex gap-1.5 pl-5.5">
         <Button intent="ghost" size="sm" onClick={() => onDownload(file.id)}>Download</Button>
-        <Button intent="danger" size="sm" onClick={() => onDelete(file.id)}>Delete</Button>
       </div>
     </Card>
   );
@@ -202,7 +200,6 @@ function FileCard({ file, onDelete, onDownload, selected, onSelect }: FileCardPr
 
 interface FileRowProps {
   file: GenomicFile;
-  onDelete: (id: string) => void;
   onDownload: (id: string) => void;
   onUpdate: (id: string, patch: { kind?: string; format?: string; organismId?: string | null; tags?: string[] }) => void;
   onAddToCollection: (collectionId: string, fileIds: string[]) => Promise<void>;
@@ -211,12 +208,7 @@ interface FileRowProps {
   onSelect: (id: string, sel: boolean) => void;
 }
 
-function FileRow({ file, onDelete, onDownload, onUpdate, onAddToCollection, onRemoveFromCollection, selected, onSelect }: FileRowProps) {
-  const meta = FORMAT_META[file.format] ?? FORMAT_META['other'];
-  const [editKind, setEditKind] = useState(false);
-  const [editOrg, setEditOrg] = useState(false);
-  const [editFmt, setEditFmt] = useState(false);
-
+function FileRow({ file, onDownload, onUpdate, onAddToCollection, onRemoveFromCollection, selected, onSelect }: FileRowProps) {
   return (
     <tr
       className="border-b border-border-subtle transition-colors duration-fast hover:bg-surface group"
@@ -247,28 +239,13 @@ function FileRow({ file, onDelete, onDownload, onUpdate, onAddToCollection, onRe
         </div>
       </td>
 
-      {/* Organism — absolute overlay, zero layout shift */}
-      <td className="py-1.5 pr-3">
-        <div className="relative min-h-5">
-          <div
-            className={`text-caption text-text-secondary italic whitespace-nowrap cursor-pointer hover:text-accent transition-colors duration-fast ${editOrg ? 'invisible' : ''}`}
-            onClick={() => setEditOrg(true)}
-          >
-            {file.organismDisplay ?? '—'}
-          </div>
-          {editOrg && (
-            <div className="absolute top-1/2 left-0 -translate-y-1/2 z-20">
-              <OrganismPicker
-                value={file.organismId ?? ''}
-                onValueChange={v => { onUpdate(file.id, { organismId: v || null }); setEditOrg(false); }}
-                placeholder="Organism"
-                variant="surface"
-                size="sm"
-                className="w-36"
-              />
-            </div>
-          )}
-        </div>
+      {/* Organism — always-rendered dropdown */}
+      <td className="py-1.5 pr-3 w-36">
+        <OrganismPicker
+          value={file.organismId ?? ''}
+          onValueChange={v => onUpdate(file.id, { organismId: v || null })}
+          variant="surface" size="sm" className="w-full"
+        />
       </td>
 
       {/* Collections — inline add/remove */}
@@ -281,58 +258,24 @@ function FileRow({ file, onDelete, onDownload, onUpdate, onAddToCollection, onRe
         />
       </td>
 
-      {/* Kind — absolute overlay, zero layout shift */}
-      <td className="py-1.5 pr-3 whitespace-nowrap">
-        <div className="relative min-h-5">
-          <div
-            className={`cursor-pointer ${editKind ? 'invisible' : ''}`}
-            onClick={() => setEditKind(true)}
-          >
-            <Badge variant="count" color="dim">{file.kind}</Badge>
-          </div>
-          {editKind && (
-            <div className="absolute top-1/2 left-0 -translate-y-1/2 z-20">
-              <FileKindPicker
-                value={file.kind}
-                onValueChange={v => { onUpdate(file.id, { kind: v }); setEditKind(false); }}
-                placeholder="Kind"
-                variant="surface"
-                size="sm"
-                className="w-28"
-              />
-            </div>
-          )}
-        </div>
+      {/* Kind — always-rendered dropdown */}
+      <td className="py-1.5 pr-3 w-28">
+        <FileKindPicker
+          value={file.kind}
+          onValueChange={v => onUpdate(file.id, { kind: v })}
+          variant="surface" size="sm" className="w-full"
+        />
       </td>
 
-      {/* Format — absolute overlay, zero layout shift */}
-      <td className="py-1.5 pr-3 whitespace-nowrap">
-        <div className="relative min-h-5">
-          <div
-            className={`cursor-pointer ${editFmt ? 'invisible' : ''}`}
-            onClick={() => setEditFmt(true)}
-          >
-            <span
-              className="font-mono text-micro px-1 py-px rounded-sm hover:ring-1 hover:ring-accent transition-all duration-fast"
-              style={{ background: meta.bg, color: meta.color }}
-            >
-              {meta.label}
-            </span>
-          </div>
-          {editFmt && (
-            <div className="absolute top-1/2 left-0 -translate-y-1/2 z-20">
-              <ComboBox
-                items={FORMAT_ITEMS}
-                value={file.format}
-                onValueChange={v => { if (v) onUpdate(file.id, { format: v }); setEditFmt(false); }}
-                placeholder="Format"
-                variant="surface"
-                size="sm"
-                className="w-24"
-              />
-            </div>
-          )}
-        </div>
+      {/* Format — always-rendered dropdown */}
+      <td className="py-1.5 pr-3 w-24">
+        <ComboBox
+          items={FORMAT_ITEMS}
+          value={file.format}
+          onValueChange={v => { if (v) onUpdate(file.id, { format: v }); }}
+          placeholder="Format"
+          variant="surface" size="sm" className="w-full"
+        />
       </td>
 
       {/* Size */}
@@ -360,12 +303,15 @@ function FileRow({ file, onDelete, onDownload, onUpdate, onAddToCollection, onRe
         />
       </td>
 
-      {/* Actions */}
+      {/* Download only — no per-row delete (use bulk select) */}
       <td className="py-1.5 pr-3">
-        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-fast">
-          <Button intent="ghost" size="xs" onClick={() => onDownload(file.id)}>↓</Button>
-          <Button intent="danger" size="xs" onClick={() => onDelete(file.id)}>×</Button>
-        </div>
+        <button
+          onClick={() => onDownload(file.id)}
+          className="text-caption text-text-dim hover:text-accent cursor-pointer bg-transparent border-none p-0 font-body opacity-0 group-hover:opacity-100 transition-opacity duration-fast"
+          title="Download"
+        >
+          ↓
+        </button>
       </td>
     </tr>
   );
@@ -631,7 +577,6 @@ export default function FilesPage() {
                     file={f}
                     selected={selected.has(f.id)}
                     onSelect={toggleOne}
-                    onDelete={deleteFile}
                     onDownload={handleDownload}
                     onUpdate={handleInlineUpdate}
                     onAddToCollection={handleAddToCollection}
@@ -672,7 +617,6 @@ export default function FilesPage() {
                 file={f}
                 selected={selected.has(f.id)}
                 onSelect={toggleOne}
-                onDelete={deleteFile}
                 onDownload={handleDownload}
               />
             ))

@@ -5,6 +5,8 @@ interface InlineInputProps {
   placeholder?: string;
   mono?: boolean;
   className?: string;
+  /** Fill container width instead of auto-sizing to content */
+  fullWidth?: boolean;
   onCommit: (val: string) => void;
 }
 
@@ -12,7 +14,7 @@ interface InlineInputProps {
  * Always renders an <input> — styled as plain text when unfocused,
  * shows accent underline on focus. Zero DOM swap = zero layout shift.
  */
-export default function InlineInput({ value, placeholder, mono, className, onCommit }: InlineInputProps) {
+export default function InlineInput({ value, placeholder, mono, className, fullWidth, onCommit }: InlineInputProps) {
   const [draft, setDraft] = useState(value);
   const [focused, setFocused] = useState(false);
   const skipBlur = useRef(false);
@@ -55,7 +57,7 @@ export default function InlineInput({ value, placeholder, mono, className, onCom
         mono ? 'font-mono text-caption text-text' : 'text-caption text-text-secondary',
         className ?? '',
       ].join(' ')}
-      style={{ width: `${len}ch` }}
+      style={fullWidth ? undefined : { width: `${len}ch` }}
     />
   );
 }

@@ -5,9 +5,8 @@ import {
   useUpdateCollectionMutation,
   useAddFilesToCollection, useRemoveFilesFromCollection,
 } from '../hooks/useGenomicQueries';
-import { TechniquePill } from '../lib/techniqueColors';
 import { detectFormat, FORMAT_META, formatBytes } from '../lib/formats';
-import { Heading, Text, Card, Badge, InlineInput, Input } from '../ui';
+import { Heading, Text, Badge, InlineInput, Input } from '../ui';
 import { TechniquePicker, OrganismPicker } from '../ui';
 import LinksList from '../components/LinksList';
 import { useAppStore } from '../stores/useAppStore';
@@ -22,10 +21,6 @@ export default function CollectionDetailPage() {
   const [addSelected, setAddSelected] = useState<Set<string>>(new Set());
   const { addFiles, pending: addPending } = useAddFilesToCollection();
   const { removeFiles, pending: removePending } = useRemoveFilesFromCollection();
-
-  // Inline picker state
-  const [editTech, setEditTech] = useState(false);
-  const [editOrg, setEditOrg] = useState(false);
 
   // Only load all files when user is searching to add
   const [showAddPanel, setShowAddPanel] = useState(false);
@@ -90,32 +85,11 @@ export default function CollectionDetailPage() {
       {/* Header — inline editable */}
       <div>
         <div className="flex items-center gap-2 mb-1">
-          {/* Technique — inline picker */}
-          <div className="relative">
-            <div
-              className={`cursor-pointer ${editTech ? 'invisible' : ''}`}
-              onClick={() => setEditTech(true)}
-            >
-              {collection.technique?.name
-                ? <TechniquePill name={collection.technique.name} />
-                : <span className="text-caption text-text-dim">+ technique</span>
-              }
-            </div>
-            {editTech && (
-              <div className="absolute top-1/2 left-0 -translate-y-1/2 z-20">
-                <TechniquePicker
-                  value={collection.technique?.id ?? ''}
-                  onValueChange={v => {
-                    if (collectionId) updateCollection(collectionId, { techniqueId: v || undefined });
-                    setEditTech(false);
-                  }}
-                  variant="surface"
-                  size="sm"
-                  className="w-36"
-                />
-              </div>
-            )}
-          </div>
+          <TechniquePicker
+            value={collection.technique?.id ?? ''}
+            onValueChange={v => { if (collectionId) updateCollection(collectionId, { techniqueId: v || undefined }); }}
+            variant="surface" size="sm" className="w-36"
+          />
           <Badge variant="count" color="dim">{collection.kind}</Badge>
         </div>
 
@@ -137,31 +111,11 @@ export default function CollectionDetailPage() {
         </div>
 
         <div className="flex items-center gap-2 mt-1 flex-wrap">
-          {/* Organism — inline picker */}
-          <div className="relative">
-            <div
-              className={`cursor-pointer ${editOrg ? 'invisible' : ''}`}
-              onClick={() => setEditOrg(true)}
-            >
-              <span className="text-caption text-text-secondary italic">
-                {collection.organismDisplay ?? '+ organism'}
-              </span>
-            </div>
-            {editOrg && (
-              <div className="absolute top-1/2 left-0 -translate-y-1/2 z-20">
-                <OrganismPicker
-                  value={collection.organismId ?? ''}
-                  onValueChange={v => {
-                    if (collectionId) updateCollection(collectionId, { organismId: v || undefined });
-                    setEditOrg(false);
-                  }}
-                  variant="surface"
-                  size="sm"
-                  className="w-40"
-                />
-              </div>
-            )}
-          </div>
+          <OrganismPicker
+            value={collection.organismId ?? ''}
+            onValueChange={v => { if (collectionId) updateCollection(collectionId, { organismId: v || undefined }); }}
+            variant="surface" size="sm" className="w-40"
+          />
           <Badge variant="count" color="accent">{collection.fileCount} files</Badge>
         </div>
       </div>
@@ -244,37 +198,60 @@ export default function CollectionDetailPage() {
         {collection.files.length === 0 && !showAddPanel ? (
           <Text variant="caption">No files yet. Click "+ add files" above.</Text>
         ) : (
-          <div className="flex flex-col gap-1">
-            {collection.files.map(file => {
-              const fmt = detectFormat(file.filename);
-              const meta = FORMAT_META[fmt];
-              return (
-                <Card key={file.id} className="p-2 flex items-center gap-2 group">
-                  <div className="font-mono text-micro px-1.5 py-0.5 rounded-sm shrink-0 font-bold"
-                    style={{ background: meta.bg, color: meta.color }}>
-                    {meta.label}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <Link to={`/files/${file.id}`} className="no-underline font-mono text-caption text-text truncate block hover:text-accent transition-colors duration-fast">
-                      {file.filename}
-                    </Link>
-                  </div>
-                  <Badge variant="count" color="dim">{file.kind}</Badge>
-                  <Text variant="caption" className="shrink-0">{formatBytes(file.sizeBytes)}</Text>
-                  {file.status === 'ready' && <Badge variant="status" color="green">ready</Badge>}
-                  {file.status === 'pending' && <Badge variant="status" color="yellow">uploading</Badge>}
-                  {file.status === 'error' && <Badge variant="status" color="red">error</Badge>}
-                  <button
-                    onClick={() => handleRemoveFile(file.id)}
-                    disabled={removePending}
-                    className="shrink-0 text-text-dim hover:text-red-400 cursor-pointer bg-transparent border-none p-0.5 text-caption opacity-0 group-hover:opacity-100 transition-opacity duration-fast"
-                    title="Remove from collection"
-                  >
-                    ×
-                  </button>
-                </Card>
-              );
-            })}
+          <div className="border border-border rounded-md bg-surface overflow-hidden">
+            <table className="w-full border-collapse text-left">
+              <thead>
+                <tr className="border-b border-border bg-surface-2">
+                  <th className="py-1.5 pl-2.5 pr-3 font-body text-micro uppercase tracking-overline text-text-dim font-semibold">File</th>
+                  <th className="py-1.5 pr-3 font-body text-micro uppercase tracking-overline text-text-dim font-semibold w-24">Kind</th>
+                  <th className="py-1.5 pr-3 font-body text-micro uppercase tracking-overline text-text-dim font-semibold text-right w-20">Size</th>
+                  <th className="py-1.5 pr-3 font-body text-micro uppercase tracking-overline text-text-dim font-semibold w-20">Status</th>
+                  <th className="w-6" />
+                </tr>
+              </thead>
+              <tbody>
+                {collection.files.map(file => {
+                  const fmt = detectFormat(file.filename);
+                  const meta = FORMAT_META[fmt];
+                  return (
+                    <tr key={file.id} className="border-b border-border-subtle hover:bg-surface transition-colors duration-fast group">
+                      <td className="py-1.5 pl-2.5 pr-3">
+                        <div className="flex items-center gap-2">
+                          <div className="font-mono text-micro px-1.5 py-0.5 rounded-sm shrink-0 font-bold"
+                            style={{ background: meta.bg, color: meta.color }}>
+                            {meta.label}
+                          </div>
+                          <Link to={`/files/${file.id}`} className="no-underline font-mono text-caption text-text truncate hover:text-accent transition-colors duration-fast">
+                            {file.filename}
+                          </Link>
+                        </div>
+                      </td>
+                      <td className="py-1.5 pr-3">
+                        <Badge variant="count" color="dim">{file.kind}</Badge>
+                      </td>
+                      <td className="py-1.5 pr-3 font-mono text-caption tabular-nums text-text-secondary text-right">
+                        {formatBytes(file.sizeBytes)}
+                      </td>
+                      <td className="py-1.5 pr-3">
+                        {file.status === 'ready' && <Badge variant="status" color="green">ready</Badge>}
+                        {file.status === 'pending' && <Badge variant="status" color="yellow">uploading</Badge>}
+                        {file.status === 'error' && <Badge variant="status" color="red">error</Badge>}
+                      </td>
+                      <td className="py-1.5 pr-2.5">
+                        <button
+                          onClick={() => handleRemoveFile(file.id)}
+                          disabled={removePending}
+                          className="text-text-dim hover:text-red-400 cursor-pointer bg-transparent border-none p-0 text-caption opacity-0 group-hover:opacity-100 transition-opacity duration-fast"
+                          title="Remove from collection"
+                        >
+                          ×
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
