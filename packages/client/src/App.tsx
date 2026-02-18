@@ -13,7 +13,7 @@ import ProjectsPage         from './pages/ProjectsPage';
 import ExperimentsPage      from './pages/ExperimentsPage';
 import ProjectDetailPage    from './pages/ProjectDetailPage';
 import ExperimentDetailPage from './pages/ExperimentDetailPage';
-import SampleDetailPage     from './pages/SampleDetailPage';
+import DatasetDetailPage    from './pages/DatasetDetailPage';
 import PageErrorBoundary    from './components/PageErrorBoundary';
 import Breadcrumbs          from './components/Breadcrumbs';
 
@@ -163,7 +163,7 @@ function LegacyExperimentRedirect() {
 
 function LegacySampleRedirect() {
   const { experimentId, sampleId } = useParams<{ experimentId: string; sampleId: string }>();
-  return <Navigate to={`/experiments/${experimentId}/samples/${sampleId}`} replace />;
+  return <Navigate to={`/experiments/${experimentId}/datasets/${sampleId}`} replace />;
 }
 
 // ── App ───────────────────────────────────────────────────
@@ -259,10 +259,11 @@ export default function App() {
           <Route path="/upload" element={<PageErrorBoundary><UploadPage /></PageErrorBoundary>} />
           <Route path="/projects/:projectId" element={<PageErrorBoundary><ProjectDetailPage /></PageErrorBoundary>} />
           <Route path="/experiments/:experimentId" element={<PageErrorBoundary><ExperimentDetailPage /></PageErrorBoundary>} />
-          <Route path="/experiments/:experimentId/samples/:sampleId" element={<PageErrorBoundary><SampleDetailPage /></PageErrorBoundary>} />
-          {/* Legacy project-nested routes redirect to top-level */}
+          <Route path="/experiments/:experimentId/datasets/:datasetId" element={<PageErrorBoundary><DatasetDetailPage /></PageErrorBoundary>} />
+          {/* Legacy redirects */}
           <Route path="/projects/:projectId/experiments/:experimentId" element={<LegacyExperimentRedirect />} />
           <Route path="/projects/:projectId/experiments/:experimentId/samples/:sampleId" element={<LegacySampleRedirect />} />
+          <Route path="/experiments/:experimentId/samples/:sampleId" element={<LegacySampleRedirect />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

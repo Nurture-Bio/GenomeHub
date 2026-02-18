@@ -40,14 +40,14 @@ export interface Experiment {
   organismId:          string | null;
   organismDisplay:     string | null;
   fileCount:           number;
-  sampleCount?:        number;
+  datasetCount?:       number;
   createdAt:           string;
 }
 
 export interface GenomicFile {
   id:              string;
-  projectId:       string;
-  projectName:     string;
+  projectId:       string | null;
+  projectName:     string | null;
   filename:        string;
   s3Key:           string;
   sizeBytes:       number;
@@ -61,8 +61,8 @@ export interface GenomicFile {
   organismDisplay: string | null;
   experimentId:    string | null;
   experimentName:  string | null;
-  sampleId:        string | null;
-  sampleName:      string | null;
+  datasetId:       string | null;
+  datasetName:     string | null;
   uploadedBy:      string | null;
 }
 
@@ -72,17 +72,21 @@ export interface StorageStats {
   byFormat:    { format: string; count: number; bytes: number }[];
 }
 
-export interface Sample {
-  id:           string;
-  experimentId: string;
-  name:         string;
-  description:  string | null;
-  condition:    string | null;
-  replicate:    number | null;
-  metadata:     Record<string, unknown> | null;
-  createdAt:    string;
-  fileCount?:   number;
-  experimentName?: string;
+export type DatasetKind = 'sample' | 'library' | 'reference' | 'pool' | 'control' | 'other';
+
+export interface Dataset {
+  id:              string;
+  name:            string;
+  kind:            DatasetKind;
+  description:     string | null;
+  condition:       string | null;
+  replicate:       number | null;
+  metadata:        Record<string, unknown> | null;
+  tags:            string[];
+  experimentId?:   string | null;
+  experimentName?: string | null;
+  fileCount?:      number;
+  createdAt:       string;
 }
 
 export interface ExperimentType {
@@ -93,7 +97,7 @@ export interface ExperimentType {
   createdAt:   string;
 }
 
-export type LinkParentType = 'project' | 'experiment' | 'sample';
+export type LinkParentType = 'project' | 'experiment' | 'dataset';
 export type LinkServiceType =
   | 'jira' | 'confluence' | 'slack'
   | 'google-doc' | 'google-sheet' | 'google-drive'
@@ -131,27 +135,28 @@ export interface ProjectTreeExperiment {
   status:          string;
   fileCount:       number;
   links:           ExternalLink[];
-  samples:         ProjectTreeSample[];
+  datasets:        ProjectTreeDataset[];
 }
 
-export interface ProjectTreeSample {
+export interface ProjectTreeDataset {
   id:          string;
   name:        string;
+  kind:        DatasetKind;
   description: string | null;
   condition:   string | null;
   replicate:   number | null;
   metadata:    Record<string, unknown> | null;
+  tags:        string[];
   fileCount:   number;
   links:       ExternalLink[];
 }
 
 // ─── Files ────────────────────────────────────────────────
 
-export function useFilesQuery(filters?: { projectId?: string; experimentId?: string; sampleId?: string } | string) {
-  // Support legacy string (projectId) or object filters
+export function useFilesQuery(filters?: { projectId?: string; experimentId?: string; datasetId?: string } | string) {
   const projectId = typeof filters === 'string' ? filters : filters?.projectId;
   const experimentId = typeof filters === 'string' ? undefined : filters?.experimentId;
-  const sampleId = typeof filters === 'string' ? undefined : filters?.sampleId;
+  const datasetId = typeof filters === 'string' ? undefined : filters?.datasetId;
 
   const [data, setData] = useState<GenomicFile[] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -162,14 +167,14 @@ export function useFilesQuery(filters?: { projectId?: string; experimentId?: str
     const params = new URLSearchParams();
     if (projectId) params.set('projectId', projectId);
     if (experimentId) params.set('experimentId', experimentId);
-    if (sampleId) params.set('sampleId', sampleId);
+    if (datasetId) params.set('datasetId', datasetId);
     const qs = params.toString();
     apiFetch(`/api/files${qs ? '?' + qs : ''}`)
       .then(r => r.ok ? r.json() : Promise.reject(r))
       .then(d => { setData(d); setError(null); })
       .catch(e => setError(e))
       .finally(() => setIsLoading(false));
-  }, [projectId, experimentId, sampleId]);
+  }, [projectId, experimentId, datasetId]);
 
   useEffect(() => { refetch(); }, [refetch]);
 
@@ -334,7 +339,7 @@ export interface ExperimentDetail {
   projectName:     string | null;
   fileCount:       number;
   links:           ExternalLink[];
-  samples:         ProjectTreeSample[];
+  datasets:        ProjectTreeDataset[];
 }
 
 export function useExperimentDetailQuery(experimentId?: string) {
@@ -435,55 +440,59 @@ export function useCreateExperimentTypeMutation(onSuccess?: () => void) {
   return { createExperimentType, pending };
 }
 
-// ─── Samples ──────────────────────────────────────────────
+// ─── Datasets ──────────────────────────────────────────────
 
-export function useSamplesQuery(experimentId?: string) {
-  const [data, setData] = useState<Sample[] | null>(null);
+export function useDatasetsQuery(filters?: { experimentId?: string; projectId?: string; kind?: string }) {
+  const [data, setData] = useState<Dataset[] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   const refetch = useCallback(() => {
     setIsLoading(true);
-    const url = experimentId ? `/api/samples?experimentId=${experimentId}` : '/api/samples';
-    apiFetch(url)
+    const params = new URLSearchParams();
+    if (filters?.experimentId) params.set('experimentId', filters.experimentId);
+    if (filters?.projectId) params.set('projectId', filters.projectId);
+    if (filters?.kind) params.set('kind', filters.kind);
+    const qs = params.toString();
+    apiFetch(`/api/datasets${qs ? '?' + qs : ''}`)
       .then(r => r.ok ? r.json() : Promise.reject(r))
       .then(d => { setData(d); setError(null); })
       .catch(e => setError(e))
       .finally(() => setIsLoading(false));
-  }, [experimentId]);
+  }, [filters?.experimentId, filters?.projectId, filters?.kind]);
 
   useEffect(() => { refetch(); }, [refetch]);
 
   return { data, isLoading, error, refetch };
 }
 
-export function useCreateSampleMutation(onSuccess?: () => void) {
+export function useCreateDatasetMutation(onSuccess?: () => void) {
   const [pending, setPending] = useState(false);
 
-  const createSample = useCallback(async (body: {
-    experimentId: string; name: string;
+  const createDataset = useCallback(async (body: {
+    name: string; kind?: string; experimentId?: string; projectId?: string;
     description?: string; condition?: string; replicate?: number;
-    metadata?: Record<string, unknown>;
+    metadata?: Record<string, unknown>; tags?: string[];
   }) => {
     setPending(true);
     try {
-      const r = await apiFetch('/api/samples', {
+      const r = await apiFetch('/api/datasets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
       if (!r.ok) throw new Error('Create failed');
       onSuccess?.();
-      toast.success('Sample created');
+      toast.success('Dataset created');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create sample');
+      toast.error(err instanceof Error ? err.message : 'Failed to create dataset');
       throw err;
     } finally {
       setPending(false);
     }
   }, [onSuccess]);
 
-  return { createSample, pending };
+  return { createDataset, pending };
 }
 
 // ─── External links ──────────────────────────────────────
@@ -648,7 +657,7 @@ export function useMultipartUpload() {
     tags?: string[],
     organismId?: string,
     experimentId?: string,
-    sampleId?: string,
+    datasetId?: string,
   ) => {
     const tmpId = crypto.randomUUID();
 
@@ -670,7 +679,7 @@ export function useMultipartUpload() {
           filename: file.name, projectId,
           contentType: file.type || 'application/octet-stream',
           sizeBytes: file.size, description, tags,
-          organismId, experimentId, sampleId,
+          organismId, experimentId, datasetId,
         }),
       });
       const { fileId, uploadId, s3Key } = await initRes.json();

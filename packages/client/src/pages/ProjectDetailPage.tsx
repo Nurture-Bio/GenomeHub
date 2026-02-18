@@ -73,7 +73,7 @@ export default function ProjectDetailPage() {
                   {exp.description && <Text variant="caption" className="truncate">{exp.description}</Text>}
                   <div className="flex items-center gap-2 flex-wrap">
                     {exp.organismDisplay && <Text variant="caption" className="italic">{exp.organismDisplay}</Text>}
-                    <Text variant="caption">{exp.samples.length} samples</Text>
+                    <Text variant="caption">{exp.datasets.length} datasets</Text>
                     <Text variant="caption">{exp.fileCount} files</Text>
                   </div>
                 </Card>

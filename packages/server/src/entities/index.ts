@@ -1,17 +1,15 @@
 /**
  * TypeORM entities for GenomeHub.
  *
- * Hierarchy: Project → Experiment → Sample → File
- * ExperimentType is user-defined (not hardcoded).
- * ExternalLink is polymorphic (project / experiment / sample).
+ * Knowledge-graph model: all relationships live in entity_edges.
+ * Core entities: Project, Experiment, Dataset, GenomicFile, Organism, ExperimentType.
  *
  * @module
  */
 
 import {
   Entity, PrimaryGeneratedColumn, Column,
-  CreateDateColumn, UpdateDateColumn,
-  ManyToOne, JoinColumn, Index, Unique,
+  CreateDateColumn, UpdateDateColumn, Unique,
 } from 'typeorm';
 
 // ─── User ─────────────────────────────────────────────────
@@ -133,8 +131,6 @@ export class ExperimentType {
 export type ExperimentStatus = 'active' | 'complete' | 'archived';
 
 @Entity('experiments')
-@Index(['projectId'])
-@Index(['experimentTypeId'])
 export class Experiment {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -144,20 +140,6 @@ export class Experiment {
 
   @Column({ type: 'text', nullable: true })
   description!: string | null;
-
-  @Column({ name: 'project_id', type: 'uuid', nullable: true })
-  projectId!: string | null;
-
-  @ManyToOne(() => Project, { onDelete: 'SET NULL', nullable: true })
-  @JoinColumn({ name: 'project_id' })
-  project!: Project | null;
-
-  @Column({ name: 'experiment_type_id', type: 'uuid', nullable: true })
-  experimentTypeId!: string | null;
-
-  @ManyToOne(() => ExperimentType, { onDelete: 'SET NULL', nullable: true })
-  @JoinColumn({ name: 'experiment_type_id' })
-  experimentType!: ExperimentType | null;
 
   @Column({
     type: 'text',
@@ -172,13 +154,6 @@ export class Experiment {
   @Column({ name: 'created_by', type: 'text', nullable: true })
   createdBy!: string | null;
 
-  @Column({ name: 'organism_id', type: 'uuid', nullable: true })
-  organismId!: string | null;
-
-  @ManyToOne(() => Organism, { onDelete: 'SET NULL', nullable: true })
-  @JoinColumn({ name: 'organism_id' })
-  organism!: Organism | null;
-
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 
@@ -186,23 +161,23 @@ export class Experiment {
   updatedAt!: Date;
 }
 
-// ─── Sample ───────────────────────────────────────────────
+// ─── Dataset ─────────────────────────────────────────────
 
-@Entity('samples')
-@Index(['experimentId'])
-export class Sample {
+export type DatasetKind = 'sample' | 'library' | 'reference' | 'pool' | 'control' | 'other';
+
+@Entity('datasets')
+export class Dataset {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ name: 'experiment_id', type: 'uuid' })
-  experimentId!: string;
-
-  @ManyToOne(() => Experiment, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'experiment_id' })
-  experiment!: Experiment;
-
   @Column({ type: 'text' })
   name!: string;
+
+  @Column({
+    type: 'text',
+    default: 'sample',
+  })
+  kind!: DatasetKind;
 
   @Column({ type: 'text', nullable: true })
   description!: string | null;
@@ -216,63 +191,65 @@ export class Sample {
   @Column({ type: 'jsonb', nullable: true })
   metadata!: Record<string, unknown> | null;
 
+  @Column({ type: 'text', array: true, default: '{}' })
+  tags!: string[];
+
+  @Column({ name: 'created_by', type: 'uuid', nullable: true })
+  createdBy!: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
+
+  @UpdateDateColumn({ name: 'updated_at' })
+  updatedAt!: Date;
 }
 
-// ─── ExternalLink ─────────────────────────────────────────
+// ─── EntityEdge ──────────────────────────────────────────
 
-export type LinkParentType = 'project' | 'experiment' | 'sample';
-export type LinkServiceType =
-  | 'jira' | 'confluence' | 'slack'
-  | 'google-doc' | 'google-sheet' | 'google-drive'
-  | 'github' | 'notion' | 'benchling'
-  | 'ncbi' | 'ebi' | 'protocols-io'
-  | 'link';
+export type EntityType = 'project' | 'experiment' | 'dataset' | 'file' | 'organism';
+export type EdgeRelation =
+  | 'belongs_to' | 'has_type' | 'targets' | 'from_organism'
+  | 'derived_from' | 'sequenced_from' | 'produced_by'
+  | 'links_to' | 'references';
 
-@Entity('external_links')
-@Index(['parentType', 'parentId'])
-export class ExternalLink {
+@Entity('entity_edges')
+export class EntityEdge {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ name: 'parent_type', type: 'text' })
-  parentType!: LinkParentType;
+  @Column({ name: 'source_type', type: 'text' })
+  sourceType!: EntityType;
 
-  @Column({ name: 'parent_id', type: 'uuid' })
-  parentId!: string;
+  @Column({ name: 'source_id', type: 'uuid' })
+  sourceId!: string;
+
+  @Column({ name: 'target_type', type: 'text' })
+  targetType!: EntityType;
+
+  @Column({ name: 'target_id', type: 'uuid' })
+  targetId!: string;
 
   @Column({ type: 'text' })
-  url!: string;
+  relation!: EdgeRelation;
 
-  @Column({ type: 'text', default: 'link' })
-  service!: LinkServiceType;
+  @Column({ type: 'jsonb', nullable: true })
+  metadata!: Record<string, unknown> | null;
 
-  @Column({ type: 'text', nullable: true })
-  label!: string | null;
+  @Column({ name: 'created_by', type: 'uuid', nullable: true })
+  createdBy!: string | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 }
 
-// ─── GenomicFile ───────────────────────────────────────────
+// ─── GenomicFile ─────────────────────────────────────────
 
 export type FileStatus = 'pending' | 'ready' | 'error';
 
 @Entity('genomic_files')
-@Index(['projectId'])
-@Index(['format'])
-@Index(['sampleId'])
 export class GenomicFile {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
-
-  @Column({ name: 'project_id', type: 'uuid' })
-  projectId!: string;
-
-  @ManyToOne(() => Project, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'project_id' })
-  project!: Project;
 
   @Column({ type: 'text' })
   filename!: string;
@@ -306,27 +283,6 @@ export class GenomicFile {
   /** Stored as PostgreSQL text[] */
   @Column({ type: 'text', array: true, default: '{}' })
   tags!: string[];
-
-  @Column({ name: 'organism_id', type: 'uuid', nullable: true })
-  organismId!: string | null;
-
-  @ManyToOne(() => Organism, { onDelete: 'SET NULL', nullable: true })
-  @JoinColumn({ name: 'organism_id' })
-  organism!: Organism | null;
-
-  @Column({ name: 'experiment_id', type: 'uuid', nullable: true })
-  experimentId!: string | null;
-
-  @ManyToOne(() => Experiment, { onDelete: 'SET NULL', nullable: true })
-  @JoinColumn({ name: 'experiment_id' })
-  experiment!: Experiment | null;
-
-  @Column({ name: 'sample_id', type: 'uuid', nullable: true })
-  sampleId!: string | null;
-
-  @ManyToOne(() => Sample, { onDelete: 'SET NULL', nullable: true })
-  @JoinColumn({ name: 'sample_id' })
-  sample!: Sample | null;
 
   @Column({ name: 'uploaded_by', type: 'text', nullable: true })
   uploadedBy!: string | null;

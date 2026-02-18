@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import ComboBox, { type ComboBoxItem } from './ComboBox';
 import {
   useProjectsQuery, useOrganismsQuery, useExperimentsQuery,
-  useSamplesQuery, useExperimentTypesQuery,
+  useDatasetsQuery, useExperimentTypesQuery,
   useCreateExperimentTypeMutation,
 } from '../hooks/useGenomicQueries';
 import { formatBytes } from '../lib/formats';
@@ -21,11 +21,11 @@ interface PickerBaseProps {
   items?: ComboBoxItem[];
 }
 
-function useRecent(kind: 'projects' | 'experiments' | 'samples') {
+function useRecent(kind: 'projects' | 'experiments' | 'datasets') {
   return useAppStore(s => s.recentSelections[kind]);
 }
 
-function useTrackSelection(kind: 'projects' | 'experiments' | 'samples') {
+function useTrackSelection(kind: 'projects' | 'experiments' | 'datasets') {
   const add = useAppStore(s => s.addRecentSelection);
   return (id: string) => {
     if (id) add(kind, id);
@@ -121,24 +121,24 @@ export function OrganismPicker({ value, onValueChange, placeholder = 'Organism',
   );
 }
 
-// ── SamplePicker ─────────────────────────────────────────
+// ── DatasetPicker ───────────────────────────────────────
 
-interface SamplePickerProps extends PickerBaseProps {
+interface DatasetPickerProps extends PickerBaseProps {
   experimentId?: string;
 }
 
-export function SamplePicker({ value, onValueChange, experimentId, placeholder = 'Sample', items: overrideItems, ...rest }: SamplePickerProps) {
-  const { data, isLoading } = useSamplesQuery(experimentId);
-  const recentIds = useRecent('samples');
-  const track = useTrackSelection('samples');
+export function DatasetPicker({ value, onValueChange, experimentId, placeholder = 'Dataset', items: overrideItems, ...rest }: DatasetPickerProps) {
+  const { data, isLoading } = useDatasetsQuery(experimentId ? { experimentId } : undefined);
+  const recentIds = useRecent('datasets');
+  const track = useTrackSelection('datasets');
 
   const items = useMemo(() => {
     if (overrideItems) return overrideItems;
-    return (data ?? []).map(s => ({
-      id: s.id,
-      label: s.name,
-      description: [s.condition, s.replicate != null ? `rep ${s.replicate}` : null].filter(Boolean).join(', '),
-      group: s.experimentName ?? undefined,
+    return (data ?? []).map(d => ({
+      id: d.id,
+      label: d.name,
+      description: [d.kind, d.condition, d.replicate != null ? `rep ${d.replicate}` : null].filter(Boolean).join(', '),
+      group: d.experimentName ?? undefined,
     }));
   }, [data, overrideItems]);
 

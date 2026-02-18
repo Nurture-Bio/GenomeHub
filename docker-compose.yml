@@ -10,6 +10,8 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./packages/server/src/migrations/001_initial.sql:/docker-entrypoint-initdb.d/001_initial.sql
+      - ./packages/server/src/migrations/002_richer_schema.sql:/docker-entrypoint-initdb.d/002_richer_schema.sql
+      - ./packages/server/src/migrations/003_knowledge_graph.sql:/docker-entrypoint-initdb.d/003_knowledge_graph.sql
 
 volumes:
   pgdata:

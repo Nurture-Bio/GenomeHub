@@ -1,19 +1,23 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { useExperimentDetailQuery, useCreateSampleMutation } from '../hooks/useGenomicQueries';
+import { useExperimentDetailQuery, useCreateDatasetMutation } from '../hooks/useGenomicQueries';
+import type { DatasetKind } from '../hooks/useGenomicQueries';
 import { TechniquePill } from '../lib/techniqueColors';
 import { Heading, Text, Card, Badge, Input, Button } from '../ui';
 import LinksList from '../components/LinksList';
 import { useAppStore } from '../stores/useAppStore';
 
+const DATASET_KINDS: DatasetKind[] = ['sample', 'library', 'reference', 'pool', 'control', 'other'];
+
 export default function ExperimentDetailPage() {
   const { experimentId } = useParams<{ experimentId: string }>();
   const { data: experiment, isLoading, refetch } = useExperimentDetailQuery(experimentId);
-  const { createSample, pending } = useCreateSampleMutation(refetch);
+  const { createDataset, pending } = useCreateDatasetMutation(refetch);
   const setBreadcrumbLabel = useAppStore(s => s.setBreadcrumbLabel);
 
-  // Create sample form state
+  // Create dataset form state
   const [name, setName] = useState('');
+  const [kind, setKind] = useState<DatasetKind>('sample');
   const [condition, setCondition] = useState('');
   const [replicate, setReplicate] = useState('');
 
@@ -23,9 +27,10 @@ export default function ExperimentDetailPage() {
 
   const handleCreate = async () => {
     if (!name || !experimentId) return;
-    await createSample({
+    await createDataset({
       experimentId,
       name,
+      kind,
       condition: condition || undefined,
       replicate: replicate ? Number(replicate) : undefined,
     });
@@ -81,15 +86,27 @@ export default function ExperimentDetailPage() {
             </Link>
           )}
           <Badge variant="count" color="accent">{experiment.fileCount} files</Badge>
-          <Badge variant="count" color="dim">{experiment.samples.length} samples</Badge>
+          <Badge variant="count" color="dim">{experiment.datasets.length} datasets</Badge>
         </div>
       </div>
 
-      {/* Add Sample form */}
+      {/* Add Dataset form */}
       <div className="flex items-end gap-2 flex-wrap bg-surface border border-border rounded-md p-2.5">
         <div className="flex flex-col gap-0.5 w-full sm:w-auto">
           <Text variant="overline">Name</Text>
-          <Input variant="surface" size="sm" placeholder="Sample name" value={name} onChange={e => setName(e.target.value)} className="w-full sm:w-52" />
+          <Input variant="surface" size="sm" placeholder="Dataset name" value={name} onChange={e => setName(e.target.value)} className="w-full sm:w-52" />
+        </div>
+        <div className="flex flex-col gap-0.5 w-[calc(50%-4px)] sm:w-auto">
+          <Text variant="overline">Kind</Text>
+          <select
+            value={kind}
+            onChange={e => setKind(e.target.value as DatasetKind)}
+            className="font-body text-caption bg-surface-2 border border-border rounded-sm px-2 py-1 min-h-7"
+          >
+            {DATASET_KINDS.map(k => (
+              <option key={k} value={k}>{k}</option>
+            ))}
+          </select>
         </div>
         <div className="flex flex-col gap-0.5 w-[calc(50%-4px)] sm:w-auto">
           <Text variant="overline">Condition</Text>
@@ -100,30 +117,33 @@ export default function ExperimentDetailPage() {
           <Input variant="surface" size="sm" type="number" placeholder="#" value={replicate} onChange={e => setReplicate(e.target.value)} className="w-full sm:w-20" />
         </div>
         <Button intent="primary" size="sm" pending={pending} onClick={handleCreate} disabled={!name} className="w-full sm:w-auto">
-          Add Sample
+          Add Dataset
         </Button>
       </div>
 
-      {/* Samples grid */}
+      {/* Datasets grid */}
       <div>
-        <Text variant="overline" className="mb-1.5 block">Samples</Text>
-        {experiment.samples.length === 0 ? (
-          <Text variant="caption">No samples yet.</Text>
+        <Text variant="overline" className="mb-1.5 block">Datasets</Text>
+        {experiment.datasets.length === 0 ? (
+          <Text variant="caption">No datasets yet.</Text>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-            {experiment.samples.map(sample => (
+            {experiment.datasets.map(dataset => (
               <Link
-                key={sample.id}
-                to={`/experiments/${experimentId}/samples/${sample.id}`}
+                key={dataset.id}
+                to={`/experiments/${experimentId}/datasets/${dataset.id}`}
                 className="no-underline"
               >
                 <Card className="p-2.5 flex flex-col gap-1 hover:border-accent transition-colors duration-fast cursor-pointer h-full">
-                  <span className="font-mono text-caption text-text">{sample.name}</span>
-                  {sample.description && <Text variant="caption" className="truncate">{sample.description}</Text>}
+                  <div className="flex items-center gap-2">
+                    <Badge variant="count" color="dim">{dataset.kind}</Badge>
+                    <span className="font-mono text-caption text-text truncate flex-1">{dataset.name}</span>
+                  </div>
+                  {dataset.description && <Text variant="caption" className="truncate">{dataset.description}</Text>}
                   <div className="flex items-center gap-2 flex-wrap">
-                    {sample.condition && <Badge variant="filter">{sample.condition}</Badge>}
-                    {sample.replicate != null && <Text variant="caption">rep {sample.replicate}</Text>}
-                    <Text variant="caption">{sample.fileCount} files</Text>
+                    {dataset.condition && <Badge variant="filter">{dataset.condition}</Badge>}
+                    {dataset.replicate != null && <Text variant="caption">rep {dataset.replicate}</Text>}
+                    <Text variant="caption">{dataset.fileCount} files</Text>
                   </div>
                 </Card>
               </Link>

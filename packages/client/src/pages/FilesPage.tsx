@@ -5,7 +5,7 @@ import { useFilesQuery, useDeleteFileMutation, usePresignedUrl } from '../hooks/
 import { useConfirm } from '../hooks/useConfirm';
 import { detectFormat, FORMAT_META, formatBytes, formatRelativeTime } from '../lib/formats';
 import { Button, Badge, Input, Text, Heading, Card } from '../ui';
-import { ProjectPicker, ExperimentPicker, SamplePicker } from '../ui';
+import { ProjectPicker, ExperimentPicker, DatasetPicker } from '../ui';
 
 // ── Format icon ──────────────────────────────────────────
 
@@ -140,6 +140,11 @@ function FileRow({ file, onDelete, onDownload, selected, onSelect }: FileRowProp
         {file.experimentName ?? '—'}
       </td>
 
+      {/* Dataset */}
+      <td className="py-1.5 pr-3 text-caption text-text-secondary whitespace-nowrap">
+        {file.datasetName ?? '—'}
+      </td>
+
       {/* Format */}
       <td className="py-1.5 pr-3 whitespace-nowrap">
         <span className="font-mono text-micro px-1 py-px rounded-sm"
@@ -190,7 +195,7 @@ function FileRow({ file, onDelete, onDownload, selected, onSelect }: FileRowProp
 function SkeletonRow() {
   return (
     <tr className="border-b border-border-subtle">
-      {[...Array(11)].map((_, i) => (
+      {[...Array(12)].map((_, i) => (
         <td key={i} className="py-2 pr-3">
           <div className="skeleton h-4 rounded-sm" style={{ width: `${40 + Math.random() * 40}%` }} />
         </td>
@@ -226,12 +231,12 @@ export default function FilesPage() {
   const [searchParams] = useSearchParams();
   const [filterProjectId, setFilterProjectId] = useState(searchParams.get('project') ?? '');
   const [filterExperimentId, setFilterExperimentId] = useState('');
-  const [filterSampleId, setFilterSampleId] = useState('');
+  const [filterDatasetId, setFilterDatasetId] = useState('');
 
   const { data, isLoading, refetch } = useFilesQuery({
     projectId: filterProjectId || undefined,
     experimentId: filterExperimentId || undefined,
-    sampleId: filterSampleId || undefined,
+    datasetId: filterDatasetId || undefined,
   });
   const { deleteFile, pending: deletePending } = useDeleteFileMutation(refetch);
   const { getUrl, pending: urlPending } = usePresignedUrl();
@@ -245,11 +250,11 @@ export default function FilesPage() {
   const handleProjectChange = (id: string) => {
     setFilterProjectId(id);
     setFilterExperimentId('');
-    setFilterSampleId('');
+    setFilterDatasetId('');
   };
   const handleExperimentChange = (id: string) => {
     setFilterExperimentId(id);
-    setFilterSampleId('');
+    setFilterDatasetId('');
   };
 
   const files = useMemo(() => {
@@ -257,7 +262,7 @@ export default function FilesPage() {
     return data.filter(f => {
       const q = search.toLowerCase();
       const matchSearch = !search || f.filename.toLowerCase().includes(q)
-        || f.projectName.toLowerCase().includes(q)
+        || (f.projectName?.toLowerCase().includes(q) ?? false)
         || (f.organismDisplay?.toLowerCase().includes(q) ?? false)
         || (f.experimentName?.toLowerCase().includes(q) ?? false);
       const matchFmt = fmtFilter === 'all' || detectFormat(f.filename) === fmtFilter;
@@ -344,11 +349,11 @@ export default function FilesPage() {
         )}
 
         {filterExperimentId && (
-          <SamplePicker
-            value={filterSampleId}
-            onValueChange={setFilterSampleId}
+          <DatasetPicker
+            value={filterDatasetId}
+            onValueChange={setFilterDatasetId}
             experimentId={filterExperimentId}
-            placeholder="All samples"
+            placeholder="All datasets"
             variant="surface"
             size="md"
             className="w-full sm:w-44"
@@ -386,7 +391,7 @@ export default function FilesPage() {
                   className="accent-accent cursor-pointer"
                 />
               </th>
-              {['File', 'Project', 'Organism', 'Experiment', 'Format', 'Size', 'Status', 'Uploaded', 'Tags', ''].map(h => (
+              {['File', 'Project', 'Organism', 'Experiment', 'Dataset', 'Format', 'Size', 'Status', 'Uploaded', 'Tags', ''].map(h => (
                 <th key={h} className="py-1.5 pr-3 font-body text-micro uppercase tracking-overline text-text-dim font-semibold whitespace-nowrap">
                   {h}
                 </th>
@@ -399,7 +404,7 @@ export default function FilesPage() {
               : files.length === 0
                 ? (
                   <tr>
-                    <td colSpan={11} className="py-12 text-center text-text-dim font-body text-body">
+                    <td colSpan={12} className="py-12 text-center text-text-dim font-body text-body">
                       {search || fmtFilter !== 'all' || filterProjectId ? 'No files match your filters.' : 'No files yet. Upload some to get started.'}
                     </td>
                   </tr>

@@ -6,24 +6,24 @@ import { Heading, Text, Card, Badge } from '../ui';
 import LinksList from '../components/LinksList';
 import { useAppStore } from '../stores/useAppStore';
 
-export default function SampleDetailPage() {
-  const { experimentId, sampleId } = useParams<{
+export default function DatasetDetailPage() {
+  const { experimentId, datasetId } = useParams<{
     experimentId: string;
-    sampleId: string;
+    datasetId: string;
   }>();
   const { data: experiment, isLoading: expLoading } = useExperimentDetailQuery(experimentId);
-  const { data: files, isLoading: filesLoading } = useFilesQuery({ sampleId });
+  const { data: files, isLoading: filesLoading } = useFilesQuery({ datasetId });
   const setBreadcrumbLabel = useAppStore(s => s.setBreadcrumbLabel);
 
-  const sample = useMemo(() =>
-    experiment?.samples.find(s => s.id === sampleId),
-    [experiment, sampleId],
+  const dataset = useMemo(() =>
+    experiment?.datasets.find(d => d.id === datasetId),
+    [experiment, datasetId],
   );
 
   useEffect(() => {
     if (experiment && experimentId) setBreadcrumbLabel(experimentId, experiment.name);
-    if (sample && sampleId) setBreadcrumbLabel(sampleId, sample.name);
-  }, [experiment, sample, experimentId, sampleId, setBreadcrumbLabel]);
+    if (dataset && datasetId) setBreadcrumbLabel(datasetId, dataset.name);
+  }, [experiment, dataset, experimentId, datasetId, setBreadcrumbLabel]);
 
   const isLoading = expLoading;
 
@@ -36,11 +36,11 @@ export default function SampleDetailPage() {
     );
   }
 
-  if (!sample) {
+  if (!dataset) {
     return (
       <div className="flex flex-col gap-3 p-2 md:p-3">
-        <Heading level="heading">Sample not found</Heading>
-        <Text variant="caption">The sample may have been deleted.</Text>
+        <Heading level="heading">Dataset not found</Heading>
+        <Text variant="caption">The dataset may have been deleted.</Text>
       </div>
     );
   }
@@ -49,21 +49,27 @@ export default function SampleDetailPage() {
     <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3">
       {/* Header */}
       <div>
-        <Heading level="heading">{sample.name}</Heading>
-        {sample.description && <Text variant="caption">{sample.description}</Text>}
+        <div className="flex items-center gap-2 mb-1">
+          <Badge variant="count" color="dim">{dataset.kind}</Badge>
+        </div>
+        <Heading level="heading">{dataset.name}</Heading>
+        {dataset.description && <Text variant="caption">{dataset.description}</Text>}
         <div className="flex items-center gap-2 mt-1 flex-wrap">
-          {sample.condition && <Badge variant="filter">{sample.condition}</Badge>}
-          {sample.replicate != null && <Text variant="caption">rep {sample.replicate}</Text>}
-          <Badge variant="count" color="accent">{sample.fileCount} files</Badge>
+          {dataset.condition && <Badge variant="filter">{dataset.condition}</Badge>}
+          {dataset.replicate != null && <Text variant="caption">rep {dataset.replicate}</Text>}
+          <Badge variant="count" color="accent">{dataset.fileCount} files</Badge>
+          {dataset.tags.length > 0 && dataset.tags.map(t => (
+            <Badge key={t} variant="count" color="dim">{t}</Badge>
+          ))}
         </div>
       </div>
 
       {/* Metadata */}
-      {sample.metadata && Object.keys(sample.metadata).length > 0 && (
+      {dataset.metadata && Object.keys(dataset.metadata).length > 0 && (
         <div className="bg-surface border border-border rounded-md p-2.5">
           <Text variant="overline" className="mb-1 block">Metadata</Text>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
-            {Object.entries(sample.metadata).map(([key, val]) => (
+            {Object.entries(dataset.metadata).map(([key, val]) => (
               <div key={key} className="flex gap-2">
                 <Text variant="label" className="shrink-0">{key}:</Text>
                 <Text variant="body" className="truncate">{String(val)}</Text>
@@ -83,23 +89,23 @@ export default function SampleDetailPage() {
             ))}
           </div>
         ) : !files?.length ? (
-          <Text variant="caption">No files associated with this sample.</Text>
+          <Text variant="caption">No files associated with this dataset.</Text>
         ) : (
           <div className="flex flex-col gap-1">
             {files.map(file => (
-              <SampleFileRow key={file.id} file={file} />
+              <DatasetFileRow key={file.id} file={file} />
             ))}
           </div>
         )}
       </div>
 
       {/* Links */}
-      <LinksList parentType="sample" parentId={sampleId!} />
+      <LinksList parentType="dataset" parentId={datasetId!} />
     </div>
   );
 }
 
-function SampleFileRow({ file }: { file: GenomicFile }) {
+function DatasetFileRow({ file }: { file: GenomicFile }) {
   const fmt = detectFormat(file.filename);
   const meta = FORMAT_META[fmt];
 

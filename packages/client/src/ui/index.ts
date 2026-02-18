@@ -7,7 +7,7 @@ export { default as ComboBox }        from './ComboBox';
 export type { ComboBoxItem }          from './ComboBox';
 export {
   ProjectPicker, ExperimentPicker, OrganismPicker,
-  SamplePicker, ExperimentTypePicker,
+  DatasetPicker, ExperimentTypePicker,
 } from './EntityPicker';
 
 export {
