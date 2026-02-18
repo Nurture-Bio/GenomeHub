@@ -59,6 +59,25 @@ router.post('/', asyncWrap(async (req, res) => {
   res.status(201).json(org);
 }));
 
+router.put('/:id', asyncWrap(async (req, res) => {
+  const repo = AppDataSource.getRepository(Organism);
+  const org = await repo.findOneBy({ id: req.params.id });
+  if (!org) { res.status(404).json({ error: 'not found' }); return; }
+
+  const { genus, species, strain, commonName, ncbiTaxId, referenceGenome } = req.body as Partial<{
+    genus: string; species: string; strain: string | null;
+    commonName: string | null; ncbiTaxId: number | null; referenceGenome: string | null;
+  }>;
+  if (genus !== undefined) org.genus = genus;
+  if (species !== undefined) org.species = species;
+  if (strain !== undefined) org.strain = strain;
+  if (commonName !== undefined) org.commonName = commonName;
+  if (ncbiTaxId !== undefined) org.ncbiTaxId = ncbiTaxId;
+  if (referenceGenome !== undefined) org.referenceGenome = referenceGenome;
+  await repo.save(org);
+  res.json(org);
+}));
+
 router.delete('/:id', asyncWrap(async (req, res) => {
   const repo = AppDataSource.getRepository(Organism);
   const org = await repo.findOneBy({ id: req.params.id });

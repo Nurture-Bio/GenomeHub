@@ -247,25 +247,28 @@ function FileRow({ file, onDelete, onDownload, onUpdate, onAddToCollection, onRe
         </div>
       </td>
 
-      {/* Organism — click to edit inline */}
+      {/* Organism — absolute overlay, zero layout shift */}
       <td className="py-1.5 pr-3">
-        {editOrg ? (
-          <OrganismPicker
-            value={file.organismId ?? ''}
-            onValueChange={v => { onUpdate(file.id, { organismId: v || null }); setEditOrg(false); }}
-            placeholder="Organism"
-            variant="surface"
-            size="sm"
-            className="w-36"
-          />
-        ) : (
-          <span
-            className="text-caption text-text-secondary italic whitespace-nowrap cursor-pointer hover:text-accent transition-colors duration-fast"
+        <div className="relative min-h-5">
+          <div
+            className={`text-caption text-text-secondary italic whitespace-nowrap cursor-pointer hover:text-accent transition-colors duration-fast ${editOrg ? 'invisible' : ''}`}
             onClick={() => setEditOrg(true)}
           >
             {file.organismDisplay ?? '—'}
-          </span>
-        )}
+          </div>
+          {editOrg && (
+            <div className="absolute top-1/2 left-0 -translate-y-1/2 z-20">
+              <OrganismPicker
+                value={file.organismId ?? ''}
+                onValueChange={v => { onUpdate(file.id, { organismId: v || null }); setEditOrg(false); }}
+                placeholder="Organism"
+                variant="surface"
+                size="sm"
+                className="w-36"
+              />
+            </div>
+          )}
+        </div>
       </td>
 
       {/* Collections — inline add/remove */}
@@ -278,45 +281,58 @@ function FileRow({ file, onDelete, onDownload, onUpdate, onAddToCollection, onRe
         />
       </td>
 
-      {/* Kind — click to edit inline */}
+      {/* Kind — absolute overlay, zero layout shift */}
       <td className="py-1.5 pr-3 whitespace-nowrap">
-        {editKind ? (
-          <FileKindPicker
-            value={file.kind}
-            onValueChange={v => { onUpdate(file.id, { kind: v }); setEditKind(false); }}
-            placeholder="Kind"
-            variant="surface"
-            size="sm"
-            className="w-28"
-          />
-        ) : (
-          <span className="cursor-pointer" onClick={() => setEditKind(true)}>
+        <div className="relative min-h-5">
+          <div
+            className={`cursor-pointer ${editKind ? 'invisible' : ''}`}
+            onClick={() => setEditKind(true)}
+          >
             <Badge variant="count" color="dim">{file.kind}</Badge>
-          </span>
-        )}
+          </div>
+          {editKind && (
+            <div className="absolute top-1/2 left-0 -translate-y-1/2 z-20">
+              <FileKindPicker
+                value={file.kind}
+                onValueChange={v => { onUpdate(file.id, { kind: v }); setEditKind(false); }}
+                placeholder="Kind"
+                variant="surface"
+                size="sm"
+                className="w-28"
+              />
+            </div>
+          )}
+        </div>
       </td>
 
-      {/* Format — click to edit inline */}
+      {/* Format — absolute overlay, zero layout shift */}
       <td className="py-1.5 pr-3 whitespace-nowrap">
-        {editFmt ? (
-          <ComboBox
-            items={FORMAT_ITEMS}
-            value={file.format}
-            onValueChange={v => { if (v) onUpdate(file.id, { format: v }); setEditFmt(false); }}
-            placeholder="Format"
-            variant="surface"
-            size="sm"
-            className="w-24"
-          />
-        ) : (
-          <span
-            className="font-mono text-micro px-1 py-px rounded-sm cursor-pointer hover:ring-1 hover:ring-accent transition-all duration-fast"
-            style={{ background: meta.bg, color: meta.color }}
+        <div className="relative min-h-5">
+          <div
+            className={`cursor-pointer ${editFmt ? 'invisible' : ''}`}
             onClick={() => setEditFmt(true)}
           >
-            {meta.label}
-          </span>
-        )}
+            <span
+              className="font-mono text-micro px-1 py-px rounded-sm hover:ring-1 hover:ring-accent transition-all duration-fast"
+              style={{ background: meta.bg, color: meta.color }}
+            >
+              {meta.label}
+            </span>
+          </div>
+          {editFmt && (
+            <div className="absolute top-1/2 left-0 -translate-y-1/2 z-20">
+              <ComboBox
+                items={FORMAT_ITEMS}
+                value={file.format}
+                onValueChange={v => { if (v) onUpdate(file.id, { format: v }); setEditFmt(false); }}
+                placeholder="Format"
+                variant="surface"
+                size="sm"
+                className="w-24"
+              />
+            </div>
+          )}
+        </div>
       </td>
 
       {/* Size */}

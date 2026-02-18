@@ -237,6 +237,27 @@ export function useCreateCollectionMutation(onSuccess?: () => void) {
   return { createCollection: mutate, pending };
 }
 
+export function useUpdateCollectionMutation(onSuccess?: () => void) {
+  const { mutate, pending } = useApiMutation<[string, {
+    name?: string; description?: string; techniqueId?: string; organismId?: string;
+  }]>(
+    (id, body) => ({
+      url: `/api/collections/${id}`,
+      init: { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+    }),
+    { errorMessage: 'Failed to update collection', onSuccess },
+  );
+  return { updateCollection: mutate, pending };
+}
+
+export function useDeleteCollectionMutation(onSuccess?: () => void) {
+  const { mutate, pending } = useApiMutation<[string]>(
+    (id) => ({ url: `/api/collections/${id}`, init: { method: 'DELETE' } }),
+    { successMessage: 'Collection deleted', errorMessage: 'Failed to delete collection', onSuccess },
+  );
+  return { deleteCollection: mutate, pending };
+}
+
 // ─── Techniques ──────────────────────────────────────────
 
 export function useTechniquesQuery() {

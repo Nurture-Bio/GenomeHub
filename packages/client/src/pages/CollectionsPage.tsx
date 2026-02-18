@@ -1,13 +1,40 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   useCollectionsQuery, useCreateCollectionMutation,
+  useUpdateCollectionMutation, useDeleteCollectionMutation,
   useTechniquesQuery,
 } from '../hooks/useGenomicQueries';
 import { techniqueColor, TechniquePill } from '../lib/techniqueColors';
-import { formatRelativeTime } from '../lib/formats';
-import { Button, Badge, Input, Text, Heading, Card } from '../ui';
+import { Badge, Text, Heading, Card } from '../ui';
 import { TechniquePicker, OrganismPicker } from '../ui';
+
+// ── Inline picker cell (absolute overlay, zero layout shift) ─
+
+function InlinePickerCell({
+  children, editing, onStartEdit, picker,
+}: {
+  children: React.ReactNode;
+  editing: boolean;
+  onStartEdit: () => void;
+  picker: React.ReactNode;
+}) {
+  return (
+    <div className="relative min-h-5">
+      <div
+        className={`${editing ? 'invisible' : 'cursor-pointer hover:text-accent transition-colors duration-fast'}`}
+        onClick={onStartEdit}
+      >
+        {children}
+      </div>
+      {editing && (
+        <div className="absolute top-1/2 left-0 -translate-y-1/2 z-20">
+          {picker}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── Skeleton row ─────────────────────────────────────────
 
@@ -27,16 +54,22 @@ function SkeletonRow() {
 
 export default function CollectionsPage() {
   const { data, isLoading, refetch } = useCollectionsQuery();
-  const { createCollection, pending } = useCreateCollectionMutation(refetch);
+  const { createCollection, pending: createPending } = useCreateCollectionMutation(refetch);
+  const { updateCollection } = useUpdateCollectionMutation(refetch);
+  const { deleteCollection } = useDeleteCollectionMutation(refetch);
   const { data: techniques } = useTechniquesQuery();
 
   const [techFilter, setTechFilter] = useState<string>('all');
 
-  // Create form — only name is required. Everything else optional.
-  const [name,         setName]         = useState('');
-  const [techniqueId,  setTechniqueId]  = useState('');
-  const [organismId,   setOrganismId]   = useState('');
-  const [description,  setDescription]  = useState('');
+  // Inline picker state per-row
+  const [editTech, setEditTech] = useState<string | null>(null);
+  const [editOrg, setEditOrg] = useState<string | null>(null);
+
+  // Inline add row state
+  const [newName, setNewName] = useState('');
+  const [newTechId, setNewTechId] = useState('');
+  const [newOrgId, setNewOrgId] = useState('');
+  const nameRef = useRef<HTMLInputElement>(null);
 
   const filtered = useMemo(() => {
     if (!data) return [];
@@ -45,20 +78,31 @@ export default function CollectionsPage() {
   }, [data, techFilter]);
 
   const handleCreate = async () => {
-    if (!name) return;
+    if (!newName.trim()) return;
     await createCollection({
-      name,
-      techniqueId: techniqueId || undefined,
-      organismId: organismId || undefined,
-      description: description || undefined,
+      name: newName.trim(),
+      techniqueId: newTechId || undefined,
+      organismId: newOrgId || undefined,
     });
-    setName(''); setTechniqueId('');
-    setOrganismId(''); setDescription('');
+    setNewName(''); setNewTechId(''); setNewOrgId('');
+    nameRef.current?.focus();
+  };
+
+  const handleUpdateTechnique = async (id: string, techniqueId: string) => {
+    await updateCollection(id, { techniqueId: techniqueId || undefined });
+    setEditTech(null);
+  };
+
+  const handleUpdateOrganism = async (id: string, organismId: string) => {
+    await updateCollection(id, { organismId: organismId || undefined });
+    setEditOrg(null);
   };
 
   const techniqueFilters = useMemo(() => {
     return ['all', ...(techniques ?? []).map(t => t.name)];
   }, [techniques]);
+
+  const ready = newName.trim().length > 0;
 
   return (
     <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 h-full min-h-0">
@@ -68,41 +112,6 @@ export default function CollectionsPage() {
         <Text variant="caption">
           {data ? `${data.length} collection${data.length !== 1 ? 's' : ''}` : 'Loading...'}
         </Text>
-      </div>
-
-      {/* Create form — only name required */}
-      <div className="flex items-end gap-2 shrink-0 flex-wrap bg-surface border border-border rounded-md p-2.5">
-        <div className="flex flex-col gap-0.5 w-full sm:w-auto">
-          <Text variant="overline">Name</Text>
-          <Input variant="surface" size="sm" placeholder="Name" value={name} onChange={e => setName(e.target.value)} className="w-full sm:w-52" />
-        </div>
-        <div className="flex flex-col gap-0.5 w-[calc(50%-4px)] sm:w-auto">
-          <Text variant="overline">Technique</Text>
-          <TechniquePicker
-            value={techniqueId}
-            onValueChange={setTechniqueId}
-            variant="surface"
-            size="sm"
-            className="w-full sm:w-36"
-          />
-        </div>
-        <div className="flex flex-col gap-0.5 w-[calc(50%-4px)] sm:w-auto">
-          <Text variant="overline">Organism</Text>
-          <OrganismPicker
-            value={organismId}
-            onValueChange={setOrganismId}
-            variant="surface"
-            size="sm"
-            className="w-full sm:w-40"
-          />
-        </div>
-        <div className="flex flex-col gap-0.5 w-full sm:w-auto">
-          <Text variant="overline">Description</Text>
-          <Input variant="surface" size="sm" placeholder="Description" value={description} onChange={e => setDescription(e.target.value)} className="w-full sm:w-52" />
-        </div>
-        <Button intent="primary" size="sm" pending={pending} onClick={handleCreate} disabled={!name} className="w-full sm:w-auto">
-          Add
-        </Button>
       </div>
 
       {/* Technique filters */}
@@ -133,7 +142,7 @@ export default function CollectionsPage() {
         <table className="w-full border-collapse text-left">
           <thead className="sticky top-0 bg-surface-2 z-10">
             <tr className="border-b border-border">
-              {['Name', 'Technique', 'Organism', 'Kind', 'Created by', 'Files'].map(h => (
+              {['Name', 'Technique', 'Organism', 'Kind', 'Files', ''].map(h => (
                 <th key={h} className="py-1.5 pr-3 pl-2.5 font-body text-micro uppercase tracking-overline text-text-dim font-semibold whitespace-nowrap">
                   {h}
                 </th>
@@ -143,37 +152,133 @@ export default function CollectionsPage() {
           <tbody>
             {isLoading
               ? [...Array(5)].map((_, i) => <SkeletonRow key={i} />)
-              : !filtered.length
-                ? (
-                  <tr>
-                    <td colSpan={6} className="py-12 text-center text-text-dim font-body text-body">
-                      {techFilter !== 'all' ? 'No collections match this technique.' : 'No collections yet. Create one above.'}
-                    </td>
-                  </tr>
-                )
-                : filtered.map(c => (
-                  <tr key={c.id} className="border-b border-border-subtle transition-colors duration-fast hover:bg-surface group cursor-pointer"
-                    onClick={() => window.location.hash = ''}
-                  >
+              : (
+                <>
+                  {!filtered.length && (
+                    <tr>
+                      <td colSpan={6} className="py-12 text-center text-text-dim font-body text-body">
+                        {techFilter !== 'all' ? 'No collections match this technique.' : 'No collections yet.'}
+                      </td>
+                    </tr>
+                  )}
+                  {filtered.map(c => (
+                    <tr key={c.id} className="border-b border-border-subtle transition-colors duration-fast hover:bg-surface group">
+                      <td className="py-1.5 pl-2.5 pr-3">
+                        <Link to={`/collections/${c.id}`} className="no-underline">
+                          <div className="font-mono text-caption text-text hover:text-accent transition-colors duration-fast">{c.name}</div>
+                          {c.description && <div className="text-micro text-text-dim truncate max-w-xs">{c.description}</div>}
+                        </Link>
+                      </td>
+                      <td className="py-1.5 pr-3">
+                        <InlinePickerCell
+                          editing={editTech === c.id}
+                          onStartEdit={() => setEditTech(c.id)}
+                          picker={
+                            <TechniquePicker
+                              value={c.techniqueId ?? ''}
+                              onValueChange={v => handleUpdateTechnique(c.id, v)}
+                              variant="surface"
+                              size="sm"
+                              className="w-36"
+                            />
+                          }
+                        >
+                          {c.techniqueName
+                            ? <TechniquePill name={c.techniqueName} />
+                            : <span className="text-caption text-text-dim">--</span>
+                          }
+                        </InlinePickerCell>
+                      </td>
+                      <td className="py-1.5 pr-3">
+                        <InlinePickerCell
+                          editing={editOrg === c.id}
+                          onStartEdit={() => setEditOrg(c.id)}
+                          picker={
+                            <OrganismPicker
+                              value={c.organismId ?? ''}
+                              onValueChange={v => handleUpdateOrganism(c.id, v)}
+                              variant="surface"
+                              size="sm"
+                              className="w-40"
+                            />
+                          }
+                        >
+                          <span className="text-caption text-text-secondary italic">
+                            {c.organismDisplay ?? '--'}
+                          </span>
+                        </InlinePickerCell>
+                      </td>
+                      <td className="py-1.5 pr-3">
+                        <Badge variant="count" color="dim">{c.kind}</Badge>
+                      </td>
+                      <td className="py-1.5 pr-3 font-mono text-caption tabular-nums text-text-secondary">
+                        {c.fileCount}
+                      </td>
+                      <td className="py-1.5 pr-3 w-6">
+                        <button
+                          onClick={() => deleteCollection(c.id)}
+                          className="text-text-dim hover:text-red-400 cursor-pointer bg-transparent border-none p-0 text-caption opacity-0 group-hover:opacity-100 transition-opacity duration-fast"
+                          title="Delete collection"
+                        >
+                          ×
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {/* Inline add row */}
+                  <tr className="border-b border-border-subtle text-text-dim">
                     <td className="py-1.5 pl-2.5 pr-3">
-                      <Link to={`/collections/${c.id}`} className="no-underline">
-                        <div className="font-mono text-caption text-text">{c.name}</div>
-                        {c.description && <div className="text-micro text-text-dim truncate max-w-xs">{c.description}</div>}
-                      </Link>
-                    </td>
-                    <td className="py-1.5 pr-3"><TechniquePill name={c.techniqueName ?? 'Other'} /></td>
-                    <td className="py-1.5 pr-3 text-caption text-text-secondary italic">
-                      {c.organismDisplay ?? '--'}
+                      <input
+                        ref={nameRef}
+                        value={newName}
+                        onChange={e => setNewName(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') handleCreate(); }}
+                        placeholder="+ collection name"
+                        className="bg-transparent border-b border-transparent outline-none font-mono text-caption text-text placeholder:text-text-dim p-0 w-36 focus:border-accent transition-colors duration-fast"
+                      />
                     </td>
                     <td className="py-1.5 pr-3">
-                      <Badge variant="count" color="dim">{c.kind}</Badge>
+                      <TechniquePicker
+                        value={newTechId}
+                        onValueChange={setNewTechId}
+                        variant="surface"
+                        size="sm"
+                        className="w-28"
+                      />
                     </td>
-                    <td className="py-1.5 pr-3 text-caption text-text-dim">{c.createdBy ?? '--'}</td>
-                    <td className="py-1.5 pr-3 font-mono text-caption tabular-nums text-text-secondary">
-                      {c.fileCount}
+                    <td className="py-1.5 pr-3">
+                      <OrganismPicker
+                        value={newOrgId}
+                        onValueChange={setNewOrgId}
+                        variant="surface"
+                        size="sm"
+                        className="w-32"
+                      />
+                    </td>
+                    <td colSpan={2} />
+                    <td className="py-1.5 pr-3 w-6">
+                      <span className={`inline-flex items-center gap-1 transition-opacity duration-fast ${ready ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                        <button
+                          disabled={createPending}
+                          onClick={handleCreate}
+                          className="text-caption text-accent hover:text-text cursor-pointer bg-transparent border-none p-0 font-body"
+                          title="Add"
+                        >
+                          ✓
+                        </button>
+                        <button
+                          onClick={() => { setNewName(''); setNewTechId(''); setNewOrgId(''); }}
+                          className="text-caption text-text-dim hover:text-text cursor-pointer bg-transparent border-none p-0 font-body"
+                          title="Cancel"
+                        >
+                          ×
+                        </button>
+                      </span>
                     </td>
                   </tr>
-                ))
+                </>
+              )
             }
           </tbody>
         </table>
@@ -191,7 +296,7 @@ export default function CollectionsPage() {
           : !filtered.length
             ? (
               <div className="py-8 text-center text-text-dim text-body font-body">
-                {techFilter !== 'all' ? 'No collections match this technique.' : 'No collections yet. Create one above.'}
+                {techFilter !== 'all' ? 'No collections match this technique.' : 'No collections yet.'}
               </div>
             )
             : filtered.map(c => (

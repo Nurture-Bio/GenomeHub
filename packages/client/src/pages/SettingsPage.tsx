@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import {
   useTechniquesQuery, useCreateTechniqueMutation,
   useRelationTypesQuery, useCreateRelationTypeMutation,
@@ -6,7 +6,7 @@ import {
 } from '../hooks/useGenomicQueries';
 import { apiFetch } from '../lib/api';
 import { toast } from 'sonner';
-import { Heading, Text, Button, Input, Card } from '../ui';
+import { Heading, Text, InlineInput } from '../ui';
 
 // ── Editable row ─────────────────────────────────────────
 
@@ -15,116 +15,129 @@ interface EditableRowProps {
   name: string;
   description: string | null;
   extra?: string;
-  onSave: (id: string, patch: { name: string; description: string }) => Promise<void>;
+  onSave: (id: string, patch: { name?: string; description?: string }) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }
 
 function EditableRow({ id, name, description, extra, onSave, onDelete }: EditableRowProps) {
-  const [editing, setEditing] = useState(false);
-  const [editName, setEditName] = useState(name);
-  const [editDesc, setEditDesc] = useState(description ?? '');
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [pending, setPending] = useState(false);
-
-  const handleSave = async () => {
-    setPending(true);
-    try {
-      await onSave(id, { name: editName, description: editDesc });
-      setEditing(false);
-    } finally {
-      setPending(false);
-    }
-  };
 
   const handleDelete = async () => {
     setPending(true);
-    try {
-      await onDelete(id);
-    } finally {
-      setPending(false);
-    }
+    try { await onDelete(id); } finally { setPending(false); setConfirmDelete(false); }
   };
 
-  if (editing) {
-    return (
-      <div className="flex items-center gap-2 p-2 bg-surface border border-border rounded-sm">
-        <Input
-          variant="surface" size="sm"
-          value={editName}
-          onChange={e => setEditName(e.target.value)}
-          placeholder="Name"
-          className="w-40"
-        />
-        <Input
-          variant="surface" size="sm"
-          value={editDesc}
-          onChange={e => setEditDesc(e.target.value)}
-          placeholder="Description"
-          className="flex-1"
-        />
-        <Button intent="primary" size="sm" pending={pending} onClick={handleSave}>Save</Button>
-        <Button intent="ghost" size="sm" onClick={() => { setEditing(false); setEditName(name); setEditDesc(description ?? ''); }}>Cancel</Button>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex items-center gap-2 p-2 bg-surface border border-border rounded-sm group">
-      <span className="font-mono text-caption text-text font-semibold">{name}</span>
+    <div className="flex items-center gap-2 p-1.5 px-2 rounded-sm group hover:bg-surface transition-colors duration-fast min-h-8">
+      <InlineInput
+        value={name}
+        mono
+        className="font-semibold"
+        onCommit={val => onSave(id, { name: val })}
+      />
       {extra && <span className="font-mono text-micro text-text-dim">{extra}</span>}
-      <span className="text-caption text-text-dim flex-1 truncate">{description ?? ''}</span>
-      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-fast">
-        <Button intent="ghost" size="xs" onClick={() => setEditing(true)}>Edit</Button>
-        <Button intent="danger" size="xs" pending={pending} onClick={handleDelete}>Delete</Button>
+      <InlineInput
+        value={description ?? ''}
+        placeholder="add description"
+        className="flex-1"
+        onCommit={val => onSave(id, { description: val })}
+      />
+      {/* Action area — fixed width to prevent shift on confirm toggle */}
+      <div className="shrink-0 w-8 flex justify-end">
+        {confirmDelete ? (
+          <span className="inline-flex items-center gap-1">
+            <button
+              disabled={pending}
+              onClick={handleDelete}
+              className="text-caption text-red-400 hover:text-red-300 cursor-pointer bg-transparent border-none p-0 font-body"
+              title="Confirm delete"
+            >
+              ✓
+            </button>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              className="text-caption text-text-dim hover:text-text cursor-pointer bg-transparent border-none p-0 font-body"
+              title="Cancel"
+            >
+              ×
+            </button>
+          </span>
+        ) : (
+          <button
+            onClick={() => setConfirmDelete(true)}
+            className="text-caption text-text-dim hover:text-red-400 cursor-pointer bg-transparent border-none p-0 font-body opacity-0 group-hover:opacity-100 transition-opacity duration-fast"
+            title="Delete"
+          >
+            ×
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
-// ── Add form ─────────────────────────────────────────────
+// ── Add row (inline) ────────────────────────────────────
 
-interface AddFormProps {
-  namePlaceholder: string;
-  onAdd: (name: string, description: string) => Promise<void>;
-}
-
-function AddForm({ namePlaceholder, onAdd }: AddFormProps) {
+function AddRow({ placeholder, onAdd }: { placeholder: string; onAdd: (name: string, description: string) => Promise<void> }) {
   const [name, setName] = useState('');
   const [desc, setDesc] = useState('');
   const [pending, setPending] = useState(false);
+  const nameRef = useRef<HTMLInputElement>(null);
 
-  const handleAdd = async () => {
+  const commit = async () => {
     if (!name.trim()) return;
     setPending(true);
     try {
       await onAdd(name.trim(), desc.trim());
       setName('');
       setDesc('');
+      nameRef.current?.focus();
     } finally {
       setPending(false);
     }
   };
 
+  const hasInput = name.trim().length > 0;
+
   return (
-    <div className="flex items-center gap-2">
-      <Input
-        variant="surface" size="sm"
+    <div className="flex items-center gap-2 p-1.5 px-2 rounded-sm text-text-dim min-h-8">
+      <input
+        ref={nameRef}
         value={name}
         onChange={e => setName(e.target.value)}
-        placeholder={namePlaceholder}
-        className="w-40"
-        onKeyDown={e => e.key === 'Enter' && handleAdd()}
+        onKeyDown={e => { if (e.key === 'Enter') commit(); }}
+        placeholder={placeholder}
+        className="bg-transparent border-b border-transparent outline-none font-mono text-caption font-semibold text-text placeholder:text-text-dim p-0 focus:border-accent transition-colors duration-fast"
+        style={{ width: `${Math.max(name.length, placeholder.length)}ch` }}
       />
-      <Input
-        variant="surface" size="sm"
+      <input
         value={desc}
         onChange={e => setDesc(e.target.value)}
-        placeholder="Description"
-        className="flex-1"
-        onKeyDown={e => e.key === 'Enter' && handleAdd()}
+        onKeyDown={e => { if (e.key === 'Enter') commit(); }}
+        placeholder="description"
+        className="bg-transparent border-b border-transparent outline-none text-caption text-text-dim placeholder:text-text-dim p-0 flex-1 focus:border-accent transition-colors duration-fast"
       />
-      <Button intent="primary" size="sm" pending={pending} onClick={handleAdd} disabled={!name.trim()}>
-        Add
-      </Button>
+      {/* Always reserve space for buttons */}
+      <div className="shrink-0 w-8 flex justify-end">
+        <span className={`inline-flex items-center gap-1 transition-opacity duration-fast ${hasInput ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+          <button
+            disabled={pending}
+            onClick={commit}
+            className="text-caption text-accent hover:text-text cursor-pointer bg-transparent border-none p-0 font-body"
+            title="Add"
+          >
+            ✓
+          </button>
+          <button
+            onClick={() => { setName(''); setDesc(''); }}
+            className="text-caption text-text-dim hover:text-text cursor-pointer bg-transparent border-none p-0 font-body"
+            title="Cancel"
+          >
+            ×
+          </button>
+        </span>
+      </div>
     </div>
   );
 }
@@ -136,21 +149,21 @@ export default function SettingsPage() {
   const { data: relationTypes, refetch: refetchRelations } = useRelationTypesQuery();
   const { createRelationType } = useCreateRelationTypeMutation(refetchRelations);
 
-  const saveRelation = useCallback(async (id: string, patch: { name: string; description: string }) => {
+  const saveRelation = useCallback(async (id: string, patch: { name?: string; description?: string }) => {
     const r = await apiFetch(`/api/relation-types/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
     });
     if (!r.ok) throw new Error('Update failed');
-    toast.success('Relation type updated');
+    toast.success('Updated');
     refetchRelations();
   }, [refetchRelations]);
 
   const deleteRelation = useCallback(async (id: string) => {
     const r = await apiFetch(`/api/relation-types/${id}`, { method: 'DELETE' });
     if (!r.ok) throw new Error('Delete failed');
-    toast.success('Relation type deleted');
+    toast.success('Deleted');
     refetchRelations();
   }, [refetchRelations]);
 
@@ -162,21 +175,21 @@ export default function SettingsPage() {
   const { data: fileKinds, refetch: refetchKinds } = useFileKindsQuery();
   const { createFileKind } = useCreateFileKindMutation(refetchKinds);
 
-  const saveKind = useCallback(async (id: string, patch: { name: string; description: string }) => {
+  const saveKind = useCallback(async (id: string, patch: { name?: string; description?: string }) => {
     const r = await apiFetch(`/api/file-kinds/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
     });
     if (!r.ok) throw new Error('Update failed');
-    toast.success('File kind updated');
+    toast.success('Updated');
     refetchKinds();
   }, [refetchKinds]);
 
   const deleteKind = useCallback(async (id: string) => {
     const r = await apiFetch(`/api/file-kinds/${id}`, { method: 'DELETE' });
     if (!r.ok) throw new Error('Delete failed');
-    toast.success('File kind deleted');
+    toast.success('Deleted');
     refetchKinds();
   }, [refetchKinds]);
 
@@ -188,21 +201,21 @@ export default function SettingsPage() {
   const { data: techniques, refetch: refetchTechniques } = useTechniquesQuery();
   const { createTechnique } = useCreateTechniqueMutation(refetchTechniques);
 
-  const saveTechnique = useCallback(async (id: string, patch: { name: string; description: string }) => {
+  const saveTechnique = useCallback(async (id: string, patch: { name?: string; description?: string }) => {
     const r = await apiFetch(`/api/techniques/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
     });
     if (!r.ok) throw new Error('Update failed');
-    toast.success('Technique updated');
+    toast.success('Updated');
     refetchTechniques();
   }, [refetchTechniques]);
 
   const deleteTechnique = useCallback(async (id: string) => {
     const r = await apiFetch(`/api/techniques/${id}`, { method: 'DELETE' });
     if (!r.ok) throw new Error('Delete failed');
-    toast.success('Technique deleted');
+    toast.success('Deleted');
     refetchTechniques();
   }, [refetchTechniques]);
 
@@ -218,8 +231,8 @@ export default function SettingsPage() {
       </div>
 
       {/* Relation types */}
-      <div className="flex flex-col gap-1.5">
-        <div>
+      <div className="flex flex-col gap-0.5">
+        <div className="mb-1">
           <Heading level="subheading">Relation Types</Heading>
           <Text variant="caption">Define how files can be linked to each other</Text>
         </div>
@@ -233,12 +246,12 @@ export default function SettingsPage() {
             onDelete={deleteRelation}
           />
         ))}
-        <AddForm namePlaceholder="e.g. aligned_from" onAdd={addRelation} />
+        <AddRow placeholder="+ new relation type" onAdd={addRelation} />
       </div>
 
       {/* File kinds */}
-      <div className="flex flex-col gap-1.5">
-        <div>
+      <div className="flex flex-col gap-0.5">
+        <div className="mb-1">
           <Heading level="subheading">File Kinds</Heading>
           <Text variant="caption">Classify files by their biological meaning</Text>
         </div>
@@ -252,12 +265,12 @@ export default function SettingsPage() {
             onDelete={deleteKind}
           />
         ))}
-        <AddForm namePlaceholder="e.g. config" onAdd={addKind} />
+        <AddRow placeholder="+ new file kind" onAdd={addKind} />
       </div>
 
       {/* Techniques */}
-      <div className="flex flex-col gap-1.5">
-        <div>
+      <div className="flex flex-col gap-0.5">
+        <div className="mb-1">
           <Heading level="subheading">Techniques</Heading>
           <Text variant="caption">Sequencing techniques linked to collections</Text>
         </div>
@@ -272,7 +285,7 @@ export default function SettingsPage() {
             onDelete={deleteTechnique}
           />
         ))}
-        <AddForm namePlaceholder="e.g. CLIP-seq" onAdd={addTechnique} />
+        <AddRow placeholder="+ new technique" onAdd={addTechnique} />
       </div>
     </div>
   );
