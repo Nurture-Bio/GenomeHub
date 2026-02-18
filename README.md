@@ -7,14 +7,14 @@
 
 # GenomeHub
 
-Cloud-native genomic data management. Upload, catalog, and retrieve large sequencing files through a web interface — files stream directly to S3 via presigned multipart URLs; the server never buffers payloads.
+Cloud-native genomic data management. Upload, catalog, and retrieve large sequencing files through a web UI. Files stream directly to S3 via presigned multipart URLs and never touch the application server.
 
-GenomeHub is the **data layer** in a broader ecosystem for computational genomics:
+GenomeHub is the data layer in a broader ecosystem for computational genomics:
 
 | Project | Role |
 |---|---|
 | **GenomeHub** | Store and organize sequencing files (FASTQ, BAM, VCF, ...) |
-| [SeqChain](https://github.com/ryandward/SeqChain) | Composable analysis toolkit — CRISPR design, Tn-seq, chromatin annotation |
+| [SeqChain](https://github.com/ryandward/SeqChain) | Composable analysis toolkit for CRISPR design, Tn-seq, chromatin annotation |
 | [Epigenome2Phenome](https://github.com/ryandward/ATACFlux) | Interactive visualization linking epigenomic state to metabolic flux |
 
 ---
@@ -36,7 +36,7 @@ flowchart TB
     Browser -. "direct multipart upload<br/>(presigned URLs)" .-> S3
 ```
 
-**Key design choice:** the browser uploads directly to S3 via presigned multipart URLs. The server only coordinates metadata. This means a 50 GB BAM file never touches the application server.
+The browser uploads directly to S3 via presigned multipart URLs. The server only coordinates metadata, so a 50 GB BAM file never touches the application server.
 
 ### Components
 
@@ -121,20 +121,20 @@ packages/
 | `GET` | `/api/files?projectId=` | List files, optionally filtered by project |
 | `DELETE` | `/api/files/:id` | Delete file from S3 and database |
 | `GET` | `/api/files/:id/download` | Get a presigned download URL |
-| `GET` | `/api/stats` | Aggregate storage stats grouped by format |
+| `GET` | `/api/stats` | Storage stats grouped by format |
 
 ### Multipart uploads
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/api/uploads/initiate` | Register metadata + start S3 multipart |
+| `POST` | `/api/uploads/initiate` | Register metadata and start S3 multipart |
 | `POST` | `/api/uploads/part-url` | Get presigned URL for a single part |
 | `POST` | `/api/uploads/complete` | Finalize multipart, verify object, mark ready |
 | `POST` | `/api/uploads/abort` | Abort failed upload, mark file as error |
 
 ### Supported formats
 
-FASTQ, BAM, CRAM, VCF, BCF, BED, GFF/GFF3, GTF, FASTA, SAM, BigWig, BigBed — auto-detected from file extension.
+FASTQ, BAM, CRAM, VCF, BCF, BED, GFF/GFF3, GTF, FASTA, SAM, BigWig, BigBed. Auto-detected from file extension.
 
 ---
 
@@ -142,25 +142,25 @@ FASTQ, BAM, CRAM, VCF, BCF, BED, GFF/GFF3, GTF, FASTA, SAM, BigWig, BigBed — a
 
 ### GenomeHub
 
-- [ ] **Authentication** — Cognito user pools with per-project RBAC
-- [ ] **Search and filtering** — Full-text search over filenames, tags, and descriptions
-- [ ] **Batch operations** — Multi-file download (zip) and bulk tag editing
-- [ ] **File validation** — Post-upload format verification (samtools quickcheck, vcf-validator)
-- [ ] **Event-driven processing** — S3 event notifications triggering Lambda for indexing, checksums, format conversion
-- [ ] **Cost dashboard** — Real-time S3 storage cost estimates by project and storage tier
+- [ ] **Authentication**: Cognito user pools with per-project RBAC
+- [ ] **Search and filtering**: full-text search over filenames, tags, and descriptions
+- [ ] **Batch operations**: multi-file download (zip) and bulk tag editing
+- [ ] **File validation**: post-upload format verification (samtools quickcheck, vcf-validator)
+- [ ] **Event-driven processing**: S3 event notifications triggering Lambda for indexing, checksums, format conversion
+- [ ] **Cost dashboard**: real-time S3 storage cost estimates by project and storage tier
 
 ### SeqChain integration
 
-- [ ] **Analysis triggers** — Launch SeqChain pipelines directly from uploaded files (e.g., FASTQ &rarr; alignment &rarr; peak calling)
-- [ ] **Result ingestion** — SeqChain outputs (BED, BigWig, count matrices) automatically cataloged back into GenomeHub
-- [ ] **Preset library** — Browse and apply SeqChain presets (CRISPR design, Tn-seq, chromatin annotation) from the GenomeHub UI
-- [ ] **Provenance tracking** — Link derived files to their source data and the SeqChain recipe that produced them
+- [ ] **Analysis triggers**: launch SeqChain pipelines from uploaded files (FASTQ to alignment to peak calling)
+- [ ] **Result ingestion**: SeqChain outputs (BED, BigWig, count matrices) cataloged back into GenomeHub automatically
+- [ ] **Preset library**: browse and apply SeqChain presets (CRISPR design, Tn-seq, chromatin annotation) from the GenomeHub UI
+- [ ] **Provenance tracking**: link derived files to their source data and the SeqChain recipe that produced them
 
 ### Epigenome2Phenome integration
 
-- [ ] **Live data binding** — Epigenome2Phenome pulls chromatin accessibility and expression data directly from GenomeHub's catalog instead of bundled demo data
-- [ ] **Flux simulation from real experiments** — Upload ATAC-seq + RNA-seq, run SeqChain annotation, feed results into the metabolic flux solver
-- [ ] **Target export** — CRISPR activation targets identified by Epigenome2Phenome flow back as GenomeHub project annotations
+- [ ] **Live data binding**: pull chromatin accessibility and expression data directly from GenomeHub instead of bundled demo data
+- [ ] **Flux simulation from real experiments**: upload ATAC-seq + RNA-seq, run SeqChain annotation, feed results into the metabolic flux solver
+- [ ] **Target export**: CRISPR activation targets identified by Epigenome2Phenome flow back as GenomeHub project annotations
 
 ### End-to-end vision
 
