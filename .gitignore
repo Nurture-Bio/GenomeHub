@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# CDK
+cdk.out/
+cdk.context.json
+
+# Environment
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Archives (original zip)
+*.zip
+
+# Original extracted directory
+genome-hub-fixed/
