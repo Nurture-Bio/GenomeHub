@@ -24,21 +24,21 @@ router.get('/', asyncWrap(async (_req, res) => {
     .getRawMany<{ organismId: string; fileCount: string }>();
   const fileMap = new Map(fileCounts.map(s => [s.organismId, parseInt(s.fileCount)]));
 
-  // Experiment counts via edges (experiment → organism via targets)
-  const expCounts = await edgeRepo
+  // Collection counts via edges (collection → organism via targets)
+  const colCounts = await edgeRepo
     .createQueryBuilder('e')
     .select('e.target_id', 'organismId')
-    .addSelect('COUNT(*)', 'experimentCount')
-    .where("e.source_type = 'experiment' AND e.target_type = 'organism' AND e.relation = 'targets'")
+    .addSelect('COUNT(*)', 'collectionCount')
+    .where("e.source_type = 'collection' AND e.target_type = 'organism' AND e.relation = 'targets'")
     .groupBy('e.target_id')
-    .getRawMany<{ organismId: string; experimentCount: string }>();
-  const expMap = new Map(expCounts.map(s => [s.organismId, parseInt(s.experimentCount)]));
+    .getRawMany<{ organismId: string; collectionCount: string }>();
+  const colMap = new Map(colCounts.map(s => [s.organismId, parseInt(s.collectionCount)]));
 
   res.json(organisms.map(o => ({
     ...o,
     displayName: `${o.genus.charAt(0)}. ${o.species}${o.strain ? ' ' + o.strain : ''}`,
     fileCount: fileMap.get(o.id) ?? 0,
-    experimentCount: expMap.get(o.id) ?? 0,
+    collectionCount: colMap.get(o.id) ?? 0,
   })));
 }));
 

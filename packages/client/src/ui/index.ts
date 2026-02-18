@@ -6,8 +6,8 @@ export { default as Badge }           from './Badge';
 export { default as ComboBox }        from './ComboBox';
 export type { ComboBoxItem }          from './ComboBox';
 export {
-  ProjectPicker, ExperimentPicker, OrganismPicker,
-  DatasetPicker, ExperimentTypePicker,
+  ProjectPicker, CollectionPicker, OrganismPicker,
+  FileKindPicker, TechniquePicker,
 } from './EntityPicker';
 
 export {

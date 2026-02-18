@@ -89,7 +89,7 @@ export default function OrganismsPage() {
         <table className="w-full border-collapse text-left">
           <thead className="sticky top-0 bg-surface-2 z-10">
             <tr className="border-b border-border">
-              {['Organism', 'Common Name', 'Ref. Genome', 'NCBI Tax ID', 'Experiments', 'Files', 'Created'].map(h => (
+              {['Organism', 'Common Name', 'Ref. Genome', 'NCBI Tax ID', 'Collections', 'Files', 'Created'].map(h => (
                 <th key={h} className="py-1.5 pr-3 pl-2.5 font-body text-micro uppercase tracking-overline text-text-dim font-semibold whitespace-nowrap">
                   {h}
                 </th>
@@ -127,7 +127,7 @@ export default function OrganismsPage() {
                       {o.ncbiTaxId ?? '—'}
                     </td>
                     <td className="py-1.5 pr-3 font-mono text-caption tabular-nums text-text-secondary">
-                      {o.experimentCount}
+                      {o.collectionCount}
                     </td>
                     <td className="py-1.5 pr-3 font-mono text-caption tabular-nums text-text-secondary">
                       {o.fileCount}
@@ -168,7 +168,7 @@ export default function OrganismsPage() {
                 <div className="flex items-center gap-2 flex-wrap">
                   {o.referenceGenome && <Badge variant="count" color="dim">{o.referenceGenome}</Badge>}
                   {o.ncbiTaxId && <Text variant="caption">NCBI: {o.ncbiTaxId}</Text>}
-                  <Text variant="caption">{o.experimentCount} exp</Text>
+                  <Text variant="caption">{o.collectionCount} coll</Text>
                   <Text variant="caption">{o.fileCount} files</Text>
                   <Text variant="caption">{formatRelativeTime(o.createdAt)}</Text>
                 </div>

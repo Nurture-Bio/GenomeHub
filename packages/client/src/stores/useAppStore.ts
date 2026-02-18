@@ -3,8 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 
 interface RecentSelections {
   projects: string[];
-  experiments: string[];
-  datasets: string[];
+  collections: string[];
 }
 
 interface PersistedState {
@@ -29,7 +28,7 @@ export const useAppStore = create<AppState>()(
     (set) => ({
       selectedFileIds: new Set<string>(),
       sidebarOpen: true,
-      recentSelections: { projects: [], experiments: [], datasets: [] },
+      recentSelections: { projects: [], collections: [] },
       breadcrumbLabels: {},
 
       toggleFileSelection: (id) =>

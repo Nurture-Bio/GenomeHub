@@ -135,13 +135,12 @@ export async function getReverseLinkedIds(
 
 /**
  * Remove all edges referencing an entity, and optionally cascade-delete
- * dependent entities based on the plan's cascade rules.
+ * dependent entities based on the cascade rules.
  *
  * Cascade rules:
- *   project   → detach experiments, delete project's files, remove edges
- *   experiment → detach datasets, detach files, remove edges
- *   dataset   → detach files, remove edges
- *   file      → remove edges only
+ *   project    → delete project's files, remove edges
+ *   collection → detach files, remove edges
+ *   file       → remove edges only
  */
 export async function cascadeDelete(entity: EntityRef): Promise<void> {
   const repo = edgeRepo();

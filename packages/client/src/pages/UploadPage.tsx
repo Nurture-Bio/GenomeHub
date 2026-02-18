@@ -1,9 +1,9 @@
 import { useState, useRef, useCallback, useMemo } from 'react';
-import { useMultipartUpload, useProjectsQuery, useOrganismsQuery, useExperimentsQuery, useExperimentTypesQuery } from '../hooks/useGenomicQueries';
-import type { Experiment, ExperimentType } from '../hooks/useGenomicQueries';
+import { useMultipartUpload, useProjectsQuery, useOrganismsQuery, useCollectionsQuery, useTechniquesQuery } from '../hooks/useGenomicQueries';
+import type { Collection, Technique } from '../hooks/useGenomicQueries';
 import { detectFormat, FORMAT_META, formatBytes } from '../lib/formats';
 import { Button, Badge, Text, Heading, Input, ComboBox } from '../ui';
-import { ProjectPicker, DatasetPicker } from '../ui';
+import { ProjectPicker, FileKindPicker } from '../ui';
 import type { ComboBoxItem } from '../ui';
 
 // ── Drop zone ─────────────────────────────────────────────
@@ -84,18 +84,18 @@ interface QueueItemProps {
   file:      File;
   projectId: string;
   organismId: string;
-  experimentId: string;
-  datasetId: string;
+  collectionId: string;
+  kind: string;
   description: string;
   tags: string;
   onRemove:  () => void;
-  onChange: (patch: Partial<{ projectId: string; organismId: string; experimentId: string; datasetId: string; description: string; tags: string }>) => void;
+  onChange: (patch: Partial<{ projectId: string; organismId: string; collectionId: string; kind: string; description: string; tags: string }>) => void;
   projectItems: ComboBoxItem[];
   organismItems: ComboBoxItem[];
-  experimentItems: ComboBoxItem[];
+  collectionItems: ComboBoxItem[];
 }
 
-function QueueItem({ file, projectId, organismId, experimentId, datasetId, description, tags, onRemove, onChange, projectItems, organismItems, experimentItems }: QueueItemProps) {
+function QueueItem({ file, projectId, organismId, collectionId, kind, description, tags, onRemove, onChange, projectItems, organismItems, collectionItems }: QueueItemProps) {
   const fmt  = detectFormat(file.name);
   const meta = FORMAT_META[fmt];
 
@@ -135,25 +135,22 @@ function QueueItem({ file, projectId, organismId, experimentId, datasetId, descr
           className="w-full sm:w-40"
         />
         <ComboBox
-          items={experimentItems}
-          value={experimentId}
-          onValueChange={v => onChange({ experimentId: v, datasetId: '' })}
-          placeholder="Experiment"
+          items={collectionItems}
+          value={collectionId}
+          onValueChange={v => onChange({ collectionId: v })}
+          placeholder="Collection"
           variant="surface"
           size="sm"
           className="w-full sm:w-40"
         />
-        {experimentId && (
-          <DatasetPicker
-            value={datasetId}
-            onValueChange={v => onChange({ datasetId: v })}
-            experimentId={experimentId}
-            placeholder="Dataset"
-            variant="surface"
-            size="sm"
-            className="w-full sm:w-40"
-          />
-        )}
+        <FileKindPicker
+          value={kind}
+          onValueChange={v => onChange({ kind: v })}
+          placeholder="Kind"
+          variant="surface"
+          size="sm"
+          className="w-full sm:w-32"
+        />
       </div>
 
       {/* Row 3: description + tags — stack on mobile */}
@@ -235,8 +232,8 @@ function ProgressBar({ filename, loaded, total, status, error }: ProgressBarProp
 export default function UploadPage() {
   const { data: projects } = useProjectsQuery();
   const { data: organisms } = useOrganismsQuery();
-  const { data: experiments } = useExperimentsQuery();
-  const { data: experimentTypes } = useExperimentTypesQuery();
+  const { data: collections } = useCollectionsQuery();
+  const { data: techniques } = useTechniquesQuery();
   const { uploads, upload, clearDone } = useMultipartUpload();
 
   // Pre-map items for ComboBox
@@ -248,27 +245,27 @@ export default function UploadPage() {
     (organisms ?? []).map(o => ({ id: o.id, label: o.displayName })),
     [organisms],
   );
-  const experimentItems = useMemo<ComboBoxItem[]>(() =>
-    (experiments ?? []).map(e => ({ id: e.id, label: e.name, group: e.projectName ?? undefined })),
-    [experiments],
+  const collectionItems = useMemo<ComboBoxItem[]>(() =>
+    (collections ?? []).map(c => ({ id: c.id, label: c.name, group: c.projectName ?? undefined })),
+    [collections],
   );
 
-  // Build lookup: experimentId → defaultTags from its experiment type
+  // Build lookup: collectionId → defaultTags from its technique
   const suggestedTagsMap = useMemo(() => {
     const map = new Map<string, string[]>();
-    if (!experiments || !experimentTypes) return map;
-    const typeMap = new Map<string, ExperimentType>();
-    for (const et of experimentTypes) typeMap.set(et.id, et);
-    for (const exp of experiments) {
-      if (exp.experimentTypeId) {
-        const et = typeMap.get(exp.experimentTypeId);
-        if (et?.defaultTags?.length) map.set(exp.id, et.defaultTags);
+    if (!collections || !techniques) return map;
+    const techMap = new Map<string, Technique>();
+    for (const t of techniques) techMap.set(t.id, t);
+    for (const col of collections) {
+      if (col.techniqueId) {
+        const t = techMap.get(col.techniqueId);
+        if (t?.defaultTags?.length) map.set(col.id, t.defaultTags);
       }
     }
     return map;
-  }, [experiments, experimentTypes]);
+  }, [collections, techniques]);
 
-  type QueueEntry = { file: File; projectId: string; organismId: string; experimentId: string; datasetId: string; tags: string; description: string };
+  type QueueEntry = { file: File; projectId: string; organismId: string; collectionId: string; kind: string; tags: string; description: string };
   const [queue,      setQueue]      = useState<QueueEntry[]>([]);
   const [defaultPrj, setDefaultPrj] = useState('');
   const [uploading,  setUploading]  = useState(false);
@@ -276,7 +273,7 @@ export default function UploadPage() {
   const addFiles = useCallback((files: File[]) => {
     setQueue(prev => [
       ...prev,
-      ...files.map(f => ({ file: f, projectId: defaultPrj, organismId: '', experimentId: '', datasetId: '', tags: '', description: '' })),
+      ...files.map(f => ({ file: f, projectId: defaultPrj, organismId: '', collectionId: '', kind: 'raw', tags: '', description: '' })),
     ]);
   }, [defaultPrj]);
 
@@ -287,28 +284,27 @@ export default function UploadPage() {
     setQueue(prev => prev.map((e, i) => {
       if (i !== idx) return e;
       const updated = { ...e, ...patch };
-      // Auto-suggest tags when experiment changes and tags are empty
-      if (patch.experimentId && patch.experimentId !== e.experimentId && !e.tags) {
-        const suggested = suggestedTagsMap.get(patch.experimentId);
+      // Auto-suggest tags when collection changes and tags are empty
+      if (patch.collectionId && patch.collectionId !== e.collectionId && !e.tags) {
+        const suggested = suggestedTagsMap.get(patch.collectionId);
         if (suggested?.length) updated.tags = suggested.join(', ');
       }
       return updated;
     }));
 
   const startUploads = async () => {
-    const ready = queue.filter(e => e.projectId);
-    if (!ready.length) return;
+    if (!queue.length) return;
     setUploading(true);
     setQueue([]);
     await Promise.all(
-      ready.map(e => upload(
-        e.file, e.projectId,
-        e.description || undefined,
-        e.tags ? e.tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
-        e.organismId || undefined,
-        e.experimentId || undefined,
-        e.datasetId || undefined,
-      ))
+      queue.map(e => upload(e.file, {
+        projectId: e.projectId || undefined,
+        description: e.description || undefined,
+        tags: e.tags ? e.tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
+        organismId: e.organismId || undefined,
+        collectionId: e.collectionId || undefined,
+        kind: e.kind || undefined,
+      }))
     );
     setUploading(false);
   };
@@ -353,13 +349,13 @@ export default function UploadPage() {
                 file={e.file}
                 projectId={e.projectId}
                 organismId={e.organismId}
-                experimentId={e.experimentId}
-                datasetId={e.datasetId}
+                collectionId={e.collectionId}
+                kind={e.kind}
                 description={e.description}
                 tags={e.tags}
                 projectItems={projectItems}
                 organismItems={organismItems}
-                experimentItems={experimentItems}
+                collectionItems={collectionItems}
                 onRemove={() => removeFromQueue(i)}
                 onChange={patch => updateQueueItem(i, patch)}
               />
@@ -373,7 +369,7 @@ export default function UploadPage() {
               size="md"
               pending={uploading}
               onClick={startUploads}
-              disabled={!queue.some(e => e.projectId)}
+              disabled={queue.length === 0}
             >
               Upload {queue.length} file{queue.length !== 1 ? 's' : ''}
             </Button>

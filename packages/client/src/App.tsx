@@ -10,10 +10,10 @@ import FilesPage            from './pages/FilesPage';
 import UploadPage           from './pages/UploadPage';
 import OrganismsPage        from './pages/OrganismsPage';
 import ProjectsPage         from './pages/ProjectsPage';
-import ExperimentsPage      from './pages/ExperimentsPage';
+import CollectionsPage      from './pages/CollectionsPage';
 import ProjectDetailPage    from './pages/ProjectDetailPage';
-import ExperimentDetailPage from './pages/ExperimentDetailPage';
-import DatasetDetailPage    from './pages/DatasetDetailPage';
+import CollectionDetailPage from './pages/CollectionDetailPage';
+import FileDetailPage       from './pages/FileDetailPage';
 import PageErrorBoundary    from './components/PageErrorBoundary';
 import Breadcrumbs          from './components/Breadcrumbs';
 
@@ -73,7 +73,7 @@ const icons: Record<string, ReactNode> = {
       <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
     </svg>
   ),
-  experiments: (
+  collections: (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
       strokeWidth="2" strokeLinecap="round">
       <path d="M9 3h6v7l4 9H5l4-9V3z" />
@@ -83,12 +83,12 @@ const icons: Record<string, ReactNode> = {
 };
 
 const NAV_ITEMS: { to: string; label: string; icon: string; end?: boolean }[] = [
-  { to: '/',            label: 'Dashboard',   icon: 'dashboard', end: true },
-  { to: '/projects',    label: 'Projects',    icon: 'projects' },
-  { to: '/organisms',   label: 'Organisms',   icon: 'organisms' },
-  { to: '/experiments', label: 'Experiments', icon: 'experiments' },
-  { to: '/files',       label: 'Files',       icon: 'files' },
-  { to: '/upload',      label: 'Upload',      icon: 'upload' },
+  { to: '/',             label: 'Dashboard',    icon: 'dashboard', end: true },
+  { to: '/projects',     label: 'Projects',     icon: 'projects' },
+  { to: '/organisms',    label: 'Organisms',    icon: 'organisms' },
+  { to: '/collections',  label: 'Collections',  icon: 'collections' },
+  { to: '/files',        label: 'Files',        icon: 'files' },
+  { to: '/upload',       label: 'Upload',       icon: 'upload' },
 ];
 
 // ── Sidebar content (shared between desktop static + mobile drawer) ──
@@ -156,14 +156,9 @@ function SidebarFooter({ user, logout }: { user: { name: string; email: string; 
 
 // ── Legacy redirects ──────────────────────────────────────
 
-function LegacyExperimentRedirect() {
-  const { experimentId } = useParams<{ experimentId: string }>();
-  return <Navigate to={`/experiments/${experimentId}`} replace />;
-}
-
-function LegacySampleRedirect() {
-  const { experimentId, sampleId } = useParams<{ experimentId: string; sampleId: string }>();
-  return <Navigate to={`/experiments/${experimentId}/datasets/${sampleId}`} replace />;
+function LegacyCollectionRedirect() {
+  const { collectionId } = useParams<{ collectionId: string }>();
+  return <Navigate to={`/collections/${collectionId}`} replace />;
 }
 
 // ── App ───────────────────────────────────────────────────
@@ -254,16 +249,15 @@ export default function App() {
           <Route path="/" element={<PageErrorBoundary><DashboardPage /></PageErrorBoundary>} />
           <Route path="/projects" element={<PageErrorBoundary><ProjectsPage /></PageErrorBoundary>} />
           <Route path="/organisms" element={<PageErrorBoundary><OrganismsPage /></PageErrorBoundary>} />
-          <Route path="/experiments" element={<PageErrorBoundary><ExperimentsPage /></PageErrorBoundary>} />
+          <Route path="/collections" element={<PageErrorBoundary><CollectionsPage /></PageErrorBoundary>} />
           <Route path="/files" element={<PageErrorBoundary><FilesPage /></PageErrorBoundary>} />
+          <Route path="/files/:fileId" element={<PageErrorBoundary><FileDetailPage /></PageErrorBoundary>} />
           <Route path="/upload" element={<PageErrorBoundary><UploadPage /></PageErrorBoundary>} />
           <Route path="/projects/:projectId" element={<PageErrorBoundary><ProjectDetailPage /></PageErrorBoundary>} />
-          <Route path="/experiments/:experimentId" element={<PageErrorBoundary><ExperimentDetailPage /></PageErrorBoundary>} />
-          <Route path="/experiments/:experimentId/datasets/:datasetId" element={<PageErrorBoundary><DatasetDetailPage /></PageErrorBoundary>} />
+          <Route path="/collections/:collectionId" element={<PageErrorBoundary><CollectionDetailPage /></PageErrorBoundary>} />
           {/* Legacy redirects */}
-          <Route path="/projects/:projectId/experiments/:experimentId" element={<LegacyExperimentRedirect />} />
-          <Route path="/projects/:projectId/experiments/:experimentId/samples/:sampleId" element={<LegacySampleRedirect />} />
-          <Route path="/experiments/:experimentId/samples/:sampleId" element={<LegacySampleRedirect />} />
+          <Route path="/experiments/:collectionId" element={<LegacyCollectionRedirect />} />
+          <Route path="/projects/:projectId/experiments/:collectionId" element={<LegacyCollectionRedirect />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

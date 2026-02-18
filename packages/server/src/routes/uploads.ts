@@ -16,21 +16,21 @@ function asyncWrap(fn: (req: Request, res: Response) => Promise<void>) {
 
 /** Step 1 — register file metadata and initiate S3 multipart */
 router.post('/initiate', asyncWrap(async (req, res) => {
-  const { filename, projectId, contentType, sizeBytes, description, tags, organismId, experimentId, datasetId } =
+  const { filename, projectId, contentType, sizeBytes, description, tags, organismId, collectionId, kind } =
     req.body as {
       filename:    string;
-      projectId:   string;
+      projectId?:  string;
       contentType: string;
       sizeBytes:   number;
       description?: string;
       tags?: string[];
       organismId?: string;
-      experimentId?: string;
-      datasetId?: string;
+      collectionId?: string;
+      kind?: string;
     };
 
-  if (!filename || !projectId) {
-    res.status(400).json({ error: 'filename and projectId required' });
+  if (!filename) {
+    res.status(400).json({ error: 'filename required' });
     return;
   }
 
@@ -43,11 +43,13 @@ router.post('/initiate', asyncWrap(async (req, res) => {
     status: 'pending',
     s3Key:  '',   // filled after we have the id
     format: detectFormat(filename),
+    kind:   kind ?? 'raw',
     uploadedBy: (res.locals.user as User)?.email ?? null,
   });
   await repo.save(file);
 
-  const s3Key   = buildS3Key(projectId, file.id, filename);
+  // Use projectId in the S3 key if provided, otherwise use 'unassigned'
+  const s3Key   = buildS3Key(projectId ?? 'unassigned', file.id, filename);
   const uploadId = await initiateMultipartUpload(s3Key, contentType);
 
   file.s3Key    = s3Key;
@@ -56,12 +58,11 @@ router.post('/initiate', asyncWrap(async (req, res) => {
 
   // Create edges for relationships
   const userId = (res.locals.user as User)?.id ?? null;
-  await edges.link({ type: 'file', id: file.id }, { type: 'project', id: projectId }, 'belongs_to', null, userId);
-  if (experimentId) {
-    await edges.link({ type: 'file', id: file.id }, { type: 'experiment', id: experimentId }, 'belongs_to', null, userId);
+  if (projectId) {
+    await edges.link({ type: 'file', id: file.id }, { type: 'project', id: projectId }, 'belongs_to', null, userId);
   }
-  if (datasetId) {
-    await edges.link({ type: 'file', id: file.id }, { type: 'dataset', id: datasetId }, 'belongs_to', null, userId);
+  if (collectionId) {
+    await edges.link({ type: 'file', id: file.id }, { type: 'collection', id: collectionId }, 'belongs_to', null, userId);
   }
   if (organismId) {
     await edges.link({ type: 'file', id: file.id }, { type: 'organism', id: organismId }, 'from_organism', null, userId);

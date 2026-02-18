@@ -2,7 +2,7 @@
  * TypeORM entities for GenomeHub.
  *
  * Knowledge-graph model: all relationships live in entity_edges.
- * Core entities: Project, Experiment, Dataset, GenomicFile, Organism, ExperimentType.
+ * Core entities: Project, Collection, GenomicFile, Organism, Technique.
  *
  * @module
  */
@@ -106,10 +106,12 @@ export class Organism {
   updatedAt!: Date;
 }
 
-// ─── ExperimentType ───────────────────────────────────────
+// ─── Technique ───────────────────────────────────────────
+// Sequencing techniques (ChIP-seq, RNA-seq, etc.). Reference data
+// linked to collections via has_type edges.
 
-@Entity('experiment_types')
-export class ExperimentType {
+@Entity('techniques')
+export class Technique {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
@@ -126,12 +128,13 @@ export class ExperimentType {
   createdAt!: Date;
 }
 
-// ─── Experiment ───────────────────────────────────────────
+// ─── Collection ──────────────────────────────────────────
+// A named group of files. Kind determines what type of collection
+// (experiment, batch, analysis, custom, etc.). Kind-specific
+// fields live in JSONB metadata — no hardcoded columns.
 
-export type ExperimentStatus = 'active' | 'complete' | 'archived';
-
-@Entity('experiments')
-export class Experiment {
+@Entity('collections')
+export class Collection {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
@@ -141,15 +144,11 @@ export class Experiment {
   @Column({ type: 'text', nullable: true })
   description!: string | null;
 
-  @Column({
-    type: 'text',
-    enum: ['active', 'complete', 'archived'],
-    default: 'active',
-  })
-  status!: ExperimentStatus;
+  @Column({ type: 'text', default: 'experiment' })
+  kind!: string;
 
-  @Column({ name: 'experiment_date', type: 'date', nullable: true })
-  experimentDate!: string | null;
+  @Column({ type: 'jsonb', nullable: true })
+  metadata!: Record<string, unknown> | null;
 
   @Column({ name: 'created_by', type: 'text', nullable: true })
   createdBy!: string | null;
@@ -161,52 +160,9 @@ export class Experiment {
   updatedAt!: Date;
 }
 
-// ─── Dataset ─────────────────────────────────────────────
-
-export type DatasetKind = 'sample' | 'library' | 'reference' | 'pool' | 'control' | 'other';
-
-@Entity('datasets')
-export class Dataset {
-  @PrimaryGeneratedColumn('uuid')
-  id!: string;
-
-  @Column({ type: 'text' })
-  name!: string;
-
-  @Column({
-    type: 'text',
-    default: 'sample',
-  })
-  kind!: DatasetKind;
-
-  @Column({ type: 'text', nullable: true })
-  description!: string | null;
-
-  @Column({ type: 'text', nullable: true })
-  condition!: string | null;
-
-  @Column({ type: 'int', nullable: true })
-  replicate!: number | null;
-
-  @Column({ type: 'jsonb', nullable: true })
-  metadata!: Record<string, unknown> | null;
-
-  @Column({ type: 'text', array: true, default: '{}' })
-  tags!: string[];
-
-  @Column({ name: 'created_by', type: 'uuid', nullable: true })
-  createdBy!: string | null;
-
-  @CreateDateColumn({ name: 'created_at' })
-  createdAt!: Date;
-
-  @UpdateDateColumn({ name: 'updated_at' })
-  updatedAt!: Date;
-}
-
 // ─── EntityEdge ──────────────────────────────────────────
 
-export type EntityType = 'project' | 'experiment' | 'dataset' | 'file' | 'organism';
+export type EntityType = 'project' | 'collection' | 'file' | 'organism' | 'technique';
 export type EdgeRelation =
   | 'belongs_to' | 'has_type' | 'targets' | 'from_organism'
   | 'derived_from' | 'sequenced_from' | 'produced_by'
@@ -266,6 +222,9 @@ export class GenomicFile {
 
   @Column({ type: 'text', default: 'other' })
   format!: string;
+
+  @Column({ type: 'text', default: 'raw' })
+  kind!: string;
 
   @Column({ type: 'text', nullable: true })
   md5!: string | null;

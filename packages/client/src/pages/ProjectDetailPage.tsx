@@ -46,35 +46,35 @@ export default function ProjectDetailPage() {
         {tree.description && <Text variant="caption">{tree.description}</Text>}
         <div className="flex items-center gap-2 mt-1">
           <Badge variant="count" color="accent">{tree.fileCount} files</Badge>
-          <Badge variant="count" color="dim">{tree.experiments.length} experiments</Badge>
+          <Badge variant="count" color="dim">{tree.collections.length} collections</Badge>
         </div>
       </div>
 
-      {/* Experiments grid */}
+      {/* Collections grid */}
       <div>
-        <Text variant="overline" className="mb-1.5 block">Experiments</Text>
-        {tree.experiments.length === 0 ? (
-          <Text variant="caption">No experiments yet.</Text>
+        <Text variant="overline" className="mb-1.5 block">Collections</Text>
+        {tree.collections.length === 0 ? (
+          <Text variant="caption">No collections yet.</Text>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-            {tree.experiments.map(exp => (
+            {tree.collections.map(col => (
               <Link
-                key={exp.id}
-                to={`/experiments/${exp.id}`}
+                key={col.id}
+                to={`/collections/${col.id}`}
                 className="no-underline"
               >
                 <Card className="p-2.5 flex flex-col gap-1.5 hover:border-accent transition-colors duration-fast cursor-pointer h-full">
                   <div className="flex items-center gap-2">
-                    {exp.experimentType?.name && (
-                      <TechniquePill name={exp.experimentType.name} />
+                    {col.technique?.name && (
+                      <TechniquePill name={col.technique.name} />
                     )}
-                    <span className="font-mono text-caption text-text truncate flex-1 min-w-0">{exp.name}</span>
+                    <span className="font-mono text-caption text-text truncate flex-1 min-w-0">{col.name}</span>
+                    <Badge variant="count" color="dim">{col.kind}</Badge>
                   </div>
-                  {exp.description && <Text variant="caption" className="truncate">{exp.description}</Text>}
+                  {col.description && <Text variant="caption" className="truncate">{col.description}</Text>}
                   <div className="flex items-center gap-2 flex-wrap">
-                    {exp.organismDisplay && <Text variant="caption" className="italic">{exp.organismDisplay}</Text>}
-                    <Text variant="caption">{exp.datasets.length} datasets</Text>
-                    <Text variant="caption">{exp.fileCount} files</Text>
+                    {col.organismDisplay && <Text variant="caption" className="italic">{col.organismDisplay}</Text>}
+                    <Text variant="caption">{col.files.length} files</Text>
                   </div>
                 </Card>
               </Link>

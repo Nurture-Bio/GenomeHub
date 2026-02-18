@@ -1,9 +1,9 @@
 import { useMemo } from 'react';
 import ComboBox, { type ComboBoxItem } from './ComboBox';
 import {
-  useProjectsQuery, useOrganismsQuery, useExperimentsQuery,
-  useDatasetsQuery, useExperimentTypesQuery,
-  useCreateExperimentTypeMutation,
+  useProjectsQuery, useOrganismsQuery, useCollectionsQuery,
+  useTechniquesQuery,
+  useCreateTechniqueMutation,
 } from '../hooks/useGenomicQueries';
 import { formatBytes } from '../lib/formats';
 import { useAppStore } from '../stores/useAppStore';
@@ -21,11 +21,11 @@ interface PickerBaseProps {
   items?: ComboBoxItem[];
 }
 
-function useRecent(kind: 'projects' | 'experiments' | 'datasets') {
+function useRecent(kind: 'projects' | 'collections') {
   return useAppStore(s => s.recentSelections[kind]);
 }
 
-function useTrackSelection(kind: 'projects' | 'experiments' | 'datasets') {
+function useTrackSelection(kind: 'projects' | 'collections') {
   const add = useAppStore(s => s.addRecentSelection);
   return (id: string) => {
     if (id) add(kind, id);
@@ -61,24 +61,27 @@ export function ProjectPicker({ value, onValueChange, placeholder = 'Project', i
   );
 }
 
-// ── ExperimentPicker ─────────────────────────────────────
+// ── CollectionPicker ────────────────────────────────────
 
-interface ExperimentPickerProps extends PickerBaseProps {
+interface CollectionPickerProps extends PickerBaseProps {
   projectId?: string;
+  kind?: string;
 }
 
-export function ExperimentPicker({ value, onValueChange, projectId, placeholder = 'Experiment', items: overrideItems, ...rest }: ExperimentPickerProps) {
-  const { data, isLoading } = useExperimentsQuery(projectId ? { projectId } : undefined);
-  const recentIds = useRecent('experiments');
-  const track = useTrackSelection('experiments');
+export function CollectionPicker({ value, onValueChange, projectId, kind, placeholder = 'Collection', items: overrideItems, ...rest }: CollectionPickerProps) {
+  const { data, isLoading } = useCollectionsQuery(
+    projectId || kind ? { projectId, kind } : undefined,
+  );
+  const recentIds = useRecent('collections');
+  const track = useTrackSelection('collections');
 
   const items = useMemo(() => {
     if (overrideItems) return overrideItems;
-    return (data ?? []).map(e => ({
-      id: e.id,
-      label: e.name,
-      description: [e.experimentTypeName, e.organismDisplay].filter(Boolean).join(' / '),
-      group: e.projectName ?? undefined,
+    return (data ?? []).map(c => ({
+      id: c.id,
+      label: c.name,
+      description: [c.techniqueName, c.organismDisplay].filter(Boolean).join(' / '),
+      group: c.projectName ?? undefined,
     }));
   }, [data, overrideItems]);
 
@@ -121,45 +124,38 @@ export function OrganismPicker({ value, onValueChange, placeholder = 'Organism',
   );
 }
 
-// ── DatasetPicker ───────────────────────────────────────
+// ── FileKindPicker ──────────────────────────────────────
 
-interface DatasetPickerProps extends PickerBaseProps {
-  experimentId?: string;
-}
+const FILE_KINDS: ComboBoxItem[] = [
+  { id: 'library',    label: 'Library',    description: 'Library prep (fastq)' },
+  { id: 'sample',     label: 'Sample',     description: 'Raw sample data' },
+  { id: 'reference',  label: 'Reference',  description: 'Reference genome/assembly' },
+  { id: 'alignment',  label: 'Alignment',  description: 'Aligned reads (bam/cram)' },
+  { id: 'counts',     label: 'Counts',     description: 'Count matrix' },
+  { id: 'annotation', label: 'Annotation', description: 'Genome annotation (gff/gtf)' },
+  { id: 'qc',         label: 'QC',         description: 'Quality control report' },
+  { id: 'index',      label: 'Index',      description: 'Index file' },
+  { id: 'raw',        label: 'Raw',        description: 'Unclassified file' },
+  { id: 'other',      label: 'Other',      description: 'Other file type' },
+];
 
-export function DatasetPicker({ value, onValueChange, experimentId, placeholder = 'Dataset', items: overrideItems, ...rest }: DatasetPickerProps) {
-  const { data, isLoading } = useDatasetsQuery(experimentId ? { experimentId } : undefined);
-  const recentIds = useRecent('datasets');
-  const track = useTrackSelection('datasets');
-
-  const items = useMemo(() => {
-    if (overrideItems) return overrideItems;
-    return (data ?? []).map(d => ({
-      id: d.id,
-      label: d.name,
-      description: [d.kind, d.condition, d.replicate != null ? `rep ${d.replicate}` : null].filter(Boolean).join(', '),
-      group: d.experimentName ?? undefined,
-    }));
-  }, [data, overrideItems]);
-
+export function FileKindPicker({ value, onValueChange, placeholder = 'Kind', ...rest }: PickerBaseProps) {
   return (
     <ComboBox
-      items={items}
+      items={FILE_KINDS}
       value={value}
-      onValueChange={id => { track(id); onValueChange(id); }}
+      onValueChange={onValueChange}
       placeholder={placeholder}
-      recentIds={recentIds}
-      loading={!overrideItems && isLoading}
       {...rest}
     />
   );
 }
 
-// ── ExperimentTypePicker ─────────────────────────────────
+// ── TechniquePicker ─────────────────────────────────────
 
-export function ExperimentTypePicker({ value, onValueChange, placeholder = 'Technique', items: overrideItems, ...rest }: PickerBaseProps) {
-  const { data, isLoading, refetch } = useExperimentTypesQuery();
-  const { createExperimentType } = useCreateExperimentTypeMutation(refetch);
+export function TechniquePicker({ value, onValueChange, placeholder = 'Technique', items: overrideItems, ...rest }: PickerBaseProps) {
+  const { data, isLoading, refetch } = useTechniquesQuery();
+  const { createTechnique } = useCreateTechniqueMutation(refetch);
 
   const items = useMemo(() => {
     if (overrideItems) return overrideItems;
@@ -172,7 +168,7 @@ export function ExperimentTypePicker({ value, onValueChange, placeholder = 'Tech
 
   const handleCreate = async (name: string) => {
     try {
-      const created = await createExperimentType({ name });
+      const created = await createTechnique({ name });
       await refetch();
       onValueChange(created.id);
     } catch { /* toast already shown */ }

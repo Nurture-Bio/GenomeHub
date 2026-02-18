@@ -6,11 +6,10 @@ import { useAppStore } from '../stores/useAppStore';
 const ROUTE_LABELS: Record<string, string> = {
   '': 'Dashboard',
   organisms: 'Organisms',
-  experiments: 'Experiments',
+  collections: 'Collections',
   files: 'Files',
   upload: 'Upload',
   projects: 'Projects',
-  datasets: 'Datasets',
 };
 
 export default function Breadcrumbs() {
@@ -41,8 +40,8 @@ export default function Breadcrumbs() {
       } else {
         const prev = segments[i - 1];
         const context = prev === 'projects' ? 'Project'
-          : prev === 'experiments' ? 'Experiment'
-          : prev === 'datasets' ? 'Dataset'
+          : prev === 'collections' ? 'Collection'
+          : prev === 'files' ? 'File'
           : seg;
         crumbs.push({ label: `${context} ${seg.slice(0, 8)}`, to: path });
       }

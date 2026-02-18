@@ -1,11 +1,11 @@
 import type { GenomicFile } from "../hooks/useGenomicQueries";
 import { useState, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { useFilesQuery, useDeleteFileMutation, usePresignedUrl } from '../hooks/useGenomicQueries';
+import { useSearchParams, Link } from 'react-router-dom';
+import { useFilesQuery, useDeleteFileMutation, usePresignedUrl, useAddFilesToCollection } from '../hooks/useGenomicQueries';
 import { useConfirm } from '../hooks/useConfirm';
 import { detectFormat, FORMAT_META, formatBytes, formatRelativeTime } from '../lib/formats';
 import { Button, Badge, Input, Text, Heading, Card } from '../ui';
-import { ProjectPicker, ExperimentPicker, DatasetPicker } from '../ui';
+import { ProjectPicker, CollectionPicker } from '../ui';
 
 // ── Format icon ──────────────────────────────────────────
 
@@ -117,7 +117,9 @@ function FileRow({ file, onDelete, onDownload, selected, onSelect }: FileRowProp
         <div className="flex items-center gap-2">
           <FormatIcon filename={file.filename} size={28} />
           <div className="min-w-0">
-            <div className="font-mono text-caption text-text truncate max-w-xs">{file.filename}</div>
+            <Link to={`/files/${file.id}`} className="no-underline font-mono text-caption text-text truncate max-w-xs block hover:text-accent transition-colors duration-fast">
+              {file.filename}
+            </Link>
             {file.description && (
               <div className="text-micro text-text-dim truncate">{file.description}</div>
             )}
@@ -135,14 +137,23 @@ function FileRow({ file, onDelete, onDownload, selected, onSelect }: FileRowProp
         {file.organismDisplay ?? '—'}
       </td>
 
-      {/* Experiment */}
-      <td className="py-1.5 pr-3 text-caption text-text-secondary whitespace-nowrap">
-        {file.experimentName ?? '—'}
+      {/* Collections */}
+      <td className="py-1.5 pr-3">
+        <div className="flex gap-0.5 flex-wrap">
+          {file.collections.length > 0
+            ? file.collections.map(c => (
+              <Link key={c.id} to={`/collections/${c.id}`} className="no-underline">
+                <Badge variant="count" color="dim">{c.name}</Badge>
+              </Link>
+            ))
+            : <span className="text-caption text-text-dim">—</span>
+          }
+        </div>
       </td>
 
-      {/* Dataset */}
-      <td className="py-1.5 pr-3 text-caption text-text-secondary whitespace-nowrap">
-        {file.datasetName ?? '—'}
+      {/* Kind */}
+      <td className="py-1.5 pr-3 whitespace-nowrap">
+        <Badge variant="count" color="dim">{file.kind}</Badge>
       </td>
 
       {/* Format */}
@@ -226,35 +237,33 @@ function SkeletonCard() {
 // ── FilesPage ─────────────────────────────────────────────
 
 const FORMAT_FILTERS = ['all', 'fastq', 'bam', 'cram', 'vcf', 'bed', 'fasta', 'other'] as const;
+const KIND_FILTERS = ['all', 'library', 'sample', 'reference', 'alignment', 'counts', 'annotation', 'qc', 'index', 'raw', 'other'] as const;
 
 export default function FilesPage() {
   const [searchParams] = useSearchParams();
   const [filterProjectId, setFilterProjectId] = useState(searchParams.get('project') ?? '');
-  const [filterExperimentId, setFilterExperimentId] = useState('');
-  const [filterDatasetId, setFilterDatasetId] = useState('');
+  const [filterCollectionId, setFilterCollectionId] = useState('');
+  const [filterKind, setFilterKind] = useState('');
 
   const { data, isLoading, refetch } = useFilesQuery({
     projectId: filterProjectId || undefined,
-    experimentId: filterExperimentId || undefined,
-    datasetId: filterDatasetId || undefined,
+    collectionId: filterCollectionId || undefined,
+    kind: filterKind || undefined,
   });
   const { deleteFile, pending: deletePending } = useDeleteFileMutation(refetch);
+  const { addFiles, pending: addPending } = useAddFilesToCollection();
   const { getUrl, pending: urlPending } = usePresignedUrl();
   const { confirm, dialog } = useConfirm();
 
   const [search,     setSearch]     = useState('');
   const [fmtFilter,  setFmtFilter]  = useState<string>('all');
   const [selected,   setSelected]   = useState<Set<string>>(new Set());
+  const [addToColId, setAddToColId] = useState<string | null>(null);
 
   // Cascading clears
   const handleProjectChange = (id: string) => {
     setFilterProjectId(id);
-    setFilterExperimentId('');
-    setFilterDatasetId('');
-  };
-  const handleExperimentChange = (id: string) => {
-    setFilterExperimentId(id);
-    setFilterDatasetId('');
+    setFilterCollectionId('');
   };
 
   const files = useMemo(() => {
@@ -264,7 +273,7 @@ export default function FilesPage() {
       const matchSearch = !search || f.filename.toLowerCase().includes(q)
         || (f.projectName?.toLowerCase().includes(q) ?? false)
         || (f.organismDisplay?.toLowerCase().includes(q) ?? false)
-        || (f.experimentName?.toLowerCase().includes(q) ?? false);
+        || f.collections.some(c => c.name?.toLowerCase().includes(q));
       const matchFmt = fmtFilter === 'all' || detectFormat(f.filename) === fmtFilter;
       return matchSearch && matchFmt;
     });
@@ -297,6 +306,14 @@ export default function FilesPage() {
     setSelected(new Set());
   };
 
+  const handleAddToCollection = async (collectionId: string) => {
+    if (!collectionId || selected.size === 0) return;
+    await addFiles(collectionId, [...selected]);
+    setSelected(new Set());
+    setAddToColId(null);
+    refetch();
+  };
+
   return (
     <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 h-full min-h-0">
       {dialog}
@@ -310,9 +327,28 @@ export default function FilesPage() {
         </div>
 
         {selected.size > 0 && (
-          <Button intent="danger" size="sm" pending={deletePending} onClick={handleBulkDelete}>
-            Delete {selected.size}
-          </Button>
+          <div className="flex items-center gap-2">
+            {addToColId === null ? (
+              <Button intent="ghost" size="sm" onClick={() => setAddToColId('')}>
+                Add {selected.size} to collection
+              </Button>
+            ) : (
+              <div className="flex items-center gap-1">
+                <CollectionPicker
+                  value={addToColId}
+                  onValueChange={handleAddToCollection}
+                  placeholder="Pick collection..."
+                  variant="surface"
+                  size="sm"
+                  className="w-44"
+                />
+                <Button intent="ghost" size="sm" onClick={() => setAddToColId(null)}>Cancel</Button>
+              </div>
+            )}
+            <Button intent="danger" size="sm" pending={deletePending} onClick={handleBulkDelete}>
+              Delete {selected.size}
+            </Button>
+          </div>
         )}
       </div>
 
@@ -336,29 +372,32 @@ export default function FilesPage() {
           className="w-full sm:w-44"
         />
 
-        {filterProjectId && (
-          <ExperimentPicker
-            value={filterExperimentId}
-            onValueChange={handleExperimentChange}
-            projectId={filterProjectId}
-            placeholder="All experiments"
-            variant="surface"
-            size="md"
-            className="w-full sm:w-44"
-          />
-        )}
+        <CollectionPicker
+          value={filterCollectionId}
+          onValueChange={setFilterCollectionId}
+          projectId={filterProjectId || undefined}
+          placeholder="All collections"
+          variant="surface"
+          size="md"
+          className="w-full sm:w-44"
+        />
 
-        {filterExperimentId && (
-          <DatasetPicker
-            value={filterDatasetId}
-            onValueChange={setFilterDatasetId}
-            experimentId={filterExperimentId}
-            placeholder="All datasets"
-            variant="surface"
-            size="md"
-            className="w-full sm:w-44"
-          />
-        )}
+        <div className="flex gap-1 flex-wrap">
+          {KIND_FILTERS.map(k => (
+            <button
+              key={k}
+              onClick={() => setFilterKind(k === 'all' ? '' : k)}
+              className="font-body text-micro px-1.5 py-1 md:py-0.5 rounded-sm border transition-colors duration-fast cursor-pointer min-h-5.5 md:min-h-0"
+              style={{
+                background: (k === 'all' ? !filterKind : filterKind === k) ? 'var(--color-accent)' : 'var(--color-surface-2)',
+                color:      (k === 'all' ? !filterKind : filterKind === k) ? 'var(--color-bg)'     : 'var(--color-text-secondary)',
+                borderColor: (k === 'all' ? !filterKind : filterKind === k) ? 'transparent'        : 'var(--color-border)',
+              }}
+            >
+              {k === 'all' ? 'All' : k}
+            </button>
+          ))}
+        </div>
 
         <div className="flex gap-1 flex-wrap">
           {FORMAT_FILTERS.map(f => (
@@ -391,7 +430,7 @@ export default function FilesPage() {
                   className="accent-accent cursor-pointer"
                 />
               </th>
-              {['File', 'Project', 'Organism', 'Experiment', 'Dataset', 'Format', 'Size', 'Status', 'Uploaded', 'Tags', ''].map(h => (
+              {['File', 'Project', 'Organism', 'Collection', 'Kind', 'Format', 'Size', 'Status', 'Uploaded', 'Tags', ''].map(h => (
                 <th key={h} className="py-1.5 pr-3 font-body text-micro uppercase tracking-overline text-text-dim font-semibold whitespace-nowrap">
                   {h}
                 </th>

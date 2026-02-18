@@ -1,6 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { AppDataSource } from '../app_data.js';
-import { Project, Experiment, Dataset, GenomicFile, Organism, ExperimentType, EntityEdge } from '../entities/index.js';
+import { Project, Collection, GenomicFile, Organism, Technique, EntityEdge } from '../entities/index.js';
 import * as edges from '../lib/edge_service.js';
 
 const router = Router();
@@ -74,44 +74,43 @@ router.get('/:id/tree', asyncWrap(async (req, res) => {
 
   const edgeRepo = AppDataSource.getRepository(EntityEdge);
 
-  // Find experiment IDs belonging to this project
-  const expEdges = await edgeRepo.find({
-    where: { targetType: 'project' as any, targetId: projectId, sourceType: 'experiment' as any, relation: 'belongs_to' as any },
+  // Find collection IDs belonging to this project
+  const colEdges = await edgeRepo.find({
+    where: { targetType: 'project' as any, targetId: projectId, sourceType: 'collection' as any, relation: 'belongs_to' as any },
   });
-  const expIds = expEdges.map(e => e.sourceId);
+  const colIds = colEdges.map(e => e.sourceId);
 
-  // Load experiments
-  const expRepo = AppDataSource.getRepository(Experiment);
-  const experiments = expIds.length
-    ? await expRepo.createQueryBuilder('e')
-        .where('e.id IN (:...ids)', { ids: expIds })
-        .orderBy('e.created_at', 'DESC')
+  // Load collections
+  const colRepo = AppDataSource.getRepository(Collection);
+  const collections = colIds.length
+    ? await colRepo.createQueryBuilder('c')
+        .where('c.id IN (:...ids)', { ids: colIds })
+        .orderBy('c.created_at', 'DESC')
         .getMany()
     : [];
 
-  // Load all edges for experiments (type, organism)
-  const allExpEdges = expIds.length
+  // Load all edges for collections (type, organism)
+  const allColEdges = colIds.length
     ? await edgeRepo.createQueryBuilder('e')
-        .where('e.source_type = :st AND e.source_id IN (:...ids)', { st: 'experiment', ids: expIds })
+        .where('e.source_type = :st AND e.source_id IN (:...ids)', { st: 'collection', ids: colIds })
         .getMany()
     : [];
 
-  // Build type map and organism map
-  const typeIdsByExp = new Map<string, string>();
-  const orgIdsByExp = new Map<string, string>();
-  for (const e of allExpEdges) {
-    if (e.relation === 'has_type') typeIdsByExp.set(e.sourceId, e.targetId);
-    if (e.relation === 'targets' && e.targetType === 'organism') orgIdsByExp.set(e.sourceId, e.targetId);
+  const typeIdsByCol = new Map<string, string>();
+  const orgIdsByCol = new Map<string, string>();
+  for (const e of allColEdges) {
+    if (e.relation === 'has_type') typeIdsByCol.set(e.sourceId, e.targetId);
+    if (e.relation === 'targets' && e.targetType === 'organism') orgIdsByCol.set(e.sourceId, e.targetId);
   }
 
-  // Load experiment types and organisms
-  const allTypeIds = [...new Set(typeIdsByExp.values())];
-  const allOrgIds = [...new Set(orgIdsByExp.values())];
-  const typeMap = new Map<string, ExperimentType>();
+  // Load techniques and organisms
+  const allTypeIds = [...new Set(typeIdsByCol.values())];
+  const allOrgIds = [...new Set(orgIdsByCol.values())];
+  const typeMap = new Map<string, Technique>();
   const orgMap = new Map<string, Organism>();
 
   if (allTypeIds.length) {
-    const types = await AppDataSource.getRepository(ExperimentType).findByIds(allTypeIds);
+    const types = await AppDataSource.getRepository(Technique).findByIds(allTypeIds);
     types.forEach(t => typeMap.set(t.id, t));
   }
   if (allOrgIds.length) {
@@ -119,41 +118,33 @@ router.get('/:id/tree', asyncWrap(async (req, res) => {
     orgs.forEach(o => orgMap.set(o.id, o));
   }
 
-  // Find datasets belonging to each experiment
-  const datasetEdges = expIds.length
+  // Find files belonging to each collection
+  const fileEdges = colIds.length
     ? await edgeRepo.find({
-        where: { sourceType: 'dataset' as any, targetType: 'experiment' as any, relation: 'belongs_to' as any },
+        where: { sourceType: 'file' as any, targetType: 'collection' as any, relation: 'belongs_to' as any },
       })
     : [];
-  const datasetIdsByExp = new Map<string, string[]>();
-  const allDatasetIds: string[] = [];
-  for (const e of datasetEdges) {
-    if (expIds.includes(e.targetId)) {
-      const list = datasetIdsByExp.get(e.targetId) ?? [];
+  const fileIdsByCol = new Map<string, string[]>();
+  const allFileIds: string[] = [];
+  for (const e of fileEdges) {
+    if (colIds.includes(e.targetId)) {
+      const list = fileIdsByCol.get(e.targetId) ?? [];
       list.push(e.sourceId);
-      datasetIdsByExp.set(e.targetId, list);
-      allDatasetIds.push(e.sourceId);
+      fileIdsByCol.set(e.targetId, list);
+      if (!allFileIds.includes(e.sourceId)) allFileIds.push(e.sourceId);
     }
   }
 
-  // Also find datasets directly belonging to the project
-  const projectDatasetEdges = await edgeRepo.find({
-    where: { sourceType: 'dataset' as any, targetType: 'project' as any, targetId: projectId, relation: 'belongs_to' as any },
-  });
-  for (const e of projectDatasetEdges) {
-    if (!allDatasetIds.includes(e.sourceId)) allDatasetIds.push(e.sourceId);
-  }
-
-  // Load all datasets
-  const dsRepo = AppDataSource.getRepository(Dataset);
-  const datasets = allDatasetIds.length
-    ? await dsRepo.findByIds(allDatasetIds)
+  // Load all files for collections
+  const fileRepo = AppDataSource.getRepository(GenomicFile);
+  const colFiles = allFileIds.length
+    ? await fileRepo.findByIds(allFileIds)
     : [];
-  const dsMap = new Map(datasets.map(d => [d.id, d]));
+  const fileMap = new Map(colFiles.map(f => [f.id, f]));
 
   // File counts via edges
   const nilUuid = '00000000-0000-0000-0000-000000000000';
-  const allEntityIds = [projectId, ...expIds, ...allDatasetIds, nilUuid];
+  const allEntityIds = [projectId, ...colIds, nilUuid];
   const fileCounts = await edgeRepo
     .createQueryBuilder('e')
     .select('e.target_type', 'targetType')
@@ -197,37 +188,34 @@ router.get('/:id/tree', asyncWrap(async (req, res) => {
     ...project,
     fileCount: projectFileCount,
     links: edgesToLinks('project', projectId),
-    experiments: experiments.map(exp => {
-      const typeId = typeIdsByExp.get(exp.id);
-      const orgId = orgIdsByExp.get(exp.id);
-      const et = typeId ? typeMap.get(typeId) : null;
+    collections: collections.map(col => {
+      const typeId = typeIdsByCol.get(col.id);
+      const orgId = orgIdsByCol.get(col.id);
+      const tech = typeId ? typeMap.get(typeId) : null;
       const org = orgId ? orgMap.get(orgId) : null;
-      const dsIds = datasetIdsByExp.get(exp.id) ?? [];
+      const fIds = fileIdsByCol.get(col.id) ?? [];
 
       return {
-        id: exp.id,
-        name: exp.name,
-        description: exp.description,
-        experimentType: et ? { id: et.id, name: et.name } : null,
+        id: col.id,
+        name: col.name,
+        description: col.description,
+        kind: col.kind,
+        metadata: col.metadata,
+        technique: tech ? { id: tech.id, name: tech.name } : null,
         organismId: orgId ?? null,
         organismDisplay: org ? organismDisplay(org) : null,
-        status: exp.status,
-        fileCount: countMap.get(`experiment:${exp.id}`) ?? 0,
-        links: edgesToLinks('experiment', exp.id),
-        datasets: dsIds.map(dsId => {
-          const ds = dsMap.get(dsId);
-          if (!ds) return null;
+        fileCount: countMap.get(`collection:${col.id}`) ?? 0,
+        links: edgesToLinks('collection', col.id),
+        files: fIds.map(fId => {
+          const f = fileMap.get(fId);
+          if (!f) return null;
           return {
-            id: ds.id,
-            name: ds.name,
-            kind: ds.kind,
-            description: ds.description,
-            condition: ds.condition,
-            replicate: ds.replicate,
-            metadata: ds.metadata,
-            tags: ds.tags,
-            fileCount: countMap.get(`dataset:${ds.id}`) ?? 0,
-            links: edgesToLinks('dataset', ds.id),
+            id: f.id,
+            filename: f.filename,
+            kind: f.kind,
+            format: f.format,
+            sizeBytes: Number(f.sizeBytes),
+            status: f.status,
           };
         }).filter(Boolean),
       };

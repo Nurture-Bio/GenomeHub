@@ -16,18 +16,17 @@ import { createServer } from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { AppDataSource } from './app_data.js';
-import { ExperimentType } from './entities/index.js';
+import { Technique } from './entities/index.js';
 import { resolveUser } from './routes/auth.js';
 
 // Route modules
 import authRoutes from './routes/auth.js';
 import projectRoutes from './routes/projects.js';
-import experimentRoutes from './routes/experiments.js';
-import datasetRoutes from './routes/datasets.js';
+import collectionRoutes from './routes/collections.js';
 import fileRoutes from './routes/files.js';
 import uploadRoutes from './routes/uploads.js';
 import organismRoutes from './routes/organisms.js';
-import experimentTypeRoutes from './routes/experiment_types.js';
+import techniqueRoutes from './routes/techniques.js';
 import edgeRoutes, { linksRouter } from './routes/edges.js';
 import statsRoutes from './routes/stats.js';
 
@@ -64,12 +63,11 @@ app.use('/api', (req: Request, res: Response, next: NextFunction) => {
 // ─── Protected routes ───────────────────────────────────────
 
 app.use('/api/projects', projectRoutes);
-app.use('/api/experiments', experimentRoutes);
-app.use('/api/datasets', datasetRoutes);
+app.use('/api/collections', collectionRoutes);
 app.use('/api/files', fileRoutes);
 app.use('/api/uploads', uploadRoutes);
 app.use('/api/organisms', organismRoutes);
-app.use('/api/experiment-types', experimentTypeRoutes);
+app.use('/api/techniques', techniqueRoutes);
 app.use('/api/edges', edgeRoutes);
 app.use('/api/links', linksRouter);
 app.use('/api/stats', statsRoutes);
@@ -93,8 +91,8 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 
 const PORT = parseInt(process.env.PORT ?? '3000');
 
-async function seedExperimentTypes() {
-  const repo = AppDataSource.getRepository(ExperimentType);
+async function seedTechniques() {
+  const repo = AppDataSource.getRepository(Technique);
   const count = await repo.count();
   if (count > 0) return;
 
@@ -113,12 +111,12 @@ async function seedExperimentTypes() {
   ];
 
   await repo.save(defaults.map(d => repo.create(d)));
-  console.log(`Seeded ${defaults.length} experiment types`);
+  console.log(`Seeded ${defaults.length} techniques`);
 }
 
 async function main() {
   await AppDataSource.initialize();
-  await seedExperimentTypes();
+  await seedTechniques();
   console.log('Database connected');
 
   server.listen(PORT, () => {

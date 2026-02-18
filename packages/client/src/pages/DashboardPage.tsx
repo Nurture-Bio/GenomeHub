@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { useStorageStats, useProjectsQuery, useOrganismsQuery, useExperimentsQuery } from '../hooks/useGenomicQueries';
+import { useStorageStats, useProjectsQuery, useOrganismsQuery, useCollectionsQuery } from '../hooks/useGenomicQueries';
 import { FORMAT_META, formatBytes } from '../lib/formats';
 import { Heading, Text, Badge, Card } from '../ui';
 
@@ -69,7 +69,7 @@ export default function DashboardPage() {
   const { data: stats, isLoading: statsLoading } = useStorageStats();
   const { data: projects, isLoading: projLoading } = useProjectsQuery();
   const { data: organisms, isLoading: orgLoading } = useOrganismsQuery();
-  const { data: experiments, isLoading: expLoading } = useExperimentsQuery();
+  const { data: collections, isLoading: colLoading } = useCollectionsQuery();
 
   return (
     <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3">
@@ -94,8 +94,8 @@ export default function DashboardPage() {
           value={orgLoading ? '—' : (organisms?.length ?? 0).toString()}
         />
         <StatCard
-          label="Experiments"
-          value={expLoading ? '—' : (experiments?.length ?? 0).toString()}
+          label="Collections"
+          value={colLoading ? '—' : (collections?.length ?? 0).toString()}
         />
         <StatCard
           label="Formats"

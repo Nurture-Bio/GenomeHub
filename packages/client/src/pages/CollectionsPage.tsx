@@ -1,13 +1,13 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  useExperimentsQuery, useCreateExperimentMutation,
-  useExperimentTypesQuery,
+  useCollectionsQuery, useCreateCollectionMutation,
+  useTechniquesQuery,
 } from '../hooks/useGenomicQueries';
 import { techniqueColor, TechniquePill } from '../lib/techniqueColors';
 import { formatRelativeTime } from '../lib/formats';
 import { Button, Badge, Input, Text, Heading, Card } from '../ui';
-import { ExperimentTypePicker, ProjectPicker, OrganismPicker } from '../ui';
+import { TechniquePicker, ProjectPicker, OrganismPicker } from '../ui';
 
 // ── Skeleton row ─────────────────────────────────────────
 
@@ -23,57 +23,56 @@ function SkeletonRow() {
   );
 }
 
-// ── ExperimentsPage ──────────────────────────────────────
+// ── CollectionsPage ─────────────────────────────────────
 
-export default function ExperimentsPage() {
-  const { data, isLoading, refetch } = useExperimentsQuery();
-  const { createExperiment, pending } = useCreateExperimentMutation(refetch);
-  const { data: experimentTypes } = useExperimentTypesQuery();
+export default function CollectionsPage() {
+  const { data, isLoading, refetch } = useCollectionsQuery();
+  const { createCollection, pending } = useCreateCollectionMutation(refetch);
+  const { data: techniques } = useTechniquesQuery();
 
   const [techFilter, setTechFilter] = useState<string>('all');
 
-  // Create form state
-  const [name,             setName]             = useState('');
-  const [experimentTypeId, setExperimentTypeId] = useState('');
-  const [projectId,        setProjectId]        = useState('');
-  const [organismId,       setOrganismId]       = useState('');
-  const [description,      setDescription]      = useState('');
-  const [experimentDate,   setExperimentDate]   = useState('');
+  // Create form — only name is required. Everything else optional.
+  const [name,         setName]         = useState('');
+  const [techniqueId,  setTechniqueId]  = useState('');
+  const [projectId,    setProjectId]    = useState('');
+  const [organismId,   setOrganismId]   = useState('');
+  const [description,  setDescription]  = useState('');
 
   const filtered = useMemo(() => {
     if (!data) return [];
     if (techFilter === 'all') return data;
-    return data.filter(e => e.experimentTypeName === techFilter);
+    return data.filter(c => c.techniqueName === techFilter);
   }, [data, techFilter]);
 
   const handleCreate = async () => {
-    if (!name || !experimentTypeId || !organismId) return;
-    await createExperiment({
-      name, experimentTypeId, organismId,
+    if (!name) return;
+    await createCollection({
+      name,
+      techniqueId: techniqueId || undefined,
+      organismId: organismId || undefined,
       projectId: projectId || undefined,
       description: description || undefined,
-      experimentDate: experimentDate || undefined,
     });
-    setName(''); setExperimentTypeId(''); setProjectId('');
-    setOrganismId(''); setDescription(''); setExperimentDate('');
+    setName(''); setTechniqueId(''); setProjectId('');
+    setOrganismId(''); setDescription('');
   };
 
-  // Build filter list from DB experiment types
   const techniqueFilters = useMemo(() => {
-    return ['all', ...(experimentTypes ?? []).map(t => t.name)];
-  }, [experimentTypes]);
+    return ['all', ...(techniques ?? []).map(t => t.name)];
+  }, [techniques]);
 
   return (
     <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 h-full min-h-0">
       {/* Header */}
       <div className="shrink-0">
-        <Heading level="heading">Experiments</Heading>
+        <Heading level="heading">Collections</Heading>
         <Text variant="caption">
-          {data ? `${data.length} experiment${data.length !== 1 ? 's' : ''}` : 'Loading...'}
+          {data ? `${data.length} collection${data.length !== 1 ? 's' : ''}` : 'Loading...'}
         </Text>
       </div>
 
-      {/* Create form — wraps, full-width inputs on mobile */}
+      {/* Create form — only name required */}
       <div className="flex items-end gap-2 shrink-0 flex-wrap bg-surface border border-border rounded-md p-2.5">
         <div className="flex flex-col gap-0.5 w-full sm:w-auto">
           <Text variant="overline">Name</Text>
@@ -81,9 +80,9 @@ export default function ExperimentsPage() {
         </div>
         <div className="flex flex-col gap-0.5 w-[calc(50%-4px)] sm:w-auto">
           <Text variant="overline">Technique</Text>
-          <ExperimentTypePicker
-            value={experimentTypeId}
-            onValueChange={setExperimentTypeId}
+          <TechniquePicker
+            value={techniqueId}
+            onValueChange={setTechniqueId}
             variant="surface"
             size="sm"
             className="w-full sm:w-36"
@@ -113,16 +112,12 @@ export default function ExperimentsPage() {
           <Text variant="overline">Description</Text>
           <Input variant="surface" size="sm" placeholder="Description" value={description} onChange={e => setDescription(e.target.value)} className="w-full sm:w-52" />
         </div>
-        <div className="flex flex-col gap-0.5 w-[calc(50%-4px)] sm:w-auto">
-          <Text variant="overline">Date</Text>
-          <Input variant="surface" size="sm" type="date" value={experimentDate} onChange={e => setExperimentDate(e.target.value)} className="w-full sm:w-32" />
-        </div>
-        <Button intent="primary" size="sm" pending={pending} onClick={handleCreate} disabled={!name || !experimentTypeId || !organismId} className="w-full sm:w-auto">
+        <Button intent="primary" size="sm" pending={pending} onClick={handleCreate} disabled={!name} className="w-full sm:w-auto">
           Add
         </Button>
       </div>
 
-      {/* Technique filters — touch-friendly on mobile */}
+      {/* Technique filters */}
       <div className="flex gap-1 flex-wrap shrink-0">
         {techniqueFilters.map(t => {
           const colors = t === 'all' ? null : techniqueColor(t);
@@ -150,7 +145,7 @@ export default function ExperimentsPage() {
         <table className="w-full border-collapse text-left">
           <thead className="sticky top-0 bg-surface-2 z-10">
             <tr className="border-b border-border">
-              {['Name', 'Technique', 'Organism', 'Project', 'PI / User', 'Date', 'Files'].map(h => (
+              {['Name', 'Technique', 'Organism', 'Project', 'Kind', 'Created by', 'Files'].map(h => (
                 <th key={h} className="py-1.5 pr-3 pl-2.5 font-body text-micro uppercase tracking-overline text-text-dim font-semibold whitespace-nowrap">
                   {h}
                 </th>
@@ -164,31 +159,31 @@ export default function ExperimentsPage() {
                 ? (
                   <tr>
                     <td colSpan={7} className="py-12 text-center text-text-dim font-body text-body">
-                      {techFilter !== 'all' ? 'No experiments match this technique.' : 'No experiments yet. Create one above.'}
+                      {techFilter !== 'all' ? 'No collections match this technique.' : 'No collections yet. Create one above.'}
                     </td>
                   </tr>
                 )
-                : filtered.map(e => (
-                  <tr key={e.id} className="border-b border-border-subtle transition-colors duration-fast hover:bg-surface group cursor-pointer"
+                : filtered.map(c => (
+                  <tr key={c.id} className="border-b border-border-subtle transition-colors duration-fast hover:bg-surface group cursor-pointer"
                     onClick={() => window.location.hash = ''}
                   >
                     <td className="py-1.5 pl-2.5 pr-3">
-                      <Link to={`/experiments/${e.id}`} className="no-underline">
-                        <div className="font-mono text-caption text-text">{e.name}</div>
-                        {e.description && <div className="text-micro text-text-dim truncate max-w-xs">{e.description}</div>}
+                      <Link to={`/collections/${c.id}`} className="no-underline">
+                        <div className="font-mono text-caption text-text">{c.name}</div>
+                        {c.description && <div className="text-micro text-text-dim truncate max-w-xs">{c.description}</div>}
                       </Link>
                     </td>
-                    <td className="py-1.5 pr-3"><TechniquePill name={e.experimentTypeName ?? 'Other'} /></td>
+                    <td className="py-1.5 pr-3"><TechniquePill name={c.techniqueName ?? 'Other'} /></td>
                     <td className="py-1.5 pr-3 text-caption text-text-secondary italic">
-                      {e.organismDisplay ?? '--'}
+                      {c.organismDisplay ?? '--'}
                     </td>
-                    <td className="py-1.5 pr-3 text-caption text-text-secondary">{e.projectName ?? '--'}</td>
-                    <td className="py-1.5 pr-3 text-caption text-text-dim">{e.createdBy ?? '--'}</td>
-                    <td className="py-1.5 pr-3 text-caption text-text-dim whitespace-nowrap">
-                      {e.experimentDate ?? '--'}
+                    <td className="py-1.5 pr-3 text-caption text-text-secondary">{c.projectName ?? '--'}</td>
+                    <td className="py-1.5 pr-3">
+                      <Badge variant="count" color="dim">{c.kind}</Badge>
                     </td>
+                    <td className="py-1.5 pr-3 text-caption text-text-dim">{c.createdBy ?? '--'}</td>
                     <td className="py-1.5 pr-3 font-mono text-caption tabular-nums text-text-secondary">
-                      {e.fileCount}
+                      {c.fileCount}
                     </td>
                   </tr>
                 ))
@@ -209,22 +204,22 @@ export default function ExperimentsPage() {
           : !filtered.length
             ? (
               <div className="py-8 text-center text-text-dim text-body font-body">
-                {techFilter !== 'all' ? 'No experiments match this technique.' : 'No experiments yet. Create one above.'}
+                {techFilter !== 'all' ? 'No collections match this technique.' : 'No collections yet. Create one above.'}
               </div>
             )
-            : filtered.map(e => (
-              <Link key={e.id} to={`/experiments/${e.id}`} className="no-underline">
+            : filtered.map(c => (
+              <Link key={c.id} to={`/collections/${c.id}`} className="no-underline">
                 <Card className="p-2.5 flex flex-col gap-1 hover:border-accent transition-colors duration-fast cursor-pointer">
                   <div className="flex items-center gap-2">
-                    <TechniquePill name={e.experimentTypeName ?? 'Other'} />
-                    <span className="font-mono text-caption text-text truncate flex-1 min-w-0">{e.name}</span>
+                    {c.techniqueName && <TechniquePill name={c.techniqueName} />}
+                    <span className="font-mono text-caption text-text truncate flex-1 min-w-0">{c.name}</span>
+                    <Badge variant="count" color="dim">{c.kind}</Badge>
                   </div>
-                  {e.description && <Text variant="caption" className="truncate">{e.description}</Text>}
+                  {c.description && <Text variant="caption" className="truncate">{c.description}</Text>}
                   <div className="flex items-center gap-2 flex-wrap">
-                    {e.organismDisplay && <Text variant="caption" className="italic">{e.organismDisplay}</Text>}
-                    {e.projectName && <Text variant="caption">{e.projectName}</Text>}
-                    <Text variant="caption">{e.fileCount} files</Text>
-                    {e.experimentDate && <Text variant="caption">{e.experimentDate}</Text>}
+                    {c.organismDisplay && <Text variant="caption" className="italic">{c.organismDisplay}</Text>}
+                    {c.projectName && <Text variant="caption">{c.projectName}</Text>}
+                    <Text variant="caption">{c.fileCount} files</Text>
                   </div>
                 </Card>
               </Link>
