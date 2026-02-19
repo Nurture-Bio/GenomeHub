@@ -1,10 +1,14 @@
 import { Router } from 'express';
 import { AppDataSource } from '../app_data.js';
 import { asyncWrap } from './async_wrap.js';
+import * as edges from './edge_service.js';
 import type { EntityTarget, ObjectLiteral } from 'typeorm';
+import type { EntityType } from '../entities/index.js';
 
 interface ReferenceCrudOptions<T extends ObjectLiteral> {
   entity: EntityTarget<T>;
+  /** Entity type name for edge reference checking on delete */
+  entityType?: EntityType;
   orderBy?: { column: string; direction: 'ASC' | 'DESC' };
   normalizeName?: boolean;
   extraFields?: { name: string; default: unknown }[];
@@ -69,6 +73,13 @@ export function referenceCrudRouter<T extends ObjectLiteral>(opts: ReferenceCrud
     const repo = AppDataSource.getRepository(entity);
     const item = await repo.findOneBy({ id: req.params.id } as any);
     if (!item) { res.status(404).json({ error: 'not found' }); return; }
+    if (opts.entityType) {
+      const refs = await edges.countReferences({ type: opts.entityType, id: req.params.id });
+      if (refs > 0) {
+        res.status(409).json({ error: `Cannot delete: ${refs} item(s) still reference this.` });
+        return;
+      }
+    }
     await repo.remove(item);
     res.json({ ok: true });
   }));

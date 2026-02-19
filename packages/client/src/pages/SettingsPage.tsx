@@ -4,6 +4,7 @@ import {
   useRelationTypesQuery, useCreateRelationTypeMutation,
   useFileKindsQuery, useCreateFileKindMutation,
 } from '../hooks/useGenomicQueries';
+import { useConfirmDelete } from '../hooks/useConfirmDelete';
 import { apiFetch } from '../lib/api';
 import { toast } from 'sonner';
 import { Heading, Text, InlineInput } from '../ui';
@@ -19,18 +20,10 @@ interface EditableRowProps {
   name: string;
   description: string | null;
   onSave: (id: string, patch: { name?: string; description?: string }) => Promise<void>;
-  onDelete: (id: string) => Promise<void>;
+  onDelete: (id: string, name: string) => void;
 }
 
 function EditableRow({ id, name, description, onSave, onDelete }: EditableRowProps) {
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [pending, setPending] = useState(false);
-
-  const handleDelete = async () => {
-    setPending(true);
-    try { await onDelete(id); } finally { setPending(false); setConfirmDelete(false); }
-  };
-
   return (
     <tr className="border-b border-border-subtle group hover:bg-surface transition-colors duration-fast">
       <td className="py-1.5 pl-2.5 pr-3">
@@ -40,17 +33,8 @@ function EditableRow({ id, name, description, onSave, onDelete }: EditableRowPro
         <InlineInput value={description ?? ''} placeholder="add description" fullWidth onCommit={val => onSave(id, { description: val })} />
       </td>
       <td className="py-1.5 pr-2.5 w-8">
-        {confirmDelete ? (
-          <span className="inline-flex items-center gap-1">
-            <button disabled={pending} onClick={handleDelete}
-              className="text-caption text-red-400 hover:text-red-300 cursor-pointer bg-transparent border-none p-0 font-body" title="Confirm">✓</button>
-            <button onClick={() => setConfirmDelete(false)}
-              className="text-caption text-text-dim hover:text-text cursor-pointer bg-transparent border-none p-0 font-body" title="Cancel">×</button>
-          </span>
-        ) : (
-          <button onClick={() => setConfirmDelete(true)}
-            className="text-caption text-text-dim hover:text-red-400 cursor-pointer bg-transparent border-none p-0 font-body opacity-0 group-hover:opacity-100 transition-opacity duration-fast" title="Delete">×</button>
-        )}
+        <button onClick={() => onDelete(id, name)}
+          className="text-caption text-text-dim hover:text-red-400 cursor-pointer bg-transparent border-none p-0 font-body opacity-0 group-hover:opacity-100 transition-opacity duration-fast" title="Delete">×</button>
       </td>
     </tr>
   );
@@ -139,11 +123,12 @@ export default function SettingsPage() {
     toast.success('Updated'); refetchRelations();
   }, [refetchRelations]);
 
-  const deleteRelation = useCallback(async (id: string) => {
+  const doDeleteRelation = useCallback(async (id: string) => {
     const r = await apiFetch(`/api/relation-types/${id}`, { method: 'DELETE' });
     if (!r.ok) throw new Error('Delete failed');
     toast.success('Deleted'); refetchRelations();
   }, [refetchRelations]);
+  const { confirmDelete: confirmDeleteRelation, dialog: dialogRelation } = useConfirmDelete(doDeleteRelation, 'relation type');
 
   const addRelation = useCallback(async (name: string, description: string) => {
     await createRelationType({ name, description: description || undefined });
@@ -158,11 +143,12 @@ export default function SettingsPage() {
     toast.success('Updated'); refetchKinds();
   }, [refetchKinds]);
 
-  const deleteKind = useCallback(async (id: string) => {
+  const doDeleteKind = useCallback(async (id: string) => {
     const r = await apiFetch(`/api/file-kinds/${id}`, { method: 'DELETE' });
     if (!r.ok) throw new Error('Delete failed');
     toast.success('Deleted'); refetchKinds();
   }, [refetchKinds]);
+  const { confirmDelete: confirmDeleteKind, dialog: dialogKind } = useConfirmDelete(doDeleteKind, 'file kind');
 
   const addKind = useCallback(async (name: string, description: string) => {
     await createFileKind({ name, description: description || undefined });
@@ -177,11 +163,12 @@ export default function SettingsPage() {
     toast.success('Updated'); refetchTechniques();
   }, [refetchTechniques]);
 
-  const deleteTechnique = useCallback(async (id: string) => {
+  const doDeleteTechnique = useCallback(async (id: string) => {
     const r = await apiFetch(`/api/techniques/${id}`, { method: 'DELETE' });
     if (!r.ok) throw new Error('Delete failed');
     toast.success('Deleted'); refetchTechniques();
   }, [refetchTechniques]);
+  const { confirmDelete: confirmDeleteTechnique, dialog: dialogTechnique } = useConfirmDelete(doDeleteTechnique, 'technique');
 
   const addTechnique = useCallback(async (name: string, description: string) => {
     await createTechnique({ name, description: description || undefined });
@@ -189,6 +176,9 @@ export default function SettingsPage() {
 
   return (
     <div className="flex flex-col gap-4 md:gap-5 p-2 md:p-3 max-w-2xl mx-auto w-full">
+      {dialogRelation}
+      {dialogKind}
+      {dialogTechnique}
       <div>
         <Heading level="heading">Settings</Heading>
         <Text variant="caption">Manage reference data used across GenomeHub</Text>
@@ -196,14 +186,14 @@ export default function SettingsPage() {
 
       <SectionTable title="Relation Types" subtitle="Define how files can be linked to each other">
         {(relationTypes ?? []).map(rt => (
-          <EditableRow key={rt.id} id={rt.id} name={rt.name} description={rt.description} onSave={saveRelation} onDelete={deleteRelation} />
+          <EditableRow key={rt.id} id={rt.id} name={rt.name} description={rt.description} onSave={saveRelation} onDelete={confirmDeleteRelation} />
         ))}
         <AddRow placeholder="+ new relation type" onAdd={addRelation} />
       </SectionTable>
 
       <SectionTable title="File Kinds" subtitle="Classify files by their biological meaning">
         {(fileKinds ?? []).map(fk => (
-          <EditableRow key={fk.id} id={fk.id} name={fk.name} description={fk.description} onSave={saveKind} onDelete={deleteKind} />
+          <EditableRow key={fk.id} id={fk.id} name={fk.name} description={fk.description} onSave={saveKind} onDelete={confirmDeleteKind} />
         ))}
         <AddRow placeholder="+ new file kind" onAdd={addKind} />
       </SectionTable>
@@ -211,7 +201,7 @@ export default function SettingsPage() {
       <SectionTable title="Techniques" subtitle="Sequencing techniques linked to collections">
         {(techniques ?? []).map(t => (
           <EditableRow key={t.id} id={t.id} name={t.name} description={t.description}
-            onSave={saveTechnique} onDelete={deleteTechnique} />
+            onSave={saveTechnique} onDelete={confirmDeleteTechnique} />
         ))}
         <AddRow placeholder="+ new technique" onAdd={addTechnique} />
       </SectionTable>

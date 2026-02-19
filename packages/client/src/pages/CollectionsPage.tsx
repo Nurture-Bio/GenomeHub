@@ -5,6 +5,7 @@ import {
   useUpdateCollectionMutation, useDeleteCollectionMutation,
   useTechniquesQuery,
 } from '../hooks/useGenomicQueries';
+import { useConfirmDelete } from '../hooks/useConfirmDelete';
 import { techniqueColor, TechniquePill } from '../lib/techniqueColors';
 import { Badge, Text, Heading, Card } from '../ui';
 import { TechniquePicker, OrganismPicker } from '../ui';
@@ -28,6 +29,7 @@ export default function CollectionsPage() {
   const { createCollection, pending: createPending } = useCreateCollectionMutation(refetch);
   const { updateCollection } = useUpdateCollectionMutation(refetch);
   const { deleteCollection } = useDeleteCollectionMutation(refetch);
+  const { confirmDelete, dialog } = useConfirmDelete(deleteCollection, 'collection');
   const { data: techniques } = useTechniquesQuery();
 
   const [techFilter, setTechFilter] = useState<string>('all');
@@ -63,6 +65,7 @@ export default function CollectionsPage() {
 
   return (
     <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 h-full min-h-0">
+      {dialog}
       <div className="shrink-0">
         <Heading level="heading">Collections</Heading>
         <Text variant="caption">
@@ -142,7 +145,7 @@ export default function CollectionsPage() {
                         {c.fileCount}
                       </td>
                       <td className="py-1.5 pr-2.5 w-6">
-                        <button onClick={() => deleteCollection(c.id)}
+                        <button onClick={() => confirmDelete(c.id, c.name)}
                           className="text-text-dim hover:text-red-400 cursor-pointer bg-transparent border-none p-0 text-caption opacity-0 group-hover:opacity-100 transition-opacity duration-fast"
                           title="Delete collection">×</button>
                       </td>

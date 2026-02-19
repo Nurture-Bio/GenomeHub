@@ -157,6 +157,21 @@ export async function replaceEdge(
 }
 
 /**
+ * Count all edges referencing an entity (as source or target).
+ * Used to prevent deletion of entities that are still in use.
+ */
+export async function countReferences(entity: EntityRef): Promise<number> {
+  const repo = edgeRepo();
+  const count = await repo.createQueryBuilder('e')
+    .where(
+      '(e.source_type = :t AND e.source_id = :id) OR (e.target_type = :t AND e.target_id = :id)',
+      { t: entity.type, id: entity.id },
+    )
+    .getCount();
+  return count;
+}
+
+/**
  * Remove all edges referencing an entity.
  *
  * Cascade rules:

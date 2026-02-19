@@ -44,7 +44,10 @@ export function useApiMutation<TArgs extends unknown[], TReturn = void>(
     try {
       const { url, init } = buildRequest(...args);
       const r = await apiFetch(url, init);
-      if (!r.ok) throw new Error(opts.errorMessage ?? 'Request failed');
+      if (!r.ok) {
+        const body = await r.json().catch(() => null);
+        throw new Error(body?.error ?? opts.errorMessage ?? 'Request failed');
+      }
       const contentType = r.headers.get('content-type');
       const data = contentType?.includes('application/json') ? await r.json() : undefined;
       opts.onSuccess?.();

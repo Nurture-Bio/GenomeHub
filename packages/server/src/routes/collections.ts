@@ -283,7 +283,12 @@ router.delete('/:id', asyncWrap(async (req, res) => {
   const col = await repo.findOneBy({ id: req.params.id });
   if (!col) { res.status(404).json({ error: 'not found' }); return; }
 
-  await edges.cascadeDelete({ type: 'collection', id: col.id });
+  // Check for files in this collection
+  const fileCount = await edges.countReferences({ type: 'collection', id: col.id });
+  if (fileCount > 0) {
+    res.status(409).json({ error: `Cannot delete: collection still has ${fileCount} reference(s). Remove all files first.` });
+    return;
+  }
   await repo.remove(col);
   res.json({ ok: true });
 }));

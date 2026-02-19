@@ -1,5 +1,6 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useOrganismsQuery, useCreateOrganismMutation } from '../hooks/useGenomicQueries';
+import { useConfirmDelete } from '../hooks/useConfirmDelete';
 import { apiFetch } from '../lib/api';
 import { toast } from 'sonner';
 import { Badge, Text, Heading, Card, InlineInput } from '../ui';
@@ -44,18 +45,20 @@ export default function OrganismsPage() {
     } catch { toast.error('Failed to update organism'); }
   };
 
-  const handleDelete = async (id: string) => {
+  const doDelete = useCallback(async (id: string) => {
     try {
       const r = await apiFetch(`/api/organisms/${id}`, { method: 'DELETE' });
       if (!r.ok) throw new Error('Delete failed');
       toast.success('Deleted'); refetch();
     } catch { toast.error('Failed to delete organism'); }
-  };
+  }, [refetch]);
+  const { confirmDelete, dialog } = useConfirmDelete(doDelete, 'organism');
 
   const ready = newGenus.trim().length > 0 && newSpecies.trim().length > 0;
 
   return (
     <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 h-full min-h-0">
+      {dialog}
       <div className="shrink-0">
         <Heading level="heading">Organisms</Heading>
         <Text variant="caption">
@@ -107,7 +110,7 @@ export default function OrganismsPage() {
                         {o.fileCount}
                       </td>
                       <td className="py-1.5 pr-2.5 w-6 align-top pt-2">
-                        <button onClick={() => handleDelete(o.id)}
+                        <button onClick={() => confirmDelete(o.id, `${o.genus} ${o.species}`)}
                           className="text-text-dim hover:text-red-400 cursor-pointer bg-transparent border-none p-0 text-caption opacity-0 group-hover:opacity-100 transition-opacity duration-fast"
                           title="Delete organism">×</button>
                       </td>

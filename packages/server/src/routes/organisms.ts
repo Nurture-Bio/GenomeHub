@@ -3,6 +3,7 @@ import { AppDataSource } from '../app_data.js';
 import { Organism, EntityEdge } from '../entities/index.js';
 import { asyncWrap } from '../lib/async_wrap.js';
 import { organismDisplay } from '../lib/display.js';
+import * as edges from '../lib/edge_service.js';
 
 const router = Router();
 
@@ -82,6 +83,11 @@ router.delete('/:id', asyncWrap(async (req, res) => {
   const repo = AppDataSource.getRepository(Organism);
   const org = await repo.findOneBy({ id: req.params.id });
   if (!org) { res.status(404).json({ error: 'not found' }); return; }
+  const refs = await edges.countReferences({ type: 'organism', id: org.id });
+  if (refs > 0) {
+    res.status(409).json({ error: `Cannot delete: ${refs} file(s) or collection(s) still reference this organism.` });
+    return;
+  }
   await repo.remove(org);
   res.json({ ok: true });
 }));
