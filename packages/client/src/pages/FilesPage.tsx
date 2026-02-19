@@ -1,13 +1,14 @@
 import type { GenomicFile } from "../hooks/useGenomicQueries";
 import { useState, useMemo, useRef, type KeyboardEvent } from 'react';
 import { Link } from 'react-router-dom';
+import { cx } from 'class-variance-authority';
 import {
   useFilesQuery, useDeleteFileMutation, useUpdateFileMutation,
   usePresignedUrl, useAddFilesToCollection, useRemoveFilesFromCollection,
 } from '../hooks/useGenomicQueries';
 import { useConfirm } from '../hooks/useConfirm';
 import { detectFormat, FORMAT_META, formatBytes, formatRelativeTime } from '../lib/formats';
-import { Button, Badge, Input, Text, Heading, Card } from '../ui';
+import { Button, Badge, Input, Text, Heading, Card, chip, iconAction } from '../ui';
 import { CollectionPicker, OrganismPicker, FileKindPicker } from '../ui';
 
 // ── Format icon ──────────────────────────────────────────
@@ -57,13 +58,11 @@ function InlineTagEditor({ tags, onUpdate }: { tags: string[]; onUpdate: (tags: 
       onClick={() => inputRef.current?.focus()}
     >
       {tags.map(t => (
-        <span
-          key={t}
-          className="inline-flex items-center gap-px font-body text-micro px-1 py-px rounded-sm bg-surface-2 text-text-secondary"
-        >
+        <span key={t} className={chip()}>
           {t}
           <button
-            className="ml-px text-text-dim hover:text-text cursor-pointer bg-transparent border-none p-0 text-micro leading-none"
+            className={iconAction({ color: 'dim' })}
+            style={{ fontSize: 'var(--font-size-micro)' }}
             onClick={e => { e.stopPropagation(); removeTag(t); }}
           >
             ×
@@ -97,15 +96,13 @@ function InlineCollectionEditor({
   return (
     <div className="flex gap-0.5 flex-wrap items-center">
       {collections.map(c => (
-        <span
-          key={c.id}
-          className="inline-flex items-center gap-px font-body text-micro px-1 py-px rounded-sm bg-surface-2 text-text-secondary"
-        >
+        <span key={c.id} className={chip()}>
           <Link to={`/collections/${c.id}`} className="no-underline text-text-secondary hover:text-accent">
             {c.name}
           </Link>
           <button
-            className="ml-px text-text-dim hover:text-text cursor-pointer bg-transparent border-none p-0 text-micro leading-none"
+            className={iconAction({ color: 'dim' })}
+            style={{ fontSize: 'var(--font-size-micro)' }}
             onClick={() => onRemove(c.id, [fileId])}
           >
             ×
@@ -126,7 +123,8 @@ function InlineCollectionEditor({
         />
       ) : (
         <button
-          className="text-micro text-text-dim hover:text-accent cursor-pointer bg-transparent border-none p-0 font-body"
+          className={iconAction({ color: 'dim' })}
+          style={{ fontSize: 'var(--font-size-micro)' }}
           onClick={() => setAdding(true)}
         >
           +
@@ -161,13 +159,10 @@ function FileCard({ file, onDownload, selected, onSelect }: FileCardProps) {
           onChange={e => onSelect(file.id, e.target.checked)}
           className="accent-accent cursor-pointer shrink-0"
         />
-        <span className="font-mono text-micro px-1 py-px rounded-sm shrink-0 font-bold"
-          style={{ background: meta.bg, color: meta.color }}>
+        <Badge variant="status" style={{ background: meta.bg, color: meta.color }}>
           {meta.label}
-        </span>
-        <span className="font-mono text-caption text-text truncate flex-1 min-w-0">
-          {file.filename}
-        </span>
+        </Badge>
+        <Text variant="mono" className="truncate flex-1 min-w-0">{file.filename}</Text>
       </div>
 
       {/* Metadata row */}
@@ -220,17 +215,19 @@ function FileRow({ file, onDownload, onUpdate, onAddToCollection, onRemoveFromCo
         <div className="flex items-center gap-2">
           <FormatIcon filename={file.filename} format={file.format} size={28} />
           <div className="min-w-0 flex-1">
-            <Link to={`/files/${file.id}`} className="no-underline font-mono text-caption text-text truncate block hover:text-accent transition-colors duration-fast">
-              {file.filename}
+            <Link to={`/files/${file.id}`} className="no-underline">
+              <Text variant="mono" className="truncate block hover:text-accent transition-colors duration-fast">
+                {file.filename}
+              </Text>
             </Link>
-            <div className="flex items-center gap-1.5 text-micro text-text-dim">
-              <span className="font-mono tabular-nums">{formatBytes(file.sizeBytes)}</span>
-              <span>·</span>
+            <div className="flex items-center gap-1.5">
+              <Text variant="mono" className="text-text-dim text-micro">{formatBytes(file.sizeBytes)}</Text>
+              <Text variant="caption">·</Text>
               {file.status === 'ready'   && <Badge variant="status" color="green">ready</Badge>}
               {file.status === 'pending' && <Badge variant="status" color="yellow">uploading</Badge>}
               {file.status === 'error'   && <Badge variant="status" color="red">error</Badge>}
-              <span>·</span>
-              <span>{formatRelativeTime(file.uploadedAt)}</span>
+              <Text variant="caption">·</Text>
+              <Text variant="caption">{formatRelativeTime(file.uploadedAt)}</Text>
             </div>
           </div>
         </div>
@@ -274,7 +271,7 @@ function FileRow({ file, onDownload, onUpdate, onAddToCollection, onRemoveFromCo
       <td className="py-1.5 pr-3 w-6 align-top pt-2">
         <button
           onClick={() => onDownload(file.id)}
-          className="text-caption text-text-dim hover:text-accent cursor-pointer bg-transparent border-none p-0 font-body opacity-0 group-hover:opacity-100 transition-opacity duration-fast"
+          className={iconAction({ color: 'dim', reveal: true })}
           title="Download"
         >
           ↓
@@ -473,37 +470,43 @@ export default function FilesPage() {
         />
 
         <div className="flex gap-1 flex-wrap">
-          {kindFilters.map(k => (
-            <button
-              key={k}
-              onClick={() => setFilterKind(k === 'all' ? '' : k)}
-              className="font-body text-micro px-1.5 py-1 md:py-0.5 rounded-sm border transition-colors duration-fast cursor-pointer min-h-5.5 md:min-h-0"
-              style={{
-                background: (k === 'all' ? !filterKind : filterKind === k) ? 'var(--color-accent)' : 'var(--color-surface-2)',
-                color:      (k === 'all' ? !filterKind : filterKind === k) ? 'var(--color-bg)'     : 'var(--color-text-secondary)',
-                borderColor: (k === 'all' ? !filterKind : filterKind === k) ? 'transparent'        : 'var(--color-border)',
-              }}
-            >
-              {k === 'all' ? 'All kinds' : k}
-            </button>
-          ))}
+          {kindFilters.map(k => {
+            const active = k === 'all' ? !filterKind : filterKind === k;
+            return (
+              <button
+                key={k}
+                onClick={() => setFilterKind(k === 'all' ? '' : k)}
+                className="font-body text-micro px-1.5 py-1 md:py-0.5 rounded-sm border transition-colors duration-fast cursor-pointer min-h-5.5 md:min-h-0"
+                style={{
+                  background: active ? 'var(--color-accent)' : 'var(--color-surface-2)',
+                  color:      active ? 'var(--color-bg)'     : 'var(--color-text-secondary)',
+                  borderColor: active ? 'transparent'        : 'var(--color-border)',
+                }}
+              >
+                {k === 'all' ? 'All kinds' : k}
+              </button>
+            );
+          })}
         </div>
 
         <div className="flex gap-1 flex-wrap">
-          {formatFilters.map(f => (
-            <button
-              key={f}
-              onClick={() => setFmtFilter(f)}
-              className="font-body text-micro px-1.5 py-1 md:py-0.5 rounded-sm border transition-colors duration-fast cursor-pointer min-h-5.5 md:min-h-0"
-              style={{
-                background: fmtFilter === f ? 'var(--color-accent)' : 'var(--color-surface-2)',
-                color:      fmtFilter === f ? 'var(--color-bg)'     : 'var(--color-text-secondary)',
-                borderColor: fmtFilter === f ? 'transparent'        : 'var(--color-border)',
-              }}
-            >
-              {f === 'all' ? 'All formats' : FORMAT_META[f as keyof typeof FORMAT_META]?.label ?? f}
-            </button>
-          ))}
+          {formatFilters.map(f => {
+            const active = fmtFilter === f;
+            return (
+              <button
+                key={f}
+                onClick={() => setFmtFilter(f)}
+                className="font-body text-micro px-1.5 py-1 md:py-0.5 rounded-sm border transition-colors duration-fast cursor-pointer min-h-5.5 md:min-h-0"
+                style={{
+                  background: active ? 'var(--color-accent)' : 'var(--color-surface-2)',
+                  color:      active ? 'var(--color-bg)'     : 'var(--color-text-secondary)',
+                  borderColor: active ? 'transparent'        : 'var(--color-border)',
+                }}
+              >
+                {f === 'all' ? 'All formats' : FORMAT_META[f as keyof typeof FORMAT_META]?.label ?? f}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -521,8 +524,8 @@ export default function FilesPage() {
                 />
               </th>
               {['File', 'Organism', 'Kind', 'Collections / Tags', ''].map(h => (
-                <th key={h} className="py-1.5 pr-3 font-body text-micro uppercase tracking-overline text-text-dim font-semibold whitespace-nowrap">
-                  {h}
+                <th key={h} className="py-1.5 pr-3">
+                  <Text variant="overline">{h}</Text>
                 </th>
               ))}
             </tr>
@@ -533,8 +536,10 @@ export default function FilesPage() {
               : files.length === 0
                 ? (
                   <tr>
-                    <td colSpan={6} className="py-12 text-center text-text-dim font-body text-body">
-                      {search || fmtFilter !== 'all' || filterCollectionId ? 'No files match your filters.' : 'No files yet. Upload some to get started.'}
+                    <td colSpan={6} className="py-12 text-center">
+                      <Text variant="body" className="text-text-dim">
+                        {search || fmtFilter !== 'all' || filterCollectionId ? 'No files match your filters.' : 'No files yet. Upload some to get started.'}
+                      </Text>
                     </td>
                   </tr>
                 )
@@ -574,9 +579,9 @@ export default function FilesPage() {
           ? [...Array(4)].map((_, i) => <SkeletonCard key={i} />)
           : files.length === 0
             ? (
-              <div className="py-8 text-center text-text-dim font-body text-body">
+              <Text variant="body" className="py-8 text-center text-text-dim">
                 {search || fmtFilter !== 'all' || filterCollectionId ? 'No files match your filters.' : 'No files yet. Upload some to get started.'}
-              </div>
+              </Text>
             )
             : files.map(f => (
               <FileCard

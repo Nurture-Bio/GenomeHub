@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { lazy, Suspense, useEffect, useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   useFileDetailQuery, useFilesQuery, useUpdateFileMutation,
@@ -6,10 +6,12 @@ import {
   useAddProvenance, useRemoveProvenance,
   usePresignedUrl, useDeleteFileMutation,
 } from '../hooks/useGenomicQueries';
-import { detectFormat, FORMAT_META, formatBytes, formatRelativeTime } from '../lib/formats';
-import { Heading, Text, Card, Badge, Button, InlineInput, Input } from '../ui';
+import { detectFormat, FORMAT_META, TEXT_PREVIEW_FORMATS, formatBytes, formatRelativeTime } from '../lib/formats';
+import { Heading, Text, Card, Badge, Button, InlineInput, Input, iconAction, chip } from '../ui';
 import { CollectionPicker, RelationPicker } from '../ui';
 import LinksList from '../components/LinksList';
+
+const FilePreview = lazy(() => import('../components/FilePreview'));
 import { useAppStore } from '../stores/useAppStore';
 
 const RELATION_LABELS: Record<string, string> = {
@@ -20,9 +22,21 @@ const RELATION_LABELS: Record<string, string> = {
 
 function RelationLabel({ relation }: { relation: string }) {
   return (
-    <span className="font-mono text-micro px-1.5 py-0.5 rounded-sm bg-surface-2 text-text-secondary">
+    <Badge variant="count" color="dim">
       {RELATION_LABELS[relation] ?? relation.replace(/_/g, ' ')}
-    </span>
+    </Badge>
+  );
+}
+
+// ── Format pill ──────────────────────────────────────────
+
+function FormatPill({ filename }: { filename: string }) {
+  const fmt = detectFormat(filename);
+  const meta = FORMAT_META[fmt];
+  return (
+    <Badge variant="status" style={{ background: meta.bg, color: meta.color }}>
+      {meta.label}
+    </Badge>
   );
 }
 
@@ -42,23 +56,22 @@ function InlineCollections({
     <div className="flex items-center gap-1.5 flex-wrap">
       {collections.map(c => (
         <div key={c.id} className="flex items-center gap-1 bg-surface border border-border rounded-sm px-2 py-1 group/chip">
-          <Link to={`/collections/${c.id}`} className="no-underline font-mono text-caption text-text hover:text-accent transition-colors duration-fast">
-            {c.name}
+          <Link to={`/collections/${c.id}`} className="no-underline">
+            <Text variant="mono" className="hover:text-accent transition-colors duration-fast">{c.name}</Text>
           </Link>
           <Badge variant="count" color="dim">{c.kind}</Badge>
           <button
             onClick={() => onRemove(c.id, [fileId])}
-            className="text-text-dim hover:text-red-400 cursor-pointer bg-transparent border-none p-0 text-caption ml-0.5 opacity-0 group-hover/chip:opacity-100 transition-opacity duration-fast"
+            className={iconAction({ color: 'danger' }) + ' ml-0.5 opacity-0 group-hover/chip:opacity-100'}
             title="Remove from collection"
           >
             ×
           </button>
         </div>
       ))}
-      {/* Always-visible add trigger — absolute picker overlay */}
       <div className="relative">
         <button
-          className={`text-caption text-text-dim hover:text-accent cursor-pointer bg-transparent border-none p-0 font-body transition-colors duration-fast ${adding ? 'invisible' : ''}`}
+          className={`${iconAction({ color: 'dim' })} ${adding ? 'invisible' : ''}`}
           onClick={() => setAdding(true)}
         >
           + collection
@@ -91,11 +104,9 @@ export default function FileDetailPage() {
   const { getUrl } = usePresignedUrl();
   const { deleteFile } = useDeleteFileMutation();
 
-  // Collection management
   const { addFiles: addToCol } = useAddFilesToCollection();
   const { removeFiles: removeFromCol } = useRemoveFilesFromCollection();
 
-  // Provenance management
   const [addingProv, setAddingProv] = useState(false);
   const [provSearch, setProvSearch] = useState('');
   const [provRelation, setProvRelation] = useState('derived_from');
@@ -103,7 +114,6 @@ export default function FileDetailPage() {
   const { addProvenance, pending: addProvPending } = useAddProvenance();
   const { removeProvenance, pending: removeProvPending } = useRemoveProvenance();
 
-  // File search for provenance
   const { data: allFiles } = useFilesQuery(addingProv ? {} : undefined as any);
 
   useEffect(() => {
@@ -176,10 +186,9 @@ export default function FileDetailPage() {
       {/* Header */}
       <div>
         <div className="flex items-center gap-2 mb-1">
-          <div className="font-mono text-micro px-1.5 py-0.5 rounded-sm shrink-0 font-bold"
-            style={{ background: meta.bg, color: meta.color }}>
+          <Badge variant="status" style={{ background: meta.bg, color: meta.color }}>
             {meta.label}
-          </div>
+          </Badge>
           <Badge variant="count" color="dim">{file.kind}</Badge>
           {file.status === 'ready' && <Badge variant="status" color="green">ready</Badge>}
           {file.status === 'pending' && <Badge variant="status" color="yellow">uploading</Badge>}
@@ -187,7 +196,6 @@ export default function FileDetailPage() {
         </div>
         <Heading level="heading">{file.filename}</Heading>
 
-        {/* Description — inline editable */}
         <div className="mt-0.5">
           <InlineInput
             value={file.description ?? ''}
@@ -198,7 +206,7 @@ export default function FileDetailPage() {
 
         <div className="flex items-center gap-2 mt-1 flex-wrap">
           <Text variant="caption">{formatBytes(file.sizeBytes)}</Text>
-          {file.md5 && <Text variant="caption" className="font-mono">MD5: {file.md5.slice(0, 12)}...</Text>}
+          {file.md5 && <Text variant="mono" className="text-text-dim text-micro">MD5: {file.md5.slice(0, 12)}...</Text>}
           {file.organismDisplay && <Text variant="caption" className="italic">{file.organismDisplay}</Text>}
           <Text variant="caption">Uploaded {formatRelativeTime(file.uploadedAt)}</Text>
           {file.uploadedBy && <Text variant="caption">by {file.uploadedBy}</Text>}
@@ -213,7 +221,14 @@ export default function FileDetailPage() {
         </div>
       </div>
 
-      {/* Collections — inline chips with + picker */}
+      {/* File preview — lazy loaded, only for text formats */}
+      {file.status === 'ready' && TEXT_PREVIEW_FORMATS.has(fmt) && (
+        <Suspense fallback={<div className="skeleton h-32 rounded-md" />}>
+          <FilePreview fileId={fileId!} filename={file.filename} />
+        </Suspense>
+      )}
+
+      {/* Collections */}
       <div>
         <Text variant="overline" className="mb-1.5 block">Collections</Text>
         {file.collections.length === 0 ? (
@@ -242,13 +257,12 @@ export default function FileDetailPage() {
           <Text variant="overline" className="flex-1">Data Links</Text>
           <button
             onClick={() => { setAddingProv(!addingProv); setProvTargetId(null); setProvSearch(''); }}
-            className="text-caption text-text-dim hover:text-accent cursor-pointer bg-transparent border-none p-0 font-body transition-colors duration-fast"
+            className={iconAction({ color: 'dim' })}
           >
             {addingProv ? '× close' : '+ add link'}
           </button>
         </div>
 
-        {/* Add data link panel */}
         {addingProv && (
           <div className="border border-border rounded-md p-2.5 mb-2 bg-surface-2">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
@@ -274,7 +288,7 @@ export default function FileDetailPage() {
                 <button
                   disabled={addProvPending}
                   onClick={handleAddProvenance}
-                  className="text-caption text-accent hover:text-text cursor-pointer bg-transparent border-none p-0 font-body"
+                  className={iconAction({ color: 'accent' })}
                   title="Add link"
                 >
                   ✓
@@ -286,33 +300,25 @@ export default function FileDetailPage() {
                 {searchableFiles.length === 0 ? (
                   <Text variant="caption" className="py-2 text-center">No matching files.</Text>
                 ) : (
-                  searchableFiles.slice(0, 30).map(f => {
-                    const fmtF = detectFormat(f.filename);
-                    const metaF = FORMAT_META[fmtF];
-                    return (
-                      <button
-                        key={f.id}
-                        onClick={() => { setProvTargetId(f.id); setProvSearch(f.filename); }}
-                        className={`flex items-center gap-2 px-1.5 py-1 rounded-sm cursor-pointer border-none text-left w-full transition-colors duration-fast ${
-                          provTargetId === f.id ? 'bg-accent/10' : 'bg-transparent hover:bg-surface'
-                        }`}
-                      >
-                        <span className="font-mono text-micro px-1 py-px rounded-sm shrink-0 font-bold"
-                          style={{ background: metaF.bg, color: metaF.color }}>
-                          {metaF.label}
-                        </span>
-                        <span className="font-mono text-caption text-text truncate flex-1 min-w-0">{f.filename}</span>
-                        <Badge variant="count" color="dim">{f.kind}</Badge>
-                      </button>
-                    );
-                  })
+                  searchableFiles.slice(0, 30).map(f => (
+                    <button
+                      key={f.id}
+                      onClick={() => { setProvTargetId(f.id); setProvSearch(f.filename); }}
+                      className={`flex items-center gap-2 px-1.5 py-1 rounded-sm cursor-pointer border-none text-left w-full transition-colors duration-fast ${
+                        provTargetId === f.id ? 'bg-accent/10' : 'bg-transparent hover:bg-surface'
+                      }`}
+                    >
+                      <FormatPill filename={f.filename} />
+                      <Text variant="mono" className="truncate flex-1 min-w-0">{f.filename}</Text>
+                      <Badge variant="count" color="dim">{f.kind}</Badge>
+                    </button>
+                  ))
                 )}
               </div>
             )}
           </div>
         )}
 
-        {/* Upstream (this file was derived/sequenced/produced from) */}
         {file.provenance.upstream.length > 0 && (
           <div className="mb-2">
             <Text variant="caption" className="mb-1 block text-text-dim">This file was created from:</Text>
@@ -320,18 +326,15 @@ export default function FileDetailPage() {
               {file.provenance.upstream.map(p => p.file && (
                 <Card key={p.edgeId} className="p-2 flex items-center gap-2 group">
                   <RelationLabel relation={p.relation} />
-                  <div className="font-mono text-micro px-1 py-px rounded-sm shrink-0 font-bold"
-                    style={{ background: FORMAT_META[detectFormat(p.file.filename)]?.bg, color: FORMAT_META[detectFormat(p.file.filename)]?.color }}>
-                    {FORMAT_META[detectFormat(p.file.filename)]?.label}
-                  </div>
-                  <Link to={`/files/${p.file.id}`} className="no-underline font-mono text-caption text-text truncate flex-1 min-w-0 hover:text-accent transition-colors duration-fast">
-                    {p.file.filename}
+                  <FormatPill filename={p.file.filename} />
+                  <Link to={`/files/${p.file.id}`} className="no-underline flex-1 min-w-0">
+                    <Text variant="mono" className="truncate hover:text-accent transition-colors duration-fast">{p.file.filename}</Text>
                   </Link>
                   <Badge variant="count" color="dim">{p.file.kind}</Badge>
                   <button
                     onClick={() => handleRemoveProvenance(p.edgeId)}
                     disabled={removeProvPending}
-                    className="shrink-0 text-text-dim hover:text-red-400 cursor-pointer bg-transparent border-none p-0.5 text-caption opacity-0 group-hover:opacity-100 transition-opacity duration-fast"
+                    className={iconAction({ color: 'danger', reveal: true })}
                     title="Remove link"
                   >
                     ×
@@ -342,7 +345,6 @@ export default function FileDetailPage() {
           </div>
         )}
 
-        {/* Downstream (other files created from this one) */}
         {file.provenance.downstream.length > 0 && (
           <div className="mb-2">
             <Text variant="caption" className="mb-1 block text-text-dim">Files created from this:</Text>
@@ -350,18 +352,15 @@ export default function FileDetailPage() {
               {file.provenance.downstream.map(p => p.file && (
                 <Card key={p.edgeId} className="p-2 flex items-center gap-2 group">
                   <RelationLabel relation={p.relation} />
-                  <div className="font-mono text-micro px-1 py-px rounded-sm shrink-0 font-bold"
-                    style={{ background: FORMAT_META[detectFormat(p.file.filename)]?.bg, color: FORMAT_META[detectFormat(p.file.filename)]?.color }}>
-                    {FORMAT_META[detectFormat(p.file.filename)]?.label}
-                  </div>
-                  <Link to={`/files/${p.file.id}`} className="no-underline font-mono text-caption text-text truncate flex-1 min-w-0 hover:text-accent transition-colors duration-fast">
-                    {p.file.filename}
+                  <FormatPill filename={p.file.filename} />
+                  <Link to={`/files/${p.file.id}`} className="no-underline flex-1 min-w-0">
+                    <Text variant="mono" className="truncate hover:text-accent transition-colors duration-fast">{p.file.filename}</Text>
                   </Link>
                   <Badge variant="count" color="dim">{p.file.kind}</Badge>
                   <button
                     onClick={() => handleRemoveProvenance(p.edgeId)}
                     disabled={removeProvPending}
-                    className="shrink-0 text-text-dim hover:text-red-400 cursor-pointer bg-transparent border-none p-0.5 text-caption opacity-0 group-hover:opacity-100 transition-opacity duration-fast"
+                    className={iconAction({ color: 'danger', reveal: true })}
                     title="Remove link"
                   >
                     ×

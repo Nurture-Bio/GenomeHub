@@ -6,7 +6,7 @@ import {
   useAddFilesToCollection, useRemoveFilesFromCollection,
 } from '../hooks/useGenomicQueries';
 import { detectFormat, FORMAT_META, formatBytes } from '../lib/formats';
-import { Heading, Text, Badge, InlineInput, Input } from '../ui';
+import { Heading, Text, Badge, InlineInput, Input, iconAction } from '../ui';
 import { TechniquePicker, OrganismPicker } from '../ui';
 import LinksList from '../components/LinksList';
 import { useAppStore } from '../stores/useAppStore';
@@ -93,7 +93,6 @@ export default function CollectionDetailPage() {
           <Badge variant="count" color="dim">{collection.kind}</Badge>
         </div>
 
-        {/* Name — inline editable */}
         <InlineInput
           value={collection.name}
           mono
@@ -101,7 +100,6 @@ export default function CollectionDetailPage() {
           onCommit={v => { if (collectionId && v) updateCollection(collectionId, { name: v }); }}
         />
 
-        {/* Description — inline editable */}
         <div className="mt-0.5">
           <InlineInput
             value={collection.description ?? ''}
@@ -126,13 +124,13 @@ export default function CollectionDetailPage() {
           <Text variant="overline" className="flex-1">Files</Text>
           <button
             onClick={() => { setShowAddPanel(!showAddPanel); setAddSelected(new Set()); setAddSearch(''); }}
-            className="text-caption text-text-dim hover:text-accent cursor-pointer bg-transparent border-none p-0 font-body transition-colors duration-fast"
+            className={iconAction({ color: 'dim' })}
           >
             {showAddPanel ? '× close' : '+ add files'}
           </button>
         </div>
 
-        {/* Add files panel — minimal shift: fixed height search + scrollable list */}
+        {/* Add files panel */}
         {showAddPanel && (
           <div className="border border-border rounded-md p-2.5 mb-2 bg-surface-2">
             <div className="flex items-center gap-2 mb-2">
@@ -148,7 +146,7 @@ export default function CollectionDetailPage() {
                 <button
                   disabled={addPending}
                   onClick={handleAddFiles}
-                  className="text-caption text-accent hover:text-text cursor-pointer bg-transparent border-none p-0 font-body"
+                  className={iconAction({ color: 'accent' })}
                   title={`Add ${addSelected.size}`}
                 >
                   ✓ {addSelected.size}
@@ -179,11 +177,10 @@ export default function CollectionDetailPage() {
                         }}
                         className="accent-accent shrink-0"
                       />
-                      <span className="font-mono text-micro px-1 py-px rounded-sm shrink-0 font-bold"
-                        style={{ background: meta.bg, color: meta.color }}>
+                      <Badge variant="status" style={{ background: meta.bg, color: meta.color }}>
                         {meta.label}
-                      </span>
-                      <span className="font-mono text-caption text-text truncate flex-1 min-w-0">{file.filename}</span>
+                      </Badge>
+                      <Text variant="mono" className="truncate flex-1 min-w-0">{file.filename}</Text>
                       <Badge variant="count" color="dim">{file.kind}</Badge>
                       <Text variant="caption" className="shrink-0">{formatBytes(file.sizeBytes)}</Text>
                     </label>
@@ -202,10 +199,10 @@ export default function CollectionDetailPage() {
             <table className="w-full border-collapse text-left">
               <thead>
                 <tr className="border-b border-border bg-surface-2">
-                  <th className="py-1.5 pl-2.5 pr-3 font-body text-micro uppercase tracking-overline text-text-dim font-semibold">File</th>
-                  <th className="py-1.5 pr-3 font-body text-micro uppercase tracking-overline text-text-dim font-semibold w-24">Kind</th>
-                  <th className="py-1.5 pr-3 font-body text-micro uppercase tracking-overline text-text-dim font-semibold text-right w-20">Size</th>
-                  <th className="py-1.5 pr-3 font-body text-micro uppercase tracking-overline text-text-dim font-semibold w-20">Status</th>
+                  <th className="py-1.5 pl-2.5 pr-3"><Text variant="overline">File</Text></th>
+                  <th className="py-1.5 pr-3 w-24"><Text variant="overline">Kind</Text></th>
+                  <th className="py-1.5 pr-3 text-right w-20"><Text variant="overline">Size</Text></th>
+                  <th className="py-1.5 pr-3 w-20"><Text variant="overline">Status</Text></th>
                   <th className="w-6" />
                 </tr>
               </thead>
@@ -217,20 +214,21 @@ export default function CollectionDetailPage() {
                     <tr key={file.id} className="border-b border-border-subtle hover:bg-surface transition-colors duration-fast group">
                       <td className="py-1.5 pl-2.5 pr-3">
                         <div className="flex items-center gap-2">
-                          <div className="font-mono text-micro px-1.5 py-0.5 rounded-sm shrink-0 font-bold"
-                            style={{ background: meta.bg, color: meta.color }}>
+                          <Badge variant="status" style={{ background: meta.bg, color: meta.color }}>
                             {meta.label}
-                          </div>
-                          <Link to={`/files/${file.id}`} className="no-underline font-mono text-caption text-text truncate hover:text-accent transition-colors duration-fast">
-                            {file.filename}
+                          </Badge>
+                          <Link to={`/files/${file.id}`} className="no-underline">
+                            <Text variant="mono" className="truncate hover:text-accent transition-colors duration-fast">
+                              {file.filename}
+                            </Text>
                           </Link>
                         </div>
                       </td>
                       <td className="py-1.5 pr-3">
                         <Badge variant="count" color="dim">{file.kind}</Badge>
                       </td>
-                      <td className="py-1.5 pr-3 font-mono text-caption tabular-nums text-text-secondary text-right">
-                        {formatBytes(file.sizeBytes)}
+                      <td className="py-1.5 pr-3 text-right">
+                        <Text variant="mono" className="text-text-secondary">{formatBytes(file.sizeBytes)}</Text>
                       </td>
                       <td className="py-1.5 pr-3">
                         {file.status === 'ready' && <Badge variant="status" color="green">ready</Badge>}
@@ -241,7 +239,7 @@ export default function CollectionDetailPage() {
                         <button
                           onClick={() => handleRemoveFile(file.id)}
                           disabled={removePending}
-                          className="text-text-dim hover:text-red-400 cursor-pointer bg-transparent border-none p-0 text-caption opacity-0 group-hover:opacity-100 transition-opacity duration-fast"
+                          className={iconAction({ color: 'danger', reveal: true })}
                           title="Remove from collection"
                         >
                           ×

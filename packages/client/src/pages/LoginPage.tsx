@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { Text } from '../ui';
+import { Text, Heading } from '../ui';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
@@ -86,9 +86,9 @@ export default function LoginPage() {
         style={{ background: 'var(--color-surface)', width: 340 }}>
         <GenomicIcon />
         <div className="text-center">
-          <div className="font-display font-bold text-subheading text-accent">
+          <Heading as="div" level="subheading" className="font-bold">
             GenomeHub
-          </div>
+          </Heading>
           <Text variant="caption">Genomic data management for nurture.bio</Text>
         </div>
 
@@ -99,22 +99,16 @@ export default function LoginPage() {
           style={{ background: 'var(--color-surface-2)' }}
         >
           <GoogleIcon />
-          <span className="font-body text-body text-text">
+          <Text variant="body">
             {pending ? 'Signing in...' : 'Sign in with Google'}
-          </span>
+          </Text>
         </button>
 
         {error && (
-          <Text variant="caption">
-            <span style={{ color: 'var(--color-red)' }}>{error}</span>
-          </Text>
+          <Text variant="error">{error}</Text>
         )}
 
-        <Text variant="caption">
-          <span style={{ color: 'var(--color-text-dim)' }}>
-            Restricted to nurture.bio accounts
-          </span>
-        </Text>
+        <Text variant="caption">Restricted to nurture.bio accounts</Text>
       </div>
     </div>
   );

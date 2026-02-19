@@ -286,3 +286,70 @@ export const embedCard = cva(
 );
 
 export type EmbedCardVariants = VariantProps<typeof embedCard>;
+
+// ── INLINE INPUT ───────────────────────────────────────
+// Borderless text input that looks like plain text until focused.
+// Used by InlineInput component and inline add-row inputs.
+
+export const inlineInput = cva(
+  'bg-transparent border-b border-transparent outline-none p-0 transition-colors duration-fast placeholder:text-text-dim hover:border-border-subtle focus:border-accent focus:cursor-text cursor-pointer',
+  {
+    variants: {
+      font: {
+        mono: 'font-mono text-caption text-text',
+        body: 'font-body text-caption text-text-secondary',
+      },
+    },
+    defaultVariants: {
+      font: 'body',
+    },
+  }
+);
+
+export type InlineInputVariants = VariantProps<typeof inlineInput>;
+
+// ── CHIP ───────────────────────────────────────────────
+// Small inline pills for tags, collections, metadata.
+
+export const chip = cva(
+  'inline-flex items-center gap-px font-body text-micro px-1 py-px rounded-sm',
+  {
+    variants: {
+      variant: {
+        default: 'bg-surface-2 text-text-secondary',
+        subtle: 'text-text-dim',
+      },
+    },
+    defaultVariants: {
+      variant: 'default',
+    },
+  }
+);
+
+export type ChipVariants = VariantProps<typeof chip>;
+
+// ── ICON ACTION ────────────────────────────────────────
+// Tiny action buttons (×, ↓, +, ✓) that appear on hover.
+
+export const iconAction = cva(
+  'cursor-pointer bg-transparent border-none p-0 text-caption transition-colors duration-fast',
+  {
+    variants: {
+      color: {
+        dim: 'text-text-dim hover:text-text',
+        accent: 'text-accent hover:text-text',
+        danger: 'text-text-dim hover:text-red',
+      },
+      reveal: {
+        true: 'opacity-0 group-hover:opacity-100 transition-opacity',
+        false: '',
+      },
+    },
+    defaultVariants: {
+      color: 'dim',
+      reveal: false,
+    },
+  }
+);
+
+export type IconActionVariants = VariantProps<typeof iconAction>;

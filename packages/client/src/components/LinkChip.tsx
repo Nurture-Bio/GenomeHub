@@ -1,4 +1,5 @@
 import ServiceIcon from './ServiceIcon';
+import { Text, chip, iconAction } from '../ui';
 
 interface LinkChipProps {
   url: string;
@@ -17,14 +18,15 @@ export default function LinkChip({ url, label, service, onDelete }: LinkChipProp
         href={url}
         target="_blank"
         rel="noopener noreferrer"
-        className="font-body text-micro text-text-secondary no-underline hover:text-text transition-colors duration-fast truncate max-w-32"
+        className="no-underline hover:text-text transition-colors duration-fast truncate max-w-32"
       >
-        {displayLabel}
+        <Text variant="caption" className="text-text-secondary">{displayLabel}</Text>
       </a>
       {onDelete && (
         <button
           onClick={e => { e.preventDefault(); onDelete(); }}
-          className="opacity-0 group-hover/chip:opacity-100 bg-transparent border-none cursor-pointer text-text-dim hover:text-red text-micro px-0 transition-opacity duration-fast"
+          className={iconAction({ color: 'danger' }) + ' opacity-0 group-hover/chip:opacity-100'}
+          style={{ fontSize: 'var(--font-size-micro)' }}
         >
           ×
         </button>

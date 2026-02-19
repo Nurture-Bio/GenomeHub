@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
+import { cx } from 'class-variance-authority';
 import {
   useTechniquesQuery, useCreateTechniqueMutation,
   useRelationTypesQuery, useCreateRelationTypeMutation,
@@ -7,11 +8,7 @@ import {
 import { useConfirmDelete } from '../hooks/useConfirmDelete';
 import { apiFetch } from '../lib/api';
 import { toast } from 'sonner';
-import { Heading, Text, InlineInput } from '../ui';
-
-// ── Table header ─────────────────────────────────────────
-
-const TH = 'py-1.5 pr-3 pl-2.5 font-body text-micro uppercase tracking-overline text-text-dim font-semibold whitespace-nowrap';
+import { Heading, Text, InlineInput, inlineInput, iconAction } from '../ui';
 
 // ── Editable row (table row) ────────────────────────────
 
@@ -34,7 +31,7 @@ function EditableRow({ id, name, description, onSave, onDelete }: EditableRowPro
       </td>
       <td className="py-1.5 pr-2.5 w-8">
         <button onClick={() => onDelete(id, name)}
-          className="text-caption text-text-dim hover:text-red-400 cursor-pointer bg-transparent border-none p-0 font-body opacity-0 group-hover:opacity-100 transition-opacity duration-fast" title="Delete">×</button>
+          className={iconAction({ color: 'danger', reveal: true })} title="Delete">×</button>
       </td>
     </tr>
   );
@@ -66,20 +63,20 @@ function AddRow({ placeholder, onAdd }: { placeholder: string; onAdd: (name: str
         <input ref={nameRef} value={name} onChange={e => setName(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') commit(); }}
           placeholder={placeholder}
-          className="bg-transparent border-b border-transparent outline-none font-mono text-caption font-semibold text-text placeholder:text-text-dim p-0 w-full focus:border-accent transition-colors duration-fast" />
+          className={cx(inlineInput({ font: 'mono' }), 'font-semibold w-full')} />
       </td>
       <td className="py-1.5 pr-3">
         <input value={desc} onChange={e => setDesc(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') commit(); }}
           placeholder="description"
-          className="bg-transparent border-b border-transparent outline-none text-caption text-text-dim placeholder:text-text-dim p-0 w-full focus:border-accent transition-colors duration-fast" />
+          className={cx(inlineInput({ font: 'body' }), 'w-full')} />
       </td>
       <td className="py-1.5 pr-2.5 w-8">
         <span className={`inline-flex items-center gap-1 transition-opacity duration-fast ${hasInput ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
           <button disabled={pending} onClick={commit}
-            className="text-caption text-accent hover:text-text cursor-pointer bg-transparent border-none p-0 font-body" title="Add">✓</button>
+            className={iconAction({ color: 'accent' })} title="Add">✓</button>
           <button onClick={() => { setName(''); setDesc(''); }}
-            className="text-caption text-text-dim hover:text-text cursor-pointer bg-transparent border-none p-0 font-body" title="Cancel">×</button>
+            className={iconAction({ color: 'dim' })} title="Cancel">×</button>
         </span>
       </td>
     </tr>
@@ -99,8 +96,8 @@ function SectionTable({ title, subtitle, children }: { title: string; subtitle: 
         <table className="w-full border-collapse text-left">
           <thead>
             <tr className="border-b border-border bg-surface-2">
-              <th className={`${TH} w-48`}>Name</th>
-              <th className={TH}>Description</th>
+              <th className="py-1.5 pr-3 pl-2.5 w-48"><Text variant="overline">Name</Text></th>
+              <th className="py-1.5 pr-3 pl-2.5"><Text variant="overline">Description</Text></th>
               <th className="w-8" />
             </tr>
           </thead>

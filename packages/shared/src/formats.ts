@@ -4,6 +4,25 @@
  */
 
 /**
+ * Formats whose raw content is human-readable text (possibly gzipped).
+ * Used by the preview endpoint to decide whether to offer a head preview.
+ */
+export const TEXT_PREVIEW_FORMATS = new Set([
+  // Sequences
+  'fastq', 'fq', 'fasta', 'fa', 'fna', 'ffn', 'faa',
+  // Variants / regions
+  'vcf', 'bed', 'bedgraph',
+  // Annotation
+  'gff', 'gff3', 'gtf',
+  // Alignment (text form)
+  'sam',
+  // Tabular / general text
+  'csv', 'tsv', 'txt', 'log', 'json', 'xml', 'html', 'yaml', 'yml', 'toml',
+  // Count matrices
+  'counts', 'mtx',
+]);
+
+/**
  * Extract the file format (extension) from a filename.
  * Strips .gz to get the meaningful extension underneath.
  * Returns 'other' only for files with no extension.

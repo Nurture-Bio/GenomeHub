@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Text } from '../ui';
+import { Text, iconAction } from '../ui';
 import { useAppStore } from '../stores/useAppStore';
 
 const ROUTE_LABELS: Record<string, string> = {
@@ -33,7 +33,6 @@ export default function Breadcrumbs() {
     if (knownLabel) {
       crumbs.push({ label: knownLabel, to: path });
     } else {
-      // Check store for resolved entity name
       const resolved = breadcrumbLabels[seg];
       if (resolved) {
         crumbs.push({ label: resolved, to: path });
@@ -47,7 +46,6 @@ export default function Breadcrumbs() {
     }
   }
 
-  // On mobile (handled via CSS): show first, "...", and last when >2 crumbs
   const needsTruncation = crumbs.length > 2;
 
   return (
@@ -56,8 +54,6 @@ export default function Breadcrumbs() {
         const isFirst = i === 0;
         const isLast = i === crumbs.length - 1;
         const isMiddle = !isFirst && !isLast;
-
-        // On mobile: hide middle crumbs unless expanded
         const mobileHidden = isMiddle && needsTruncation && !expanded;
 
         return (
@@ -69,24 +65,22 @@ export default function Breadcrumbs() {
             {isLast ? (
               <Text variant="caption" className="text-text truncate">{crumb.label}</Text>
             ) : (
-              <Link
-                to={crumb.to}
-                className="no-underline text-text-dim font-body text-caption hover:text-text transition-colors duration-fast whitespace-nowrap"
-              >
-                {crumb.label}
+              <Link to={crumb.to} className="no-underline">
+                <Text variant="caption" className="hover:text-text transition-colors duration-fast whitespace-nowrap">
+                  {crumb.label}
+                </Text>
               </Link>
             )}
           </span>
         );
       })}
 
-      {/* Mobile "..." button — only shown when middle crumbs are truncated */}
       {needsTruncation && !expanded && (
         <span className="flex items-center gap-1 md:hidden">
           <Text variant="caption">&gt;</Text>
           <button
             onClick={() => setExpanded(true)}
-            className="bg-transparent border-none cursor-pointer text-text-dim hover:text-text font-body text-caption px-0.5 min-h-5.5"
+            className={iconAction({ color: 'dim' }) + ' px-0.5 min-h-5.5'}
           >
             ...
           </button>

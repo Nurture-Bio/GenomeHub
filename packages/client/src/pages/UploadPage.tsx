@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useMemo } from 'react';
 import { useMultipartUpload, useCollectionsQuery, useTechniquesQuery } from '../hooks/useGenomicQueries';
 import type { Collection, Technique } from '../hooks/useGenomicQueries';
 import { detectFormat, FORMAT_META, formatBytes } from '../lib/formats';
-import { Button, Text, Heading, Input } from '../ui';
+import { Button, Text, Heading, Input, Badge } from '../ui';
 import { CollectionPicker, OrganismPicker, FileKindPicker } from '../ui';
 
 // ── Drop zone ─────────────────────────────────────────────
@@ -39,7 +39,6 @@ function DropZone({ onFiles }: DropZoneProps) {
           style={{ boxShadow: '0 0 0 2px var(--color-accent) inset' }} />
       )}
 
-      {/* Icon */}
       <div className="flex items-center justify-center w-12 h-12 rounded-full"
         style={{ background: 'oklch(0.70 0.18 168 / 0.12)' }}>
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
@@ -96,48 +95,38 @@ function QueueItem({ file, organismId, collectionId, kind, description, tags, on
 
   return (
     <div className="flex flex-col gap-2 p-2.5 bg-surface border border-border rounded-md">
-      {/* Row 1: identity */}
       <div className="flex items-center gap-2">
-        <div className="font-mono text-micro px-1.5 py-0.5 rounded-sm shrink-0 font-bold"
-          style={{ background: meta.bg, color: meta.color }}>
+        <Badge variant="status" style={{ background: meta.bg, color: meta.color }}>
           {meta.label}
-        </div>
+        </Badge>
         <div className="flex-1 min-w-0">
-          <div className="font-mono text-caption text-text truncate">{file.name}</div>
-          <div className="text-micro text-text-dim">{formatBytes(file.size)} · {meta.label}</div>
+          <Text variant="mono" className="truncate block">{file.name}</Text>
+          <Text variant="caption">{formatBytes(file.size)} · {meta.label}</Text>
         </div>
         <Button intent="ghost" size="sm" onClick={onRemove}>×</Button>
       </div>
 
-      {/* Row 2: assignment selects — stack on mobile */}
       <div className="flex flex-col sm:flex-row gap-2">
         <OrganismPicker
           value={organismId}
           onValueChange={v => onChange({ organismId: v })}
           placeholder="Organism"
-          variant="surface"
-          size="sm"
-          className="w-full sm:w-40"
+          variant="surface" size="sm" className="w-full sm:w-40"
         />
         <CollectionPicker
           value={collectionId}
           onValueChange={v => onChange({ collectionId: v })}
           placeholder="Collection"
-          variant="surface"
-          size="sm"
-          className="w-full sm:w-40"
+          variant="surface" size="sm" className="w-full sm:w-40"
         />
         <FileKindPicker
           value={kind}
           onValueChange={v => onChange({ kind: v })}
           placeholder="Kind"
-          variant="surface"
-          size="sm"
-          className="w-full sm:w-32"
+          variant="surface" size="sm" className="w-full sm:w-32"
         />
       </div>
 
-      {/* Row 3: description + tags — stack on mobile */}
       <div className="flex flex-col sm:flex-row gap-2">
         <Input
           variant="surface" size="sm"
@@ -176,17 +165,15 @@ function ProgressBar({ filename, loaded, total, status, error }: ProgressBarProp
   return (
     <div className="flex flex-col gap-1 p-2 bg-surface border border-border rounded-md">
       <div className="flex items-center gap-2">
-        <div className="font-mono text-micro px-1 py-px rounded-sm"
-          style={{ background: meta.bg, color: meta.color }}>
+        <Badge variant="status" style={{ background: meta.bg, color: meta.color }}>
           {meta.label}
-        </div>
-        <span className="font-mono text-caption text-text flex-1 truncate min-w-0">{filename}</span>
-        <span className="font-mono text-micro text-text-dim tabular-nums shrink-0">
+        </Badge>
+        <Text variant="mono" className="flex-1 truncate min-w-0">{filename}</Text>
+        <Text variant="mono" className="text-text-dim text-micro shrink-0 tabular-nums">
           {status === 'done' ? '✓' : status === 'error' ? '✗' : `${pct}%`}
-        </span>
+        </Text>
       </div>
 
-      {/* Track */}
       <div className="h-1 rounded-full overflow-hidden" style={{ background: 'var(--color-surface-2)' }}>
         <div
           className="h-full rounded-full transition-all duration-normal"
@@ -218,7 +205,6 @@ export default function UploadPage() {
   const { data: techniques } = useTechniquesQuery();
   const { uploads, upload, clearDone } = useMultipartUpload();
 
-  // Build lookup: collectionId → defaultTags from its technique
   const suggestedTagsMap = useMemo(() => {
     const map = new Map<string, string[]>();
     if (!collections || !techniques) return map;
@@ -247,7 +233,6 @@ export default function UploadPage() {
     ]);
   }, [defaultOrg, defaultCol, defaultKind]);
 
-  // Propagate default changes to queue items that still have the old/empty value
   const handleDefaultOrg = (id: string) => {
     setDefaultOrg(id);
     setQueue(prev => prev.map(e => (!e.organismId ? { ...e, organismId: id } : e)));
@@ -276,7 +261,6 @@ export default function UploadPage() {
     setQueue(prev => prev.map((e, i) => {
       if (i !== idx) return e;
       const updated = { ...e, ...patch };
-      // Auto-suggest tags when collection changes and tags are empty
       if (patch.collectionId && patch.collectionId !== e.collectionId && !e.tags) {
         const suggested = suggestedTagsMap.get(patch.collectionId);
         if (suggested?.length) updated.tags = suggested.join(', ');
@@ -313,37 +297,23 @@ export default function UploadPage() {
 
       <DropZone onFiles={addFiles} />
 
-      {/* Queue */}
       {queue.length > 0 && (
         <div className="flex flex-col gap-2">
-          {/* Queue header — batch defaults */}
           <div className="flex flex-col gap-2">
             <Text variant="overline">Queued ({queue.length})</Text>
             <div className="flex flex-col sm:flex-row gap-2">
-              <span className="font-body text-micro text-text-dim shrink-0 self-center">Defaults:</span>
+              <Text variant="caption" className="shrink-0 self-center">Defaults:</Text>
               <OrganismPicker
-                value={defaultOrg}
-                onValueChange={handleDefaultOrg}
-                placeholder="Organism"
-                variant="surface"
-                size="sm"
-                className="w-full sm:w-40"
+                value={defaultOrg} onValueChange={handleDefaultOrg}
+                placeholder="Organism" variant="surface" size="sm" className="w-full sm:w-40"
               />
               <CollectionPicker
-                value={defaultCol}
-                onValueChange={handleDefaultCol}
-                placeholder="Collection"
-                variant="surface"
-                size="sm"
-                className="w-full sm:w-40"
+                value={defaultCol} onValueChange={handleDefaultCol}
+                placeholder="Collection" variant="surface" size="sm" className="w-full sm:w-40"
               />
               <FileKindPicker
-                value={defaultKind}
-                onValueChange={handleDefaultKind}
-                placeholder="Kind"
-                variant="surface"
-                size="sm"
-                className="w-full sm:w-32"
+                value={defaultKind} onValueChange={handleDefaultKind}
+                placeholder="Kind" variant="surface" size="sm" className="w-full sm:w-32"
               />
             </div>
           </div>
@@ -367,11 +337,8 @@ export default function UploadPage() {
           <div className="flex gap-2 justify-end">
             <Button intent="ghost" size="md" onClick={() => setQueue([])}>Clear all</Button>
             <Button
-              intent="primary"
-              size="md"
-              pending={uploading}
-              onClick={startUploads}
-              disabled={queue.length === 0}
+              intent="primary" size="md" pending={uploading}
+              onClick={startUploads} disabled={queue.length === 0}
             >
               Upload {queue.length} file{queue.length !== 1 ? 's' : ''}
             </Button>
@@ -379,7 +346,6 @@ export default function UploadPage() {
         </div>
       )}
 
-      {/* In-progress */}
       {activeUploads.length > 0 && (
         <div className="flex flex-col gap-1.5">
           <Text variant="overline">Uploading</Text>
@@ -387,7 +353,6 @@ export default function UploadPage() {
         </div>
       )}
 
-      {/* Errors */}
       {errorUploads.length > 0 && (
         <div className="flex flex-col gap-1.5">
           <Text variant="overline">Failed</Text>
@@ -395,7 +360,6 @@ export default function UploadPage() {
         </div>
       )}
 
-      {/* Done */}
       {doneUploads.length > 0 && (
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-2">

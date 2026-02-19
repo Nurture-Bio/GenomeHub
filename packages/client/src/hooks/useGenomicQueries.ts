@@ -438,6 +438,23 @@ export function useRemoveProvenance() {
   return { removeProvenance: mutate, pending };
 }
 
+// ─── File preview ────────────────────────────────────────
+
+export interface FilePreviewResult {
+  lines:       string[];
+  truncated:   boolean;
+  previewable: boolean;
+  format:      string;
+  error?:      string;
+}
+
+export function useFilePreview(fileId: string | undefined) {
+  return useApiQuery<FilePreviewResult>(
+    fileId ? `/api/files/${fileId}/preview` : null,
+    [fileId],
+  );
+}
+
 // ─── Presigned URL ────────────────────────────────────────
 
 export function usePresignedUrl() {

@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import { cx } from 'class-variance-authority';
 import {
   useCollectionsQuery, useCreateCollectionMutation,
   useUpdateCollectionMutation, useDeleteCollectionMutation,
@@ -7,10 +8,8 @@ import {
 } from '../hooks/useGenomicQueries';
 import { useConfirmDelete } from '../hooks/useConfirmDelete';
 import { techniqueColor, TechniquePill } from '../lib/techniqueColors';
-import { Badge, Text, Heading, Card } from '../ui';
+import { Badge, Text, Heading, Card, inlineInput, iconAction } from '../ui';
 import { TechniquePicker, OrganismPicker } from '../ui';
-
-const TH = 'py-1.5 pr-3 pl-2.5 font-body text-micro uppercase tracking-overline text-text-dim font-semibold whitespace-nowrap';
 
 function SkeletonRow() {
   return (
@@ -77,13 +76,14 @@ export default function CollectionsPage() {
       <div className="flex gap-1 flex-wrap shrink-0">
         {techniqueFilters.map(t => {
           const colors = t === 'all' ? null : techniqueColor(t);
+          const active = techFilter === t;
           return (
             <button key={t} onClick={() => setTechFilter(t)}
               className="font-body text-micro px-1.5 py-1 md:py-0.5 rounded-sm border transition-colors duration-fast cursor-pointer min-h-5.5 md:min-h-0"
               style={{
-                background: techFilter === t ? (colors?.color ?? 'var(--color-accent)') : 'var(--color-surface-2)',
-                color: techFilter === t ? 'var(--color-bg)' : 'var(--color-text-secondary)',
-                borderColor: techFilter === t ? 'transparent' : 'var(--color-border)',
+                background: active ? (colors?.color ?? 'var(--color-accent)') : 'var(--color-surface-2)',
+                color: active ? 'var(--color-bg)' : 'var(--color-text-secondary)',
+                borderColor: active ? 'transparent' : 'var(--color-border)',
               }}>
               {t === 'all' ? 'All' : t}
             </button>
@@ -96,11 +96,11 @@ export default function CollectionsPage() {
         <table className="w-full border-collapse text-left">
           <thead className="sticky top-0 bg-surface-2 z-10">
             <tr className="border-b border-border">
-              <th className={TH}>Name</th>
-              <th className={`${TH} w-36`}>Technique</th>
-              <th className={`${TH} w-40`}>Organism</th>
-              <th className={TH}>Kind</th>
-              <th className={`${TH} text-right`}>Files</th>
+              <th className="py-1.5 pr-3 pl-2.5"><Text variant="overline">Name</Text></th>
+              <th className="py-1.5 pr-3 pl-2.5 w-36"><Text variant="overline">Technique</Text></th>
+              <th className="py-1.5 pr-3 pl-2.5 w-40"><Text variant="overline">Organism</Text></th>
+              <th className="py-1.5 pr-3 pl-2.5"><Text variant="overline">Kind</Text></th>
+              <th className="py-1.5 pr-3 pl-2.5 text-right"><Text variant="overline">Files</Text></th>
               <th className="w-6" />
             </tr>
           </thead>
@@ -111,8 +111,10 @@ export default function CollectionsPage() {
                 <>
                   {!filtered.length && (
                     <tr>
-                      <td colSpan={6} className="py-12 text-center text-text-dim font-body text-body">
-                        {techFilter !== 'all' ? 'No collections match this technique.' : 'No collections yet.'}
+                      <td colSpan={6} className="py-12 text-center">
+                        <Text variant="body" className="text-text-dim">
+                          {techFilter !== 'all' ? 'No collections match this technique.' : 'No collections yet.'}
+                        </Text>
                       </td>
                     </tr>
                   )}
@@ -120,8 +122,8 @@ export default function CollectionsPage() {
                     <tr key={c.id} className="border-b border-border-subtle hover:bg-surface transition-colors duration-fast group">
                       <td className="py-1.5 pl-2.5 pr-3">
                         <Link to={`/collections/${c.id}`} className="no-underline">
-                          <div className="font-mono text-caption text-text hover:text-accent transition-colors duration-fast">{c.name}</div>
-                          {c.description && <div className="text-micro text-text-dim truncate max-w-xs">{c.description}</div>}
+                          <Text variant="mono" className="hover:text-accent transition-colors duration-fast">{c.name}</Text>
+                          {c.description && <Text variant="caption" className="truncate max-w-xs block">{c.description}</Text>}
                         </Link>
                       </td>
                       <td className="py-1.5 pl-2.5 pr-3 w-36">
@@ -141,12 +143,12 @@ export default function CollectionsPage() {
                       <td className="py-1.5 pl-2.5 pr-3">
                         <Badge variant="count" color="dim">{c.kind}</Badge>
                       </td>
-                      <td className="py-1.5 pl-2.5 pr-3 font-mono text-caption tabular-nums text-text-secondary text-right">
-                        {c.fileCount}
+                      <td className="py-1.5 pl-2.5 pr-3 text-right">
+                        <Text variant="mono" className="text-text-secondary">{c.fileCount}</Text>
                       </td>
                       <td className="py-1.5 pr-2.5 w-6">
                         <button onClick={() => confirmDelete(c.id, c.name)}
-                          className="text-text-dim hover:text-red-400 cursor-pointer bg-transparent border-none p-0 text-caption opacity-0 group-hover:opacity-100 transition-opacity duration-fast"
+                          className={iconAction({ color: 'danger', reveal: true })}
                           title="Delete collection">×</button>
                       </td>
                     </tr>
@@ -158,7 +160,7 @@ export default function CollectionsPage() {
                       <input ref={nameRef} value={newName} onChange={e => setNewName(e.target.value)}
                         onKeyDown={e => { if (e.key === 'Enter') handleCreate(); }}
                         placeholder="+ collection name"
-                        className="bg-transparent border-b border-transparent outline-none font-mono text-caption text-text placeholder:text-text-dim p-0 w-full focus:border-accent transition-colors duration-fast" />
+                        className={cx(inlineInput({ font: 'mono' }), 'w-full')} />
                     </td>
                     <td className="py-1.5 pl-2.5 pr-3 w-36">
                       <TechniquePicker value={newTechId} onValueChange={setNewTechId} variant="surface" size="sm" className="w-full" />
@@ -170,9 +172,9 @@ export default function CollectionsPage() {
                     <td className="py-1.5 pr-2.5 w-6">
                       <span className={`inline-flex items-center gap-1 transition-opacity duration-fast ${ready ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                         <button disabled={createPending} onClick={handleCreate}
-                          className="text-caption text-accent hover:text-text cursor-pointer bg-transparent border-none p-0 font-body" title="Add">✓</button>
+                          className={iconAction({ color: 'accent' })} title="Add">✓</button>
                         <button onClick={() => { setNewName(''); setNewTechId(''); setNewOrgId(''); }}
-                          className="text-caption text-text-dim hover:text-text cursor-pointer bg-transparent border-none p-0 font-body" title="Cancel">×</button>
+                          className={iconAction({ color: 'dim' })} title="Cancel">×</button>
                       </span>
                     </td>
                   </tr>
@@ -192,13 +194,13 @@ export default function CollectionsPage() {
             </Card>
           ))
           : !filtered.length
-            ? <div className="py-8 text-center text-text-dim text-body font-body">{techFilter !== 'all' ? 'No collections match this technique.' : 'No collections yet.'}</div>
+            ? <Text variant="body" className="py-8 text-center text-text-dim">{techFilter !== 'all' ? 'No collections match this technique.' : 'No collections yet.'}</Text>
             : filtered.map(c => (
               <Link key={c.id} to={`/collections/${c.id}`} className="no-underline">
                 <Card className="p-2.5 flex flex-col gap-1 hover:border-accent transition-colors duration-fast cursor-pointer">
                   <div className="flex items-center gap-2">
                     {c.techniqueName && <TechniquePill name={c.techniqueName} />}
-                    <span className="font-mono text-caption text-text truncate flex-1 min-w-0">{c.name}</span>
+                    <Text variant="mono" className="truncate flex-1 min-w-0">{c.name}</Text>
                     <Badge variant="count" color="dim">{c.kind}</Badge>
                   </div>
                   {c.description && <Text variant="caption" className="truncate">{c.description}</Text>}

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Routes, Route, NavLink, Navigate, useParams } from 'react-router-dom';
 import { cx } from 'class-variance-authority';
 import { navLink } from './ui/recipes';
+import { Text, Heading, iconAction } from './ui';
 import { useAuth } from './hooks/useAuth';
 import { useAppStore } from './stores/useAppStore';
 import LoginPage            from './pages/LoginPage';
@@ -136,12 +137,12 @@ function SidebarFooter({ user, logout }: { user: { name: string; email: string; 
         </div>
       )}
       <div className="flex-1 min-w-0">
-        <div className="font-body text-micro text-text truncate">{user.name}</div>
-        <div className="font-mono text-micro text-text-dim truncate">{user.email}</div>
+        <Text as="div" variant="caption" className="text-text truncate">{user.name}</Text>
+        <Text as="div" variant="mono" className="text-text-dim truncate">{user.email}</Text>
       </div>
       <button
         onClick={logout}
-        className="shrink-0 text-text-dim hover:text-text cursor-pointer bg-transparent border-none p-1 min-h-5.5 min-w-5.5 flex items-center justify-center"
+        className={cx(iconAction({ color: 'dim' }), 'shrink-0 p-1 min-h-5.5 min-w-5.5 flex items-center justify-center')}
         title="Sign out"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -173,7 +174,7 @@ export default function App() {
     return (
       <div className="flex items-center justify-center h-full"
         style={{ background: 'var(--color-bg)' }}>
-        <div className="font-body text-body text-text-dim">Loading...</div>
+        <Text variant="body" className="text-text-dim">Loading...</Text>
       </div>
     );
   }
@@ -190,12 +191,12 @@ export default function App() {
         style={{ background: 'var(--color-bg-deep)' }}
       >
         <GenomicIcon />
-        <span className="font-display font-bold text-subheading text-accent flex-1">
+        <Heading as="span" level="subheading" className="font-bold flex-1">
           GenomeHub
-        </span>
+        </Heading>
         <button
           onClick={toggleSidebar}
-          className="flex items-center justify-center min-h-5.5 min-w-5.5 bg-transparent border-none cursor-pointer text-text-secondary hover:text-text"
+          className={cx(iconAction({ color: 'dim' }), 'flex items-center justify-center min-h-5.5 min-w-5.5')}
           aria-label="Toggle menu"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -231,9 +232,9 @@ export default function App() {
         {/* Brand */}
         <div className="flex items-center gap-2 px-3 py-3 border-b border-border-subtle">
           <GenomicIcon />
-          <span className="font-display font-bold text-subheading text-accent">
+          <Heading as="span" level="subheading" className="font-bold">
             GenomeHub
-          </span>
+          </Heading>
         </div>
 
         {/* Nav — close sidebar on mobile nav click */}

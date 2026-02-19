@@ -9,7 +9,7 @@ function StatCard({ label, value, sub }: { label: string; value: string; sub?: s
   return (
     <div className="bg-surface border border-border rounded-md p-2.5 flex flex-col gap-0.5">
       <Text variant="overline">{label}</Text>
-      <div className="font-display text-display text-accent tabular-nums">{value}</div>
+      <Heading level="display" className="tabular-nums">{value}</Heading>
       {sub && <Text variant="caption">{sub}</Text>}
     </div>
   );
@@ -94,14 +94,12 @@ export default function DashboardPage() {
                   <div className="w-2 h-2 rounded-full shrink-0"
                     style={{ background: meta.color }} />
                   <div className="min-w-0 flex-1">
-                    <div className="font-mono text-micro text-text">{meta.label}</div>
-                    <div className="font-mono text-micro text-text-dim tabular-nums">
+                    <Text variant="mono" className="text-micro">{meta.label}</Text>
+                    <Text variant="caption" className="tabular-nums">
                       {formatBytes(item.bytes)} · {item.count} files
-                    </div>
+                    </Text>
                   </div>
-                  <span className="font-mono text-micro text-text-dim tabular-nums shrink-0">
-                    {pct}%
-                  </span>
+                  <Text variant="mono" className="text-text-dim text-micro shrink-0">{pct}%</Text>
                 </div>
               );
             })}

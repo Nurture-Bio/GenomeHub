@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Command } from 'cmdk';
 import * as Popover from '@radix-ui/react-popover';
 import { cx } from 'class-variance-authority';
-import { input } from './recipes';
+import { input, text } from './recipes';
 
 export interface ComboBoxItem {
   id: string;
@@ -102,12 +102,12 @@ export default function ComboBox({
                 value={search}
                 onValueChange={setSearch}
                 placeholder="Filter..."
-                className="w-full bg-transparent border-none outline-none font-body text-caption text-text placeholder:text-text-dim"
+                className={cx(text({ variant: 'body' }), 'w-full bg-transparent border-none outline-none text-caption placeholder:text-text-dim')}
               />
             </div>
 
             <Command.List className="overflow-y-auto max-h-56">
-              <Command.Empty className="px-2 py-3 text-center text-caption text-text-dim font-body">
+              <Command.Empty className={cx(text({ variant: 'caption' }), 'px-2 py-3 text-center')}>
                 {emptyMessage}
               </Command.Empty>
 
@@ -116,7 +116,7 @@ export default function ComboBox({
                 <Command.Item
                   value="__clear__"
                   onSelect={() => { onValueChange(''); setOpen(false); }}
-                  className="px-2 py-1.5 text-caption text-text-dim font-body cursor-pointer hover:bg-surface-2 transition-colors duration-fast min-h-5.5 flex items-center"
+                  className={cx(text({ variant: 'caption' }), 'px-2 py-1.5 cursor-pointer hover:bg-surface-2 transition-colors duration-fast min-h-5.5 flex items-center')}
                 >
                   {placeholder}
                 </Command.Item>
@@ -151,7 +151,7 @@ export default function ComboBox({
                 <Command.Item
                   value={`__create__${search}`}
                   onSelect={() => { onCreate(search.trim()); setOpen(false); setSearch(''); }}
-                  className="px-2 py-1.5 text-caption font-body cursor-pointer hover:bg-surface-2 transition-colors duration-fast min-h-5.5 flex items-center gap-1 border-t border-border-subtle"
+                  className={cx(text({ variant: 'caption' }), 'px-2 py-1.5 cursor-pointer hover:bg-surface-2 transition-colors duration-fast min-h-5.5 flex items-center gap-1 border-t border-border-subtle')}
                   style={{ color: 'var(--color-accent)' }}
                 >
                   + Create &ldquo;{search.trim()}&rdquo;
@@ -177,8 +177,8 @@ function ComboBoxOption({ item, selected, onSelect }: { item: ComboBoxItem; sele
     >
       {item.icon}
       <div className="flex-1 min-w-0">
-        <div className="font-body text-caption text-text truncate">{item.label}</div>
-        {item.description && <div className="text-micro text-text-dim truncate">{item.description}</div>}
+        <div className={cx(text({ variant: 'body' }), 'text-caption truncate')}>{item.label}</div>
+        {item.description && <div className={cx(text({ variant: 'caption' }), 'text-micro truncate')}>{item.description}</div>}
       </div>
       {selected && (
         <svg width="14" height="14" viewBox="0 0 14 14" className="shrink-0 text-accent">

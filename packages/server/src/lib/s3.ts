@@ -124,6 +124,26 @@ export async function headObject(s3Key: string) {
   return s3.send(new HeadObjectCommand({ Bucket: BUCKET, Key: s3Key }));
 }
 
+// ─── Fetch first N bytes (for preview) ─────────────────────
+
+export async function fetchS3Head(
+  s3Key: string,
+  bytes: number,
+): Promise<Buffer> {
+  const cmd = new GetObjectCommand({
+    Bucket: BUCKET,
+    Key:    s3Key,
+    Range:  `bytes=0-${bytes - 1}`,
+  });
+  const res = await s3.send(cmd);
+  // Body is a Readable stream in Node
+  const chunks: Buffer[] = [];
+  for await (const chunk of res.Body as AsyncIterable<Buffer>) {
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
 // ─── S3 key builder ────────────────────────────────────────
 
 export function buildS3Key(fileId: string, filename: string): string {

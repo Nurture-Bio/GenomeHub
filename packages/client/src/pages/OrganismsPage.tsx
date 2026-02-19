@@ -1,12 +1,11 @@
 import { useState, useRef, useCallback } from 'react';
+import { cx } from 'class-variance-authority';
 import { useOrganismsQuery, useCreateOrganismMutation } from '../hooks/useGenomicQueries';
 import { useConfirmDelete } from '../hooks/useConfirmDelete';
 import { apiFetch } from '../lib/api';
 import { toast } from 'sonner';
-import { Badge, Text, Heading, Card, InlineInput } from '../ui';
+import { Badge, Text, Heading, Card, InlineInput, inlineInput, iconAction } from '../ui';
 import { formatRelativeTime } from '../lib/formats';
-
-const TH = 'py-1.5 pr-3 pl-2.5 font-body text-micro uppercase tracking-overline text-text-dim font-semibold whitespace-nowrap';
 
 function SkeletonRow() {
   return (
@@ -48,9 +47,12 @@ export default function OrganismsPage() {
   const doDelete = useCallback(async (id: string) => {
     try {
       const r = await apiFetch(`/api/organisms/${id}`, { method: 'DELETE' });
-      if (!r.ok) throw new Error('Delete failed');
+      if (!r.ok) {
+        const body = await r.json().catch(() => null);
+        throw new Error(body?.error ?? 'Delete failed');
+      }
       toast.success('Deleted'); refetch();
-    } catch { toast.error('Failed to delete organism'); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : 'Failed to delete organism'); }
   }, [refetch]);
   const { confirmDelete, dialog } = useConfirmDelete(doDelete, 'organism');
 
@@ -71,10 +73,10 @@ export default function OrganismsPage() {
         <table className="w-full border-collapse text-left">
           <thead className="sticky top-0 bg-surface-2 z-10">
             <tr className="border-b border-border">
-              <th className={TH}>Organism</th>
-              <th className={TH}>Details</th>
-              <th className={`${TH} text-right`}>Coll.</th>
-              <th className={`${TH} text-right`}>Files</th>
+              <th className="py-1.5 pr-3 pl-2.5"><Text variant="overline">Organism</Text></th>
+              <th className="py-1.5 pr-3 pl-2.5"><Text variant="overline">Details</Text></th>
+              <th className="py-1.5 pr-3 pl-2.5 text-right"><Text variant="overline">Coll.</Text></th>
+              <th className="py-1.5 pr-3 pl-2.5 text-right"><Text variant="overline">Files</Text></th>
               <th className="w-6" />
             </tr>
           </thead>
@@ -85,7 +87,6 @@ export default function OrganismsPage() {
                 <>
                   {data?.map(o => (
                     <tr key={o.id} className="border-b border-border-subtle hover:bg-surface transition-colors duration-fast group">
-                      {/* Organism: genus species (line 1), strain + common name (line 2) */}
                       <td className="py-1.5 pl-2.5 pr-3">
                         <div className="flex items-baseline gap-1">
                           <InlineInput value={o.genus} mono className="italic" onCommit={v => handleUpdate(o.id, { genus: v })} />
@@ -96,22 +97,21 @@ export default function OrganismsPage() {
                           <InlineInput value={o.commonName ?? ''} placeholder="common name" onCommit={v => handleUpdate(o.id, { commonName: v || null })} />
                         </div>
                       </td>
-                      {/* Details: ref genome (line 1), NCBI tax ID (line 2) */}
                       <td className="py-1.5 pl-2.5 pr-3">
                         <InlineInput value={o.referenceGenome ?? ''} placeholder="ref. genome" onCommit={v => handleUpdate(o.id, { referenceGenome: v || null })} />
                         <div className="mt-0.5">
                           <InlineInput value={o.ncbiTaxId?.toString() ?? ''} placeholder="NCBI tax ID" mono onCommit={v => handleUpdate(o.id, { ncbiTaxId: parseInt(v) || null })} />
                         </div>
                       </td>
-                      <td className="py-1.5 pl-2.5 pr-3 font-mono text-caption tabular-nums text-text-secondary text-right align-top pt-2">
-                        {o.collectionCount}
+                      <td className="py-1.5 pl-2.5 pr-3 text-right align-top pt-2">
+                        <Text variant="mono" className="text-text-secondary">{o.collectionCount}</Text>
                       </td>
-                      <td className="py-1.5 pl-2.5 pr-3 font-mono text-caption tabular-nums text-text-secondary text-right align-top pt-2">
-                        {o.fileCount}
+                      <td className="py-1.5 pl-2.5 pr-3 text-right align-top pt-2">
+                        <Text variant="mono" className="text-text-secondary">{o.fileCount}</Text>
                       </td>
                       <td className="py-1.5 pr-2.5 w-6 align-top pt-2">
                         <button onClick={() => confirmDelete(o.id, `${o.genus} ${o.species}`)}
-                          className="text-text-dim hover:text-red-400 cursor-pointer bg-transparent border-none p-0 text-caption opacity-0 group-hover:opacity-100 transition-opacity duration-fast"
+                          className={iconAction({ color: 'danger', reveal: true })}
                           title="Delete organism">×</button>
                       </td>
                     </tr>
@@ -124,12 +124,12 @@ export default function OrganismsPage() {
                         <input ref={genusRef} value={newGenus} onChange={e => setNewGenus(e.target.value)}
                           onKeyDown={e => { if (e.key === 'Enter') handleCreate(); }}
                           placeholder="+ genus"
-                          className="bg-transparent border-b border-transparent outline-none font-mono text-caption italic text-text placeholder:text-text-dim p-0 focus:border-accent transition-colors duration-fast"
+                          className={cx(inlineInput({ font: 'mono' }), 'italic')}
                           style={{ width: `${Math.max(newGenus.length, 7) + 1}ch` }} />
                         <input value={newSpecies} onChange={e => setNewSpecies(e.target.value)}
                           onKeyDown={e => { if (e.key === 'Enter') handleCreate(); }}
                           placeholder="species"
-                          className="bg-transparent border-b border-transparent outline-none font-mono text-caption font-semibold text-text placeholder:text-text-dim p-0 focus:border-accent transition-colors duration-fast"
+                          className={cx(inlineInput({ font: 'mono' }), 'font-semibold')}
                           style={{ width: `${Math.max(newSpecies.length, 7) + 1}ch` }} />
                       </div>
                     </td>
@@ -137,9 +137,9 @@ export default function OrganismsPage() {
                     <td className="py-1.5 pr-2.5 w-6">
                       <span className={`inline-flex items-center gap-1 transition-opacity duration-fast ${ready ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                         <button disabled={pending} onClick={handleCreate}
-                          className="text-caption text-accent hover:text-text cursor-pointer bg-transparent border-none p-0 font-body" title="Add">✓</button>
+                          className={iconAction({ color: 'accent' })} title="Add">✓</button>
                         <button onClick={() => { setNewGenus(''); setNewSpecies(''); }}
-                          className="text-caption text-text-dim hover:text-text cursor-pointer bg-transparent border-none p-0 font-body" title="Cancel">×</button>
+                          className={iconAction({ color: 'dim' })} title="Cancel">×</button>
                       </span>
                     </td>
                   </tr>
@@ -159,14 +159,14 @@ export default function OrganismsPage() {
             </Card>
           ))
           : !data?.length
-            ? <div className="py-8 text-center text-text-dim text-body font-body">No organisms yet.</div>
+            ? <Text variant="body" className="py-8 text-center text-text-dim">No organisms yet.</Text>
             : data.map(o => (
               <Card key={o.id} className="p-2.5 flex flex-col gap-1">
-                <div className="font-mono text-caption text-text">
+                <Text variant="mono">
                   <span className="text-text-dim italic">{o.genus.charAt(0)}.</span>{' '}
                   <span className="font-semibold">{o.species}</span>
                   {o.strain && <span className="text-text-secondary ml-1">{o.strain}</span>}
-                </div>
+                </Text>
                 {o.commonName && <Text variant="caption">{o.commonName}</Text>}
                 <div className="flex items-center gap-2 flex-wrap">
                   {o.referenceGenome && <Badge variant="count" color="dim">{o.referenceGenome}</Badge>}

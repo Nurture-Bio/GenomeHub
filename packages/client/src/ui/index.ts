@@ -15,9 +15,11 @@ export {
   button, input, card, text, heading, badge,
   navLink, progressTrack, modalOverlay, modalCard,
   dropdown, dropdownItem,
+  inlineInput, chip, iconAction,
 } from './recipes';
 
 export type {
   ButtonVariants, InputVariants, CardVariants,
   TextVariants, HeadingVariants, BadgeVariants, NavLinkVariants,
+  InlineInputVariants, ChipVariants, IconActionVariants,
 } from './recipes';

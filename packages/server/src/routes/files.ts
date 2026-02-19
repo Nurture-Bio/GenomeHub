@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import { AppDataSource } from '../app_data.js';
 import { User, GenomicFile, EntityEdge, Organism, Collection, type EdgeRelation } from '../entities/index.js';
-import { deleteObject, presignDownloadUrl } from '../lib/s3.js';
+import { createGunzip, constants } from 'zlib';
+import { deleteObject, presignDownloadUrl, fetchS3Head } from '../lib/s3.js';
+import { detectFormat, TEXT_PREVIEW_FORMATS } from '@genome-hub/shared';
 import * as edges from '../lib/edge_service.js';
 import { asyncWrap } from '../lib/async_wrap.js';
 import { organismDisplay } from '../lib/display.js';
@@ -109,6 +111,49 @@ router.get('/', asyncWrap(async (req, res) => {
       uploadedBy:  f.uploadedBy,
     };
   }));
+}));
+
+// ─── File preview (first N lines) ──────────────────────────
+
+function decompressPartial(buf: Buffer): Promise<Buffer> {
+  return new Promise((resolve) => {
+    const gunzip = createGunzip({ finishFlush: constants.Z_SYNC_FLUSH });
+    const chunks: Buffer[] = [];
+    gunzip.on('data', (chunk: Buffer) => chunks.push(chunk));
+    gunzip.on('end', () => resolve(Buffer.concat(chunks)));
+    gunzip.on('error', () => resolve(Buffer.concat(chunks)));
+    gunzip.end(buf);
+  });
+}
+
+router.get('/:id/preview', asyncWrap(async (req, res) => {
+  const repo = AppDataSource.getRepository(GenomicFile);
+  const file = await repo.findOneBy({ id: req.params.id });
+  if (!file) { res.status(404).json({ error: 'not found' }); return; }
+
+  const fmt = detectFormat(file.filename);
+  if (!TEXT_PREVIEW_FORMATS.has(fmt)) {
+    res.json({ lines: [], truncated: false, previewable: false, format: fmt });
+    return;
+  }
+
+  const isGz = file.filename.toLowerCase().endsWith('.gz');
+  const RANGE_BYTES = 128 * 1024; // 128 KB
+  const MAX_LINES = 50;
+
+  try {
+    let buf = await fetchS3Head(file.s3Key, RANGE_BYTES);
+    if (isGz) buf = await decompressPartial(buf);
+
+    const text = buf.toString('utf-8');
+    const allLines = text.split('\n');
+    const lines = allLines.slice(0, MAX_LINES);
+    const truncated = allLines.length > MAX_LINES || buf.length >= RANGE_BYTES;
+
+    res.json({ lines, truncated, previewable: true, format: fmt });
+  } catch (err) {
+    res.json({ lines: [], truncated: false, previewable: false, format: fmt, error: 'Preview unavailable' });
+  }
 }));
 
 // ─── File detail ────────────────────────────────────────────

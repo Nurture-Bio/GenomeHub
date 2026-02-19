@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
+import { cx } from 'class-variance-authority';
+import { inlineInput } from './recipes';
 
 interface InlineInputProps {
   value: string;
@@ -51,12 +53,10 @@ export default function InlineInput({ value, placeholder, mono, className, fullW
       onBlur={handleBlur}
       onKeyDown={handleKeyDown}
       placeholder={placeholder}
-      className={[
-        'bg-transparent border-b outline-none p-0 transition-colors duration-fast',
-        focused ? 'border-accent cursor-text' : 'border-transparent hover:border-border-subtle cursor-pointer',
-        mono ? 'font-mono text-caption text-text' : 'text-caption text-text-secondary',
-        className ?? '',
-      ].join(' ')}
+      className={cx(
+        inlineInput({ font: mono ? 'mono' : 'body' }),
+        className,
+      )}
       style={fullWidth ? undefined : { width: `${len}ch` }}
     />
   );
