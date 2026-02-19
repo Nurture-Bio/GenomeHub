@@ -165,11 +165,22 @@ export default function ComboBox({
   );
 }
 
+// Guard against double-fire from cmdk onSelect + native onClick
+let _lastSelect = 0;
+function fireOnce(fn: () => void) {
+  const now = Date.now();
+  if (now - _lastSelect < 100) return;
+  _lastSelect = now;
+  fn();
+}
+
 function ComboBoxOption({ item, selected, onSelect }: { item: ComboBoxItem; selected: boolean; onSelect: () => void }) {
+  const handle = () => fireOnce(onSelect);
   return (
     <Command.Item
       value={item.label}
-      onSelect={onSelect}
+      onSelect={handle}
+      onClick={handle}
       className={cx(
         'px-2 py-1.5 cursor-pointer transition-colors duration-fast min-h-5.5 flex items-center gap-2',
         selected ? 'bg-surface-2' : 'hover:bg-surface-2',

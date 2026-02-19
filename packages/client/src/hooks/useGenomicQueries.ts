@@ -239,7 +239,7 @@ export function useCreateCollectionMutation(onSuccess?: () => void) {
 
 export function useUpdateCollectionMutation(onSuccess?: () => void) {
   const { mutate, pending } = useApiMutation<[string, {
-    name?: string; description?: string; techniqueId?: string; organismId?: string;
+    name?: string; description?: string; kind?: string; techniqueId?: string; organismId?: string;
   }]>(
     (id, body) => ({
       url: `/api/collections/${id}`,

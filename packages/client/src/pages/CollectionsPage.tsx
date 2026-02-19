@@ -9,7 +9,7 @@ import {
 import { useConfirmDelete } from '../hooks/useConfirmDelete';
 import { techniqueColor, TechniquePill } from '../lib/techniqueColors';
 import { Badge, Text, Heading, Card, inlineInput, iconAction } from '../ui';
-import { TechniquePicker, OrganismPicker } from '../ui';
+import { TechniquePicker, OrganismPicker, FileKindPicker } from '../ui';
 
 function SkeletonRow() {
   return (
@@ -140,8 +140,12 @@ export default function CollectionsPage() {
                           variant="surface" size="sm" className="w-full"
                         />
                       </td>
-                      <td className="py-1.5 pl-2.5 pr-3">
-                        <Badge variant="count" color="dim">{c.kind}</Badge>
+                      <td className="py-1.5 pl-2.5 pr-3 w-32">
+                        <FileKindPicker
+                          value={c.kind}
+                          onValueChange={v => updateCollection(c.id, { kind: v || undefined })}
+                          variant="surface" size="sm" className="w-full"
+                        />
                       </td>
                       <td className="py-1.5 pl-2.5 pr-3 text-right">
                         <Text variant="mono" className="text-text-secondary">{c.fileCount}</Text>

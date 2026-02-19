@@ -1,5 +1,5 @@
 import type { GenomicFile } from "../hooks/useGenomicQueries";
-import { useState, useMemo, useRef, type KeyboardEvent } from 'react';
+import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { cx } from 'class-variance-authority';
 import {
@@ -8,7 +8,7 @@ import {
 } from '../hooks/useGenomicQueries';
 import { useConfirm } from '../hooks/useConfirm';
 import { detectFormat, FORMAT_META, formatBytes, formatRelativeTime } from '../lib/formats';
-import { Button, Badge, Input, Text, Heading, Card, chip, iconAction } from '../ui';
+import { Button, Badge, Input, Text, Heading, Card, iconAction, chip } from '../ui';
 import { CollectionPicker, OrganismPicker, FileKindPicker } from '../ui';
 
 // ── Format icon ──────────────────────────────────────────
@@ -28,55 +28,6 @@ function FormatIcon({ filename, format, size = 32 }: { filename: string; format?
       }}
     >
       {meta.label}
-    </div>
-  );
-}
-
-// ── Inline tag editor ────────────────────────────────────
-
-function InlineTagEditor({ tags, onUpdate }: { tags: string[]; onUpdate: (tags: string[]) => void }) {
-  const [input, setInput] = useState('');
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const handleKey = (e: KeyboardEvent<HTMLInputElement>) => {
-    const val = input.trim();
-    if (e.key === 'Enter' && val) {
-      e.preventDefault();
-      if (!tags.includes(val)) onUpdate([...tags, val]);
-      setInput('');
-    }
-    if (e.key === 'Backspace' && !input && tags.length > 0) {
-      onUpdate(tags.slice(0, -1));
-    }
-  };
-
-  const removeTag = (t: string) => onUpdate(tags.filter(x => x !== t));
-
-  return (
-    <div
-      className="flex gap-0.5 flex-wrap items-center min-w-16 cursor-text"
-      onClick={() => inputRef.current?.focus()}
-    >
-      {tags.map(t => (
-        <span key={t} className={chip()}>
-          {t}
-          <button
-            className={iconAction({ color: 'dim' })}
-            style={{ fontSize: 'var(--font-size-micro)' }}
-            onClick={e => { e.stopPropagation(); removeTag(t); }}
-          >
-            ×
-          </button>
-        </span>
-      ))}
-      <input
-        ref={inputRef}
-        value={input}
-        onChange={e => setInput(e.target.value)}
-        onKeyDown={handleKey}
-        placeholder={tags.length === 0 ? '+tag' : ''}
-        className="bg-transparent border-none outline-none font-body text-micro text-text placeholder:text-text-dim w-12 min-w-0 p-0"
-      />
     </div>
   );
 }
@@ -251,7 +202,7 @@ function FileRow({ file, onDownload, onUpdate, onAddToCollection, onRemoveFromCo
         />
       </td>
 
-      {/* Collections (line 1) + Tags (line 2) */}
+      {/* Collections */}
       <td className="py-1.5 pr-3">
         <InlineCollectionEditor
           fileId={file.id}
@@ -259,12 +210,6 @@ function FileRow({ file, onDownload, onUpdate, onAddToCollection, onRemoveFromCo
           onAdd={onAddToCollection}
           onRemove={onRemoveFromCollection}
         />
-        <div className="mt-0.5">
-          <InlineTagEditor
-            tags={file.tags}
-            onUpdate={tags => onUpdate(file.id, { tags })}
-          />
-        </div>
       </td>
 
       {/* Download */}
@@ -523,7 +468,7 @@ export default function FilesPage() {
                   className="accent-accent cursor-pointer"
                 />
               </th>
-              {['File', 'Organism', 'Kind', 'Collections / Tags', ''].map(h => (
+              {['File', 'Organism', 'Kind', 'Collections', ''].map(h => (
                 <th key={h} className="py-1.5 pr-3">
                   <Text variant="overline">{h}</Text>
                 </th>
