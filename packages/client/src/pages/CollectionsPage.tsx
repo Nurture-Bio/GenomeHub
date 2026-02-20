@@ -134,6 +134,7 @@ export default function CollectionsPage() {
                       </td>
                       <td className="py-1.5 pl-2.5 pr-3 w-36">
                         <ChipEditor
+                          colored
                           items={c.techniques.map(t => ({ id: t.id, label: t.name }))}
                           onAdd={id => addCollectionTechnique(c.id, id)}
                           onRemove={id => removeCollectionTechnique(c.id, id)}
@@ -143,6 +144,7 @@ export default function CollectionsPage() {
                       </td>
                       <td className="py-1.5 pl-2.5 pr-3 w-40">
                         <ChipEditor
+                          colored
                           items={c.organisms.map(o => ({ id: o.id, label: o.displayName }))}
                           onAdd={id => addCollectionOrganism(c.id, id)}
                           onRemove={id => removeCollectionOrganism(c.id, id)}
@@ -152,6 +154,7 @@ export default function CollectionsPage() {
                       </td>
                       <td className="py-1.5 pl-2.5 pr-3 w-32">
                         <ChipEditor
+                          colored
                           items={c.types.map(t => ({ id: t, label: t }))}
                           onAdd={id => updateCollection(c.id, { types: [...c.types, id] })}
                           onRemove={id => updateCollection(c.id, { types: c.types.filter(t => t !== id) })}

@@ -92,12 +92,14 @@ export default function CollectionDetailPage() {
       <div>
         <div className="flex items-center gap-2 mb-1 flex-wrap">
           <ChipEditor
+            colored
             items={collection.techniques.map(t => ({ id: t.id, label: t.name }))}
             onAdd={id => { if (collectionId) addCollectionTechnique(collectionId, id); }}
             onRemove={id => { if (collectionId) removeCollectionTechnique(collectionId, id); }}
             renderPicker={p => <TechniquePicker {...p} variant="surface" size="sm" className="w-36" />}
           />
           <ChipEditor
+            colored
             items={collection.types.map(t => ({ id: t, label: t }))}
             onAdd={id => { if (collectionId) updateCollection(collectionId, { types: [...collection.types, id] }); }}
             onRemove={id => { if (collectionId) updateCollection(collectionId, { types: collection.types.filter(t => t !== id) }); }}
@@ -122,6 +124,7 @@ export default function CollectionDetailPage() {
 
         <div className="flex items-center gap-2 mt-1 flex-wrap">
           <ChipEditor
+            colored
             items={collection.organisms.map(o => ({ id: o.id, label: o.displayName }))}
             onAdd={id => { if (collectionId) addCollectionOrganism(collectionId, id); }}
             onRemove={id => { if (collectionId) removeCollectionOrganism(collectionId, id); }}

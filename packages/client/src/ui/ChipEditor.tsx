@@ -1,6 +1,27 @@
-import { useState, type ReactNode } from 'react';
+import { useState, type ReactNode, type CSSProperties } from 'react';
 import { chip, iconAction } from './recipes';
 import type { ComboBoxItem } from './ComboBox';
+
+/** Deterministic hue from a string — no library needed.
+ *  Uses Knuth multiplicative hashing to spread similar strings (e.g. "gtf"
+ *  vs "gbff") far apart on the hue wheel. */
+function strHue(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  }
+  // Knuth multiplicative hash — scrambles adjacent values across the full range
+  h = Math.imul(h >>> 0, 2654435761) >>> 0;
+  return h % 360;
+}
+
+export function chipColorStyle(label: string): CSSProperties {
+  const hue = strHue(label);
+  return {
+    backgroundColor: `hsl(${hue} 55% 88%)`,
+    color:           `hsl(${hue} 55% 28%)`,
+  };
+}
 
 export interface ChipItem {
   id: string;
@@ -17,6 +38,7 @@ export interface ChipEditorProps {
     items?: ComboBoxItem[];
   }) => ReactNode;
   size?: 'sm' | 'md';
+  colored?: boolean;
   disabled?: boolean;
   maxVisible?: number;
   /** Render each chip label as a link */
@@ -25,7 +47,7 @@ export interface ChipEditorProps {
 
 export default function ChipEditor({
   items, onAdd, onRemove, renderPicker,
-  disabled, maxVisible, renderLabel,
+  colored, disabled, maxVisible, renderLabel,
 }: ChipEditorProps) {
   const [adding, setAdding] = useState(false);
 
@@ -45,9 +67,9 @@ export default function ChipEditor({
   return (
     <div className="flex gap-0.5 flex-wrap items-center">
       {visible.map(item => (
-        <span key={item.id} className={chip()}>
+        <span key={item.id} className={chip()} style={colored ? chipColorStyle(item.label) : undefined}>
           {renderLabel ? renderLabel(item) : (
-            <span className="text-text-secondary">{item.label}</span>
+            <span>{item.label}</span>
           )}
           {!disabled && (
             <button

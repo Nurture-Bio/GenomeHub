@@ -162,6 +162,7 @@ export default function FileDetailPage() {
         <div className="flex items-center gap-2 mt-1">
           <Text variant="caption" className="shrink-0">Organisms:</Text>
           <ChipEditor
+            colored
             items={file.organisms.map(o => ({ id: o.id, label: o.displayName }))}
             onAdd={id => { if (fileId) addFileOrganism(fileId, id); }}
             onRemove={id => { if (fileId) removeFileOrganism(fileId, id); }}
@@ -173,6 +174,7 @@ export default function FileDetailPage() {
         <div className="flex items-center gap-2 mt-1">
           <Text variant="caption" className="shrink-0">Types:</Text>
           <ChipEditor
+            colored
             items={file.types.map(t => ({ id: t, label: t }))}
             onAdd={id => { if (fileId) updateFile(fileId, { types: [...file.types, id] }); }}
             onRemove={id => { if (fileId) updateFile(fileId, { types: file.types.filter(t => t !== id) }); }}

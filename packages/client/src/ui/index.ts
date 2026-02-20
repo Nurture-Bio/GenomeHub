@@ -5,7 +5,7 @@ export { Text, Heading }              from './Text';
 export { default as Badge }           from './Badge';
 export { default as ComboBox }        from './ComboBox';
 export { default as InlineInput }     from './InlineInput';
-export { default as ChipEditor }     from './ChipEditor';
+export { default as ChipEditor, chipColorStyle } from './ChipEditor';
 export type { ChipItem }             from './ChipEditor';
 export type { ComboBoxItem }          from './ComboBox';
 export {
