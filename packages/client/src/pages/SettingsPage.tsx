@@ -23,10 +23,10 @@ interface EditableRowProps {
 function EditableRow({ id, name, description, onSave, onDelete }: EditableRowProps) {
   return (
     <tr className="border-b border-border-subtle group hover:bg-surface transition-colors duration-fast">
-      <td className="py-1.5 pl-2.5 pr-3">
+      <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
         <InlineInput value={name} mono fullWidth className="font-semibold" onCommit={val => onSave(id, { name: val })} />
       </td>
-      <td className="py-1.5 pr-3">
+      <td className="py-1.5 pr-3 overflow-hidden">
         <InlineInput value={description ?? ''} placeholder="add description" fullWidth onCommit={val => onSave(id, { description: val })} />
       </td>
       <td className="py-1.5 pr-2.5 w-8">
@@ -59,13 +59,13 @@ function AddRow({ placeholder, onAdd }: { placeholder: string; onAdd: (name: str
 
   return (
     <tr className="text-text-dim">
-      <td className="py-1.5 pl-2.5 pr-3">
+      <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
         <input ref={nameRef} value={name} onChange={e => setName(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') commit(); }}
           placeholder={placeholder}
           className={cx(inlineInput({ font: 'mono' }), 'font-semibold w-full')} />
       </td>
-      <td className="py-1.5 pr-3">
+      <td className="py-1.5 pr-3 overflow-hidden">
         <input value={desc} onChange={e => setDesc(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') commit(); }}
           placeholder="description"
@@ -93,10 +93,10 @@ function SectionTable({ title, subtitle, children }: { title: string; subtitle: 
         <Text variant="caption">{subtitle}</Text>
       </div>
       <div className="border border-border rounded-md bg-surface overflow-hidden">
-        <table className="w-full border-collapse text-left">
+        <table className="w-full border-collapse text-left table-fixed">
           <thead>
             <tr className="border-b border-border bg-surface-2">
-              <th className="py-1.5 pr-3 pl-2.5 w-48"><Text variant="overline">Name</Text></th>
+              <th className="py-1.5 pr-3 pl-2.5 w-44"><Text variant="overline">Name</Text></th>
               <th className="py-1.5 pr-3 pl-2.5"><Text variant="overline">Description</Text></th>
               <th className="w-8" />
             </tr>

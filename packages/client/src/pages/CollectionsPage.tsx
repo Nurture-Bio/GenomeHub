@@ -4,7 +4,7 @@ import { cx } from 'class-variance-authority';
 import {
   useCollectionsQuery, useCreateCollectionMutation,
   useUpdateCollectionMutation, useDeleteCollectionMutation,
-  useTechniquesQuery,
+  useTechniquesQuery, useOrganismsQuery,
   useAddCollectionOrganism, useRemoveCollectionOrganism,
   useAddCollectionTechnique, useRemoveCollectionTechnique,
 } from '../hooks/useGenomicQueries';
@@ -32,6 +32,7 @@ export default function CollectionsPage() {
   const { deleteCollection } = useDeleteCollectionMutation(refetch);
   const { confirmDelete } = useConfirmDelete(deleteCollection, 'collection');
   const { data: techniques } = useTechniquesQuery();
+  const { data: organisms }  = useOrganismsQuery();
   const { addCollectionOrganism } = useAddCollectionOrganism(refetch);
   const { removeCollectionOrganism } = useRemoveCollectionOrganism(refetch);
   const { addCollectionTechnique } = useAddCollectionTechnique(refetch);
@@ -67,6 +68,19 @@ export default function CollectionsPage() {
   }, [techniques]);
 
   const ready = newName.trim().length > 0;
+
+  // Items for ChipEditor in the add row (look up labels from query data)
+  const newTechItems = useMemo(() => {
+    if (!newTechId || !techniques) return [];
+    const t = techniques.find(t => t.id === newTechId);
+    return t ? [{ id: t.id, label: t.name }] : [];
+  }, [newTechId, techniques]);
+
+  const newOrgItems = useMemo(() => {
+    if (!newOrgId || !organisms) return [];
+    const o = organisms.find(o => o.id === newOrgId);
+    return o ? [{ id: o.id, label: o.displayName }] : [];
+  }, [newOrgId, organisms]);
 
   return (
     <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 h-full min-h-0">
@@ -172,20 +186,34 @@ export default function CollectionsPage() {
 
                   {/* Inline add row */}
                   <tr className="text-text-dim">
-                    <td className="py-1.5 pl-2.5 pr-3">
+                    <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
                       <input ref={nameRef} value={newName} onChange={e => setNewName(e.target.value)}
                         onKeyDown={e => { if (e.key === 'Enter') handleCreate(); }}
                         placeholder="+ collection name"
                         className={cx(inlineInput({ font: 'mono' }), 'w-full')} />
                     </td>
-                    <td className="py-1.5 pl-2.5 pr-3 w-36">
-                      <TechniquePicker value={newTechId} onValueChange={setNewTechId} variant="surface" size="sm" className="w-full" />
+                    <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
+                      <ChipEditor
+                        colored
+                        items={newTechItems}
+                        onAdd={setNewTechId}
+                        onRemove={() => setNewTechId('')}
+                        renderPicker={p => <TechniquePicker {...p} variant="surface" size="sm" className="w-32" />}
+                        maxVisible={1}
+                      />
                     </td>
-                    <td className="py-1.5 pl-2.5 pr-3 w-40">
-                      <OrganismPicker value={newOrgId} onValueChange={setNewOrgId} variant="surface" size="sm" className="w-full" />
+                    <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
+                      <ChipEditor
+                        colored
+                        items={newOrgItems}
+                        onAdd={setNewOrgId}
+                        onRemove={() => setNewOrgId('')}
+                        renderPicker={p => <OrganismPicker {...p} variant="surface" size="sm" className="w-36" />}
+                        maxVisible={1}
+                      />
                     </td>
                     <td colSpan={2} />
-                    <td className="py-1.5 pr-2.5 w-6">
+                    <td className="py-1.5 pr-2.5">
                       <span className={`inline-flex items-center gap-1 transition-opacity duration-fast ${ready ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                         <button disabled={createPending} onClick={handleCreate}
                           className={iconAction({ color: 'accent' })} title="Add">✓</button>
