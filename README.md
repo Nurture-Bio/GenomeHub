@@ -7,7 +7,8 @@
 
 # GenomeHub
 
-Cloud-native genomic data management. Upload, catalog, and retrieve large sequencing files through a web UI. Files stream directly to S3 via presigned multipart URLs and never touch the application server.
+Cloud-native genomic data management. Upload, catalog, and retrieve large sequencing files through a web UI. 
+Files stream directly to S3 via presigned multipart URLs and never touch the application server.
 
 GenomeHub is the data layer in a broader ecosystem for computational genomics:
 
@@ -92,7 +93,7 @@ packages/
   infra/             AWS CDK stack
 ```
 
-## API reference
+## API Reference
 
 ### Projects
 
