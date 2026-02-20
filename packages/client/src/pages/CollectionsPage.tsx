@@ -9,8 +9,8 @@ import {
   useAddCollectionTechnique, useRemoveCollectionTechnique,
 } from '../hooks/useGenomicQueries';
 import { useConfirmDelete } from '../hooks/useConfirmDelete';
-import { techniqueColor, TechniquePill } from '../lib/techniqueColors';
-import { Badge, Text, Heading, Card, ChipEditor, inlineInput, iconAction } from '../ui';
+import { techniqueColor } from '../lib/techniqueColors';
+import { Badge, Text, Heading, Card, ChipEditor, HashPill, inlineInput, iconAction } from '../ui';
 import { TechniquePicker, OrganismPicker, FileTypePicker } from '../ui';
 
 function SkeletonRow() {
@@ -85,11 +85,10 @@ export default function CollectionsPage() {
           const active = techFilter === t;
           return (
             <button key={t} onClick={() => setTechFilter(t)}
-              className="font-body text-micro px-1.5 py-1 md:py-0.5 rounded-sm border transition-colors duration-fast cursor-pointer min-h-5.5 md:min-h-0"
-              style={active && hc
-                ? { background: hc.bg, color: hc.color, borderColor: hc.color }
-                : { background: 'var(--color-surface-2)', color: 'var(--color-text-secondary)', borderColor: 'var(--color-border)' }
-              }>
+              className="hash-filter-btn"
+              data-active={active}
+              style={hc ? { '--hc-bg': hc.bg, '--hc-fg': hc.color } as React.CSSProperties : undefined}
+            >
               {t === 'all' ? 'All' : t}
             </button>
           );
@@ -216,14 +215,14 @@ export default function CollectionsPage() {
             : filtered.map(c => (
               <Link key={c.id} to={`/collections/${c.id}`} className="no-underline">
                 <Card className="p-2.5 flex flex-col gap-1 hover:border-accent transition-colors duration-fast cursor-pointer">
-                  <div className="flex items-center gap-2">
-                    {c.techniques.map(t => <TechniquePill key={t.id} name={t.name} />)}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {c.techniques.map(t => <HashPill key={t.id} label={t.name} />)}
                     <Text variant="mono" className="truncate flex-1 min-w-0">{c.name}</Text>
-                    {c.types.map(t => <Badge key={t} variant="count" color="dim">{t}</Badge>)}
+                    {c.types.map(t => <HashPill key={t} label={t} />)}
                   </div>
                   {c.description && <Text variant="caption" className="truncate">{c.description}</Text>}
                   <div className="flex items-center gap-2 flex-wrap">
-                    {c.organisms.map(o => <Text key={o.id} variant="caption" className="italic">{o.displayName}</Text>)}
+                    {c.organisms.map(o => <HashPill key={o.id} label={o.displayName} />)}
                     <Text variant="caption">{c.fileCount} files</Text>
                   </div>
                 </Card>

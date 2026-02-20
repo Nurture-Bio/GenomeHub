@@ -8,7 +8,7 @@ import {
   useAddCollectionTechnique, useRemoveCollectionTechnique,
 } from '../hooks/useGenomicQueries';
 import { detectFormat, FORMAT_META, formatBytes } from '../lib/formats';
-import { Heading, Text, Badge, InlineInput, Input, ChipEditor, iconAction } from '../ui';
+import { Heading, Text, Badge, InlineInput, Input, ChipEditor, HashPill, iconAction } from '../ui';
 import { TechniquePicker, OrganismPicker, FileTypePicker } from '../ui';
 import LinksList from '../components/LinksList';
 import { useAppStore } from '../stores/useAppStore';
@@ -193,11 +193,9 @@ export default function CollectionDetailPage() {
                         }}
                         className="accent-accent shrink-0"
                       />
-                      <Badge variant="status" style={{ background: meta.bg, color: meta.color }}>
-                        {meta.label}
-                      </Badge>
+                      <HashPill label={meta.label} colorKey={fmt} />
                       <Text variant="mono" className="truncate flex-1 min-w-0">{file.filename}</Text>
-                      {file.types.map(t => <Badge key={t} variant="count" color="dim">{t}</Badge>)}
+                      {file.types.map(t => <HashPill key={t} label={t} />)}
                       <Text variant="caption" className="shrink-0">{formatBytes(file.sizeBytes)}</Text>
                     </label>
                   );
@@ -230,9 +228,7 @@ export default function CollectionDetailPage() {
                     <tr key={file.id} className="border-b border-border-subtle hover:bg-surface transition-colors duration-fast group">
                       <td className="py-1.5 pl-2.5 pr-3">
                         <div className="flex items-center gap-2">
-                          <Badge variant="status" style={{ background: meta.bg, color: meta.color }}>
-                            {meta.label}
-                          </Badge>
+                          <HashPill label={meta.label} colorKey={fmt} />
                           <Link to={`/files/${file.id}`} className="no-underline">
                             <Text variant="mono" className="truncate hover:text-accent transition-colors duration-fast">
                               {file.filename}
@@ -242,7 +238,7 @@ export default function CollectionDetailPage() {
                       </td>
                       <td className="py-1.5 pr-3">
                         <div className="flex gap-0.5 flex-wrap">
-                          {file.types.map(t => <Badge key={t} variant="count" color="dim">{t}</Badge>)}
+                          {file.types.map(t => <HashPill key={t} label={t} />)}
                         </div>
                       </td>
                       <td className="py-1.5 pr-3 text-right">

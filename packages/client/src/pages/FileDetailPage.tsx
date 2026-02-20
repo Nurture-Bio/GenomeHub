@@ -8,7 +8,7 @@ import {
   useAddFileOrganism, useRemoveFileOrganism,
 } from '../hooks/useGenomicQueries';
 import { detectFormat, FORMAT_META, TEXT_PREVIEW_FORMATS, formatBytes, formatRelativeTime } from '../lib/formats';
-import { Heading, Text, Card, Badge, Button, InlineInput, Input, ChipEditor, iconAction } from '../ui';
+import { Heading, Text, Card, Badge, Button, InlineInput, Input, ChipEditor, HashPill, iconAction } from '../ui';
 import { CollectionPicker, OrganismPicker, FileTypePicker, RelationPicker } from '../ui';
 import LinksList from '../components/LinksList';
 
@@ -34,11 +34,7 @@ function RelationLabel({ relation }: { relation: string }) {
 function FormatPill({ filename }: { filename: string }) {
   const fmt = detectFormat(filename);
   const meta = FORMAT_META[fmt];
-  return (
-    <Badge variant="status" style={{ background: meta.bg, color: meta.color }}>
-      {meta.label}
-    </Badge>
-  );
+  return <HashPill label={meta.label} colorKey={fmt} />;
 }
 
 export default function FileDetailPage() {
@@ -133,10 +129,8 @@ export default function FileDetailPage() {
       {/* Header */}
       <div>
         <div className="flex items-center gap-2 mb-1 flex-wrap">
-          <Badge variant="status" style={{ background: meta.bg, color: meta.color }}>
-            {meta.label}
-          </Badge>
-          {file.types.map(t => <Badge key={t} variant="count" color="dim">{t}</Badge>)}
+          <HashPill label={meta.label} colorKey={fmt} />
+          {file.types.map(t => <HashPill key={t} label={t} />)}
           {file.status === 'ready' && <Badge variant="status" color="green">ready</Badge>}
           {file.status === 'pending' && <Badge variant="status" color="yellow">uploading</Badge>}
           {file.status === 'error' && <Badge variant="status" color="red">error</Badge>}

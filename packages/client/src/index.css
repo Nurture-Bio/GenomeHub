@@ -427,6 +427,32 @@
   background-size: 512px 512px;
 }
 
+/* ── Hash-colored chips and filter buttons ────────────── */
+/*    CSS vars --hc-bg / --hc-fg are set inline by React.  */
+/*    Hover/active states are pure CSS — no JS needed.     */
+
+.hash-chip {
+  @apply inline-flex items-center gap-1 font-body text-caption px-2 py-0.5 rounded-full transition-[filter] duration-fast;
+  background: var(--hc-bg, var(--color-surface-2));
+  color:      var(--hc-fg, var(--color-text-secondary));
+}
+.hash-chip:hover  { filter: brightness(1.12); }
+.hash-chip:active { filter: brightness(0.88); }
+
+.hash-filter-btn {
+  @apply font-body text-micro px-1.5 py-1 md:py-0.5 rounded-sm border transition-[filter,background,color,border-color] duration-fast cursor-pointer min-h-5.5 md:min-h-0;
+  background:   var(--color-surface-2);
+  color:        var(--color-text-secondary);
+  border-color: var(--color-border);
+}
+.hash-filter-btn[data-active="true"] {
+  background:   var(--hc-bg, var(--color-accent));
+  color:        var(--hc-fg, var(--color-bg));
+  border-color: var(--hc-fg, transparent);
+}
+.hash-filter-btn:hover  { filter: brightness(1.12); }
+.hash-filter-btn:active { filter: brightness(0.88); }
+
 /* ── Collapse pattern (generic) ───────────────────────── */
 
 .collapse-container {

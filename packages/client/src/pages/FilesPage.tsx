@@ -1,5 +1,6 @@
 import type { GenomicFile } from "../hooks/useGenomicQueries";
 import { useState, useMemo } from 'react';
+import type { CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { cx } from 'class-variance-authority';
 import {
@@ -10,7 +11,7 @@ import {
 import { useConfirm } from '../hooks/useConfirm';
 import { detectFormat, FORMAT_META, formatBytes, formatRelativeTime } from '../lib/formats';
 import { hashColor } from '../lib/colors';
-import { Button, Badge, Input, Text, Heading, Card, ChipEditor, iconAction } from '../ui';
+import { Button, Badge, Input, Text, Heading, Card, ChipEditor, HashPill, iconAction } from '../ui';
 import { CollectionPicker, OrganismPicker, FileTypePicker } from '../ui';
 
 // ── Format icon ──────────────────────────────────────────
@@ -44,7 +45,8 @@ interface FileCardProps {
 }
 
 function FileCard({ file, onDownload, selected, onSelect }: FileCardProps) {
-  const meta = FORMAT_META[file.format] ?? FORMAT_META['other'];
+  const fmt  = file.format;
+  const meta = FORMAT_META[fmt] ?? FORMAT_META['other'];
 
   return (
     <Card
@@ -59,17 +61,15 @@ function FileCard({ file, onDownload, selected, onSelect }: FileCardProps) {
           onChange={e => onSelect(file.id, e.target.checked)}
           className="accent-accent cursor-pointer shrink-0"
         />
-        <Badge variant="status" style={{ background: meta.bg, color: meta.color }}>
-          {meta.label}
-        </Badge>
+        <HashPill label={meta.label} colorKey={fmt} />
         <Text variant="mono" className="truncate flex-1 min-w-0">{file.filename}</Text>
       </div>
 
       {/* Metadata row */}
       <div className="flex items-center gap-2 flex-wrap pl-5.5">
         <Text variant="caption">{formatBytes(file.sizeBytes)}</Text>
-        {file.types.map(t => <Badge key={t} variant="count" color="dim">{t}</Badge>)}
-        {file.organisms.map(o => <Text key={o.id} variant="caption" className="italic">{o.displayName}</Text>)}
+        {file.types.map(t => <HashPill key={t} label={t} />)}
+        {file.organisms.map(o => <HashPill key={o.id} label={o.displayName} />)}
         {file.status === 'ready'   && <Badge variant="status" color="green">ready</Badge>}
         {file.status === 'pending' && <Badge variant="status" color="yellow">uploading</Badge>}
         {file.status === 'error'   && <Badge variant="status" color="red">error</Badge>}
@@ -389,11 +389,9 @@ export default function FilesPage() {
               <button
                 key={k}
                 onClick={() => setFilterType(k === 'all' ? '' : k)}
-                className="font-body text-micro px-1.5 py-1 md:py-0.5 rounded-sm border transition-colors duration-fast cursor-pointer min-h-5.5 md:min-h-0"
-                style={active && hc
-                  ? { background: hc.bg, color: hc.color, borderColor: hc.color }
-                  : { background: 'var(--color-surface-2)', color: 'var(--color-text-secondary)', borderColor: 'var(--color-border)' }
-                }
+                className="hash-filter-btn"
+                data-active={active}
+                style={hc ? { '--hc-bg': hc.bg, '--hc-fg': hc.color } as CSSProperties : undefined}
               >
                 {k === 'all' ? 'All types' : k}
               </button>
@@ -404,18 +402,16 @@ export default function FilesPage() {
         <div className="flex gap-1 flex-wrap">
           {formatFilters.map(f => {
             const active = fmtFilter === f;
-            const hc = f === 'all' ? null : FORMAT_META[f];
+            const meta = f === 'all' ? null : FORMAT_META[f];
             return (
               <button
                 key={f}
                 onClick={() => setFmtFilter(f)}
-                className="font-body text-micro px-1.5 py-1 md:py-0.5 rounded-sm border transition-colors duration-fast cursor-pointer min-h-5.5 md:min-h-0"
-                style={active && hc
-                  ? { background: hc.bg, color: hc.color, borderColor: hc.color }
-                  : { background: 'var(--color-surface-2)', color: 'var(--color-text-secondary)', borderColor: 'var(--color-border)' }
-                }
+                className="hash-filter-btn"
+                data-active={active}
+                style={meta ? { '--hc-bg': meta.bg, '--hc-fg': meta.color } as CSSProperties : undefined}
               >
-                {f === 'all' ? 'All formats' : hc?.label ?? f}
+                {f === 'all' ? 'All formats' : meta?.label ?? f}
               </button>
             );
           })}

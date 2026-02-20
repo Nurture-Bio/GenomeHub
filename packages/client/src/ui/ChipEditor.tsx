@@ -4,7 +4,7 @@ import { hashColor } from '../lib/colors';
 
 export function chipColorStyle(label: string): CSSProperties {
   const { bg, color } = hashColor(label);
-  return { backgroundColor: bg, color };
+  return { '--hc-bg': bg, '--hc-fg': color } as CSSProperties;
 }
 
 export interface ChipItem {
@@ -54,7 +54,7 @@ export default function ChipEditor({
       {visible.map(item => (
         <span
           key={item.id}
-          className="group/chip inline-flex items-center gap-1 font-body text-caption px-2 py-0.5 rounded-full bg-surface-2 text-text-secondary"
+          className="group/chip hash-chip"
           style={colored ? chipColorStyle(item.label) : undefined}
         >
           {renderLabel ? renderLabel(item) : (
