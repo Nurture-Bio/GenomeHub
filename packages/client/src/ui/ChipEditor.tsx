@@ -1,5 +1,4 @@
 import { useState, type ReactNode, type CSSProperties } from 'react';
-import { chip, iconAction } from './recipes';
 import type { ComboBoxItem } from './ComboBox';
 
 /** Deterministic hue from a string — no library needed.
@@ -65,16 +64,26 @@ export default function ChipEditor({
   };
 
   return (
-    <div className="flex gap-0.5 flex-wrap items-center">
+    <div className="group/editor flex gap-1 flex-wrap items-center">
+
       {visible.map(item => (
-        <span key={item.id} className={chip()} style={colored ? chipColorStyle(item.label) : undefined}>
+        <span
+          key={item.id}
+          className="group/chip inline-flex items-center gap-1 font-body text-caption px-2 py-0.5 rounded-full bg-surface-2 text-text-secondary"
+          style={colored ? chipColorStyle(item.label) : undefined}
+        >
           {renderLabel ? renderLabel(item) : (
-            <span>{item.label}</span>
+            <span className="leading-none">{item.label}</span>
           )}
           {!disabled && (
             <button
-              className={iconAction({ color: 'dim' })}
-              style={{ fontSize: 'var(--font-size-micro)' }}
+              type="button"
+              aria-label={`Remove ${item.label}`}
+              className="size-3.5 shrink-0 flex items-center justify-center rounded-full
+                         opacity-0 group-hover/chip:opacity-100
+                         transition-opacity duration-fast
+                         text-current hover:bg-black/15
+                         cursor-pointer border-0 bg-transparent leading-none"
               onClick={() => onRemove(item.id)}
             >
               ×
@@ -82,11 +91,13 @@ export default function ChipEditor({
           )}
         </span>
       ))}
+
       {overflow > 0 && (
-        <span className={chip({ variant: 'subtle' })}>
+        <span className="font-body text-caption text-text-dim px-1 leading-none">
           +{overflow} more
         </span>
       )}
+
       {!disabled && (
         adding ? (
           renderPicker({
@@ -98,14 +109,20 @@ export default function ChipEditor({
           })
         ) : (
           <button
-            className={iconAction({ color: 'dim' })}
-            style={{ fontSize: 'var(--font-size-micro)' }}
+            type="button"
+            aria-label="Add"
+            className="size-5 shrink-0 flex items-center justify-center rounded-full
+                       opacity-0 group-hover/editor:opacity-100
+                       transition-opacity duration-fast
+                       bg-surface-2 text-text-dim hover:text-text hover:bg-surface-3
+                       cursor-pointer border-0 font-body text-caption leading-none"
             onClick={() => setAdding(true)}
           >
             +
           </button>
         )
       )}
+
     </div>
   );
 }

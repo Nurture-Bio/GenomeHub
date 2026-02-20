@@ -9,7 +9,7 @@ import {
 } from '../hooks/useGenomicQueries';
 import { useConfirm } from '../hooks/useConfirm';
 import { detectFormat, FORMAT_META, formatBytes, formatRelativeTime } from '../lib/formats';
-import { Button, Badge, Input, Text, Heading, Card, ChipEditor, iconAction, chip } from '../ui';
+import { Button, Badge, Input, Text, Heading, Card, ChipEditor, iconAction } from '../ui';
 import { CollectionPicker, OrganismPicker, FileTypePicker } from '../ui';
 
 // ── Format icon ──────────────────────────────────────────

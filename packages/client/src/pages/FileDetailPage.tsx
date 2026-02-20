@@ -8,7 +8,7 @@ import {
   useAddFileOrganism, useRemoveFileOrganism,
 } from '../hooks/useGenomicQueries';
 import { detectFormat, FORMAT_META, TEXT_PREVIEW_FORMATS, formatBytes, formatRelativeTime } from '../lib/formats';
-import { Heading, Text, Card, Badge, Button, InlineInput, Input, ChipEditor, iconAction, chip } from '../ui';
+import { Heading, Text, Card, Badge, Button, InlineInput, Input, ChipEditor, iconAction } from '../ui';
 import { CollectionPicker, OrganismPicker, FileTypePicker, RelationPicker } from '../ui';
 import LinksList from '../components/LinksList';
 

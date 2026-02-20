@@ -1,5 +1,5 @@
 import ServiceIcon from './ServiceIcon';
-import { Text, chip, iconAction } from '../ui';
+import { Text } from '../ui';
 
 interface LinkChipProps {
   url: string;
@@ -24,9 +24,14 @@ export default function LinkChip({ url, label, service, onDelete }: LinkChipProp
       </a>
       {onDelete && (
         <button
+          type="button"
+          aria-label="Remove link"
           onClick={e => { e.preventDefault(); onDelete(); }}
-          className={iconAction({ color: 'danger' }) + ' opacity-0 group-hover/chip:opacity-100'}
-          style={{ fontSize: 'var(--font-size-micro)' }}
+          className="size-3.5 shrink-0 flex items-center justify-center rounded-full
+                     opacity-0 group-hover/chip:opacity-100
+                     transition-opacity duration-fast
+                     text-text-dim hover:text-red hover:bg-black/15
+                     cursor-pointer border-0 bg-transparent font-body text-caption leading-none"
         >
           ×
         </button>
