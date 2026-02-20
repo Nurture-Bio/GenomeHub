@@ -16,10 +16,10 @@ import { createServer } from 'http';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import rateLimit from 'express-rate-limit';
 import { AppDataSource } from './app_data.js';
 import { Technique } from './entities/index.js';
 import { resolveUser } from './routes/auth.js';
-
 // Route modules
 import authRoutes from './routes/auth.js';
 import collectionRoutes from './routes/collections.js';
@@ -33,6 +33,11 @@ import relationTypeRoutes from './routes/relation_types.js';
 import fileKindRoutes from './routes/file_kinds.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const fallbackLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100,                  // limit each IP to 100 requests per windowMs
+});
+
 const app       = express();
 const server    = createServer(app);
 
@@ -79,7 +84,7 @@ app.use('/api/file-kinds', fileKindRoutes);
 
 const clientDist = path.join(__dirname, '..', '..', '..', 'dist', 'client');
 app.use(express.static(clientDist));
-app.get('*', (_req, res) => {
+app.get('*', fallbackLimiter, (_req, res) => {
   res.sendFile(path.join(clientDist, 'index.html'));
 });
 
