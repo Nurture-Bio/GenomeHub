@@ -15,7 +15,6 @@ interface RecentSelections {
 }
 
 interface PersistedState {
-  sidebarOpen: boolean;
   recentSelections: RecentSelections;
 }
 
@@ -27,7 +26,6 @@ interface AppState extends PersistedState {
   toggleFileSelection: (id: string) => void;
   selectAllFiles: (ids: string[]) => void;
   clearSelection: () => void;
-  toggleSidebar: () => void;
   addRecentSelection: (kind: keyof RecentSelections, id: string) => void;
   setBreadcrumbLabel: (id: string, label: string) => void;
   setUpload: (id: string, progress: UploadProgress) => void;
@@ -39,7 +37,6 @@ export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
       selectedFileIds: new Set<string>(),
-      sidebarOpen: true,
       recentSelections: { collections: [] },
       breadcrumbLabels: {},
       uploads: new Map<string, UploadProgress>(),
@@ -56,9 +53,6 @@ export const useAppStore = create<AppState>()(
 
       clearSelection: () =>
         set({ selectedFileIds: new Set<string>() }),
-
-      toggleSidebar: () =>
-        set((s) => ({ sidebarOpen: !s.sidebarOpen })),
 
       addRecentSelection: (kind, id) =>
         set((s) => {
@@ -105,7 +99,6 @@ export const useAppStore = create<AppState>()(
       name: 'genomehub-app',
       storage: createJSONStorage(() => localStorage),
       partialize: (state): PersistedState => ({
-        sidebarOpen: state.sidebarOpen,
         recentSelections: state.recentSelections,
       }),
     }

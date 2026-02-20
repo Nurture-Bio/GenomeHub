@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react';
+import { useState } from 'react';
 import { Routes, Route, NavLink, Navigate, useParams } from 'react-router-dom';
+import * as Dialog from '@radix-ui/react-dialog';
 import { cx } from 'class-variance-authority';
 import { navLink } from './ui/recipes';
 import { Text, Heading, iconAction } from './ui';
 import { useAuth } from './hooks/useAuth';
-import { useAppStore } from './stores/useAppStore';
 import LoginPage            from './pages/LoginPage';
 import DashboardPage        from './pages/DashboardPage';
 import FilesPage            from './pages/FilesPage';
@@ -97,6 +98,15 @@ const NAV_ITEMS: { to: string; label: string; icon: string; end?: boolean }[] = 
 
 // ── Sidebar content (shared between desktop static + mobile drawer) ──
 
+function SidebarBrand() {
+  return (
+    <div className="flex items-center gap-2 px-3 py-3 border-b border-border-subtle shrink-0">
+      <GenomicIcon />
+      <Heading as="span" level="subheading" className="font-bold">GenomeHub</Heading>
+    </div>
+  );
+}
+
 function SidebarNav({ onNavClick }: { onNavClick?: () => void }) {
   return (
     <nav className="flex flex-col gap-0.5 p-1.5 flex-1">
@@ -169,8 +179,7 @@ function LegacyCollectionRedirect() {
 
 export default function App() {
   const { user, loading, logout } = useAuth();
-  const sidebarOpen = useAppStore(s => s.sidebarOpen);
-  const toggleSidebar = useAppStore(s => s.toggleSidebar);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   if (loading) {
     return (
@@ -183,23 +192,20 @@ export default function App() {
 
   if (!user) return <LoginPage />;
 
-  const closeSidebar = () => { if (sidebarOpen) toggleSidebar(); };
-
   return (
     <div className="flex flex-col md:flex-row h-full" style={{ background: 'var(--color-bg)' }}>
-      {/* Mobile top bar — visible below md */}
+
+      {/* Mobile top bar */}
       <header
         className="flex md:hidden items-center gap-2 px-3 py-2 border-b border-border shrink-0"
         style={{ background: 'var(--color-bg-deep)' }}
       >
         <GenomicIcon />
-        <Heading as="span" level="subheading" className="font-bold flex-1">
-          GenomeHub
-        </Heading>
+        <Heading as="span" level="subheading" className="font-bold flex-1">GenomeHub</Heading>
         <button
-          onClick={toggleSidebar}
+          onClick={() => setMobileMenuOpen(true)}
           className={cx(iconAction({ color: 'dim' }), 'flex items-center justify-center min-h-5.5 min-w-5.5')}
-          aria-label="Toggle menu"
+          aria-label="Open menu"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
             strokeWidth="2" strokeLinecap="round">
@@ -210,39 +216,29 @@ export default function App() {
         </button>
       </header>
 
-      {/* Mobile backdrop — visible below md when sidebar open */}
-      <div
-        className={cx(
-          'fixed inset-0 z-20 bg-black/50 transition-opacity duration-fast md:hidden',
-          sidebarOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        )}
-        onClick={closeSidebar}
-      />
+      {/* Mobile drawer — Radix Dialog gives us focus trap + escape key for free */}
+      <Dialog.Root open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 bg-black/50 z-20 animate-fade-in" />
+          <Dialog.Content
+            className="fixed inset-y-0 left-0 z-30 flex flex-col border-r border-border animate-slide-in-left"
+            style={{ width: 200, background: 'var(--color-bg-deep)' }}
+            aria-label="Navigation"
+          >
+            <SidebarBrand />
+            <SidebarNav onNavClick={() => setMobileMenuOpen(false)} />
+            <SidebarFooter user={user} logout={logout} />
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
 
-      {/* Sidebar — fixed drawer on mobile, static on md+ */}
+      {/* Desktop sidebar — static, in normal flex flow */}
       <aside
-        className={cx(
-          'flex flex-col shrink-0 border-r border-border',
-          // Mobile: fixed drawer from left
-          'fixed inset-y-0 left-0 z-30 transition-transform duration-fast',
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full',
-          // Desktop: static sidebar, always visible
-          'md:static md:translate-x-0 md:z-auto'
-        )}
+        className="hidden md:flex flex-col shrink-0 border-r border-border"
         style={{ width: 200, background: 'var(--color-bg-deep)' }}
       >
-        {/* Brand */}
-        <div className="flex items-center gap-2 px-3 py-3 border-b border-border-subtle">
-          <GenomicIcon />
-          <Heading as="span" level="subheading" className="font-bold">
-            GenomeHub
-          </Heading>
-        </div>
-
-        {/* Nav — close sidebar on mobile nav click */}
-        <SidebarNav onNavClick={closeSidebar} />
-
-        {/* Footer — user info */}
+        <SidebarBrand />
+        <SidebarNav />
         <SidebarFooter user={user} logout={logout} />
       </aside>
 

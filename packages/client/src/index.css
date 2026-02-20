@@ -189,6 +189,9 @@
   --animate-fade-in: fadeIn var(--duration-fast) var(--ease-decelerate);
   /* Enter animation: φ⁻¹ × timing-base ≈ 124ms, decelerate for landing */
 
+  --animate-slide-in-left: slideInLeft var(--duration-fast) var(--ease-decelerate);
+  /* Drawer enter: slides in from the left edge */
+
   --animate-alt-row-enter: fadeIn var(--duration-fast) var(--ease-decelerate) both;
   /* Alt-row stagger: reuses fadeIn, fill-mode:both holds opacity:0 during delay */
 
@@ -508,6 +511,10 @@
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(0); }
 }
 @keyframes pulse {
   0%, 100% { opacity: 1; }
