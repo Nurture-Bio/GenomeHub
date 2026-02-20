@@ -435,7 +435,10 @@
 /*    Hover/active states are pure CSS — no JS needed.     */
 
 .hash-chip {
-  @apply inline-flex items-center gap-1 font-body text-caption px-2 py-0.5 rounded-full transition-[filter] duration-fast;
+  @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full transition-[filter];
+  font-family:         var(--font-body);
+  font-size:           var(--font-size-caption);
+  transition-duration: var(--duration-fast);
   background: var(--hc-bg, var(--color-surface-2));
   color:      var(--hc-fg, var(--color-text-secondary));
 }
@@ -443,7 +446,10 @@
 .hash-chip:active { filter: brightness(0.88); }
 
 .hash-filter-btn {
-  @apply font-body text-micro px-1.5 py-1 md:py-0.5 rounded-sm border transition-[filter,background,color,border-color] duration-fast cursor-pointer min-h-5.5 md:min-h-0;
+  @apply px-1.5 py-1 md:py-0.5 rounded-sm border transition-[filter,background,color,border-color] cursor-pointer min-h-5.5 md:min-h-0;
+  font-family:         var(--font-body);
+  font-size:           var(--font-size-micro);
+  transition-duration: var(--duration-fast);
   background:   var(--color-surface-2);
   color:        var(--color-text-secondary);
   border-color: var(--color-border);
