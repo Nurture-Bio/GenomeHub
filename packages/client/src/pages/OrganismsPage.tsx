@@ -69,14 +69,14 @@ export default function OrganismsPage() {
 
       {/* Desktop table */}
       <div className="hidden md:block flex-1 overflow-auto min-h-0 border border-border rounded-md bg-surface">
-        <table className="w-full border-collapse text-left">
+        <table className="w-full border-collapse text-left table-fixed">
           <thead className="sticky top-0 bg-surface-2 z-10">
             <tr className="border-b border-border">
               <th className="py-1.5 pr-3 pl-2.5"><Text variant="overline">Organism</Text></th>
               <th className="py-1.5 pr-3 pl-2.5"><Text variant="overline">Details</Text></th>
-              <th className="py-1.5 pr-3 pl-2.5 text-right"><Text variant="overline">Coll.</Text></th>
-              <th className="py-1.5 pr-3 pl-2.5 text-right"><Text variant="overline">Files</Text></th>
-              <th className="w-6" />
+              <th className="py-1.5 pr-3 pl-2.5 text-right w-14"><Text variant="overline">Coll.</Text></th>
+              <th className="py-1.5 pr-3 pl-2.5 text-right w-14"><Text variant="overline">Files</Text></th>
+              <th className="w-7" />
             </tr>
           </thead>
           <tbody>
@@ -86,17 +86,17 @@ export default function OrganismsPage() {
                 <>
                   {data?.map(o => (
                     <tr key={o.id} className="border-b border-border-subtle hover:bg-surface transition-colors duration-fast group">
-                      <td className="py-1.5 pl-2.5 pr-3">
-                        <div className="flex items-baseline gap-1">
+                      <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
+                        <div className="flex items-baseline gap-1 min-w-0">
                           <InlineInput value={o.genus} mono className="italic" onCommit={v => handleUpdate(o.id, { genus: v })} />
                           <InlineInput value={o.species} mono className="font-semibold" onCommit={v => handleUpdate(o.id, { species: v })} />
                         </div>
-                        <div className="flex items-baseline gap-1.5 mt-0.5">
+                        <div className="flex items-baseline gap-1.5 mt-0.5 min-w-0">
                           <InlineInput value={o.strain ?? ''} placeholder="strain" mono onCommit={v => handleUpdate(o.id, { strain: v || null })} />
                           <InlineInput value={o.commonName ?? ''} placeholder="common name" onCommit={v => handleUpdate(o.id, { commonName: v || null })} />
                         </div>
                       </td>
-                      <td className="py-1.5 pl-2.5 pr-3">
+                      <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
                         <InlineInput value={o.referenceGenome ?? ''} placeholder="ref. genome" onCommit={v => handleUpdate(o.id, { referenceGenome: v || null })} />
                         <div className="mt-0.5">
                           <InlineInput value={o.ncbiTaxId?.toString() ?? ''} placeholder="NCBI tax ID" mono onCommit={v => handleUpdate(o.id, { ncbiTaxId: parseInt(v) || null })} />
@@ -118,18 +118,16 @@ export default function OrganismsPage() {
 
                   {/* Inline add row */}
                   <tr className="text-text-dim">
-                    <td className="py-1.5 pl-2.5 pr-3">
-                      <div className="flex items-baseline gap-1">
+                    <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
+                      <div className="flex items-baseline gap-1 min-w-0">
                         <input ref={genusRef} value={newGenus} onChange={e => setNewGenus(e.target.value)}
                           onKeyDown={e => { if (e.key === 'Enter') handleCreate(); }}
                           placeholder="+ genus"
-                          className={cx(inlineInput({ font: 'mono' }), 'italic')}
-                          style={{ width: `${Math.max(newGenus.length, 7) + 1}ch` }} />
+                          className={cx(inlineInput({ font: 'mono' }), 'italic flex-1 min-w-0')} />
                         <input value={newSpecies} onChange={e => setNewSpecies(e.target.value)}
                           onKeyDown={e => { if (e.key === 'Enter') handleCreate(); }}
                           placeholder="species"
-                          className={cx(inlineInput({ font: 'mono' }), 'font-semibold')}
-                          style={{ width: `${Math.max(newSpecies.length, 7) + 1}ch` }} />
+                          className={cx(inlineInput({ font: 'mono' }), 'font-semibold flex-1 min-w-0')} />
                       </div>
                     </td>
                     <td colSpan={3} />
