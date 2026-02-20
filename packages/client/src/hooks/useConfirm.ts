@@ -1,46 +1,51 @@
-import { useState, useCallback, createElement } from 'react';
-import ConfirmDialog from '../components/ConfirmDialog';
+import { create } from 'zustand';
 
-interface ConfirmOptions {
+export interface ConfirmOptions {
   title: string;
   message: string;
   confirmLabel?: string;
   destructive?: boolean;
 }
 
-export function useConfirm() {
-  const [state, setState] = useState<{
-    options: ConfirmOptions;
-    resolve: (value: boolean) => void;
-  } | null>(null);
+interface ConfirmStoreState {
+  open: boolean;
+  title: string;
+  message: string;
+  confirmLabel: string;
+  destructive: boolean;
+  _resolve: ((v: boolean) => void) | null;
+  show: (options: ConfirmOptions) => Promise<boolean>;
+  respond: (v: boolean) => void;
+}
 
-  const confirm = useCallback((options: ConfirmOptions): Promise<boolean> => {
-    return new Promise<boolean>((resolve) => {
-      setState({ options, resolve });
-    });
-  }, []);
+export const useConfirmStore = create<ConfirmStoreState>((set, get) => ({
+  open: false,
+  title: '',
+  message: '',
+  confirmLabel: 'Confirm',
+  destructive: false,
+  _resolve: null,
 
-  const handleConfirm = useCallback(() => {
-    state?.resolve(true);
-    setState(null);
-  }, [state]);
-
-  const handleCancel = useCallback(() => {
-    state?.resolve(false);
-    setState(null);
-  }, [state]);
-
-  const dialog = state
-    ? createElement(ConfirmDialog, {
+  show: (options) =>
+    new Promise<boolean>((resolve) => {
+      set({
         open: true,
-        title: state.options.title,
-        message: state.options.message,
-        confirmLabel: state.options.confirmLabel,
-        destructive: state.options.destructive,
-        onConfirm: handleConfirm,
-        onCancel: handleCancel,
-      })
-    : null;
+        title: options.title,
+        message: options.message,
+        confirmLabel: options.confirmLabel ?? 'Confirm',
+        destructive: options.destructive ?? false,
+        _resolve: resolve,
+      });
+    }),
 
-  return { confirm, dialog };
+  respond: (v) => {
+    get()._resolve?.(v);
+    set({ open: false, _resolve: null });
+  },
+}));
+
+/** Call confirm() anywhere — no {dialog} to render in your component. */
+export function useConfirm() {
+  const confirm = useConfirmStore((s) => s.show);
+  return { confirm };
 }

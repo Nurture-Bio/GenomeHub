@@ -241,7 +241,7 @@ export default function FilesPage() {
   const { addFileOrganism } = useAddFileOrganism(refetch);
   const { removeFileOrganism } = useRemoveFileOrganism(refetch);
   const { getUrl } = usePresignedUrl();
-  const { confirm, dialog } = useConfirm();
+  const { confirm } = useConfirm();
 
   // Derive format and type filters from actual data
   const formatFilters = useMemo(() => {
@@ -325,7 +325,6 @@ export default function FilesPage() {
 
   return (
     <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 h-full min-h-0">
-      {dialog}
       {/* Header */}
       <div className="flex items-center gap-2 md:gap-3 shrink-0">
         <div className="flex-1 min-w-0">

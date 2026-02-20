@@ -1,38 +1,43 @@
-import { modalOverlay, modalCard } from '../ui/recipes';
+import * as Dialog from '@radix-ui/react-dialog';
+import { useConfirmStore } from '../hooks/useConfirm';
 import { Button, Heading, Text } from '../ui';
 
-interface ConfirmDialogProps {
-  open: boolean;
-  title: string;
-  message: string;
-  confirmLabel?: string;
-  destructive?: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
-}
-
-export default function ConfirmDialog({
-  open, title, message, confirmLabel = 'Confirm',
-  destructive = false, onConfirm, onCancel,
-}: ConfirmDialogProps) {
-  if (!open) return null;
+/**
+ * Rendered once in App.tsx. Reacts to useConfirmStore — no props, no {dialog}
+ * scattered across pages. Focus trapping, escape key, and aria-modal are all
+ * handled by Radix.
+ */
+export default function ConfirmDialog() {
+  const { open, title, message, confirmLabel, destructive, respond } = useConfirmStore();
 
   return (
-    <div className={modalOverlay()} onClick={onCancel}>
-      <div className={modalCard()} onClick={(e) => e.stopPropagation()}>
-        <Heading level="subheading" className="mb-1">{title}</Heading>
-        <Text variant="body" as="p" className="mb-3">{message}</Text>
-        <div className="flex justify-end gap-1.5">
-          <Button intent="ghost" size="sm" onClick={onCancel}>Cancel</Button>
-          <Button
-            intent={destructive ? 'danger' : 'primary'}
-            size="sm"
-            onClick={onConfirm}
-          >
-            {confirmLabel}
-          </Button>
-        </div>
-      </div>
-    </div>
+    <Dialog.Root open={open} onOpenChange={(o) => { if (!o) respond(false); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 bg-black/75 z-modal animate-fade-in" />
+        <Dialog.Content
+          className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-modal
+                     bg-surface-3 border border-border rounded-lg shadow-lg
+                     p-3 w-full max-w-sm mx-2 animate-fade-in"
+          onPointerDownOutside={() => respond(false)}
+        >
+          <Dialog.Title asChild>
+            <Heading level="subheading" className="mb-1">{title}</Heading>
+          </Dialog.Title>
+          <Dialog.Description asChild>
+            <Text variant="body" as="p" className="mb-3">{message}</Text>
+          </Dialog.Description>
+          <div className="flex justify-end gap-1.5">
+            <Button intent="ghost" size="sm" onClick={() => respond(false)}>Cancel</Button>
+            <Button
+              intent={destructive ? 'danger' : 'primary'}
+              size="sm"
+              onClick={() => respond(true)}
+            >
+              {confirmLabel}
+            </Button>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

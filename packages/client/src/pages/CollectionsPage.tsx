@@ -30,7 +30,7 @@ export default function CollectionsPage() {
   const { createCollection, pending: createPending } = useCreateCollectionMutation(refetch);
   const { updateCollection } = useUpdateCollectionMutation(refetch);
   const { deleteCollection } = useDeleteCollectionMutation(refetch);
-  const { confirmDelete, dialog } = useConfirmDelete(deleteCollection, 'collection');
+  const { confirmDelete } = useConfirmDelete(deleteCollection, 'collection');
   const { data: techniques } = useTechniquesQuery();
   const { addCollectionOrganism } = useAddCollectionOrganism(refetch);
   const { removeCollectionOrganism } = useRemoveCollectionOrganism(refetch);
@@ -70,7 +70,6 @@ export default function CollectionsPage() {
 
   return (
     <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 h-full min-h-0">
-      {dialog}
       <div className="shrink-0">
         <Heading level="heading">Collections</Heading>
         <Text variant="caption">

@@ -54,13 +54,12 @@ export default function OrganismsPage() {
       toast.success('Deleted'); refetch();
     } catch (err) { toast.error(err instanceof Error ? err.message : 'Failed to delete organism'); }
   }, [refetch]);
-  const { confirmDelete, dialog } = useConfirmDelete(doDelete, 'organism');
+  const { confirmDelete } = useConfirmDelete(doDelete, 'organism');
 
   const ready = newGenus.trim().length > 0 && newSpecies.trim().length > 0;
 
   return (
     <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 h-full min-h-0">
-      {dialog}
       <div className="shrink-0">
         <Heading level="heading">Organisms</Heading>
         <Text variant="caption">

@@ -125,7 +125,7 @@ export default function SettingsPage() {
     if (!r.ok) throw new Error('Delete failed');
     toast.success('Deleted'); refetchRelations();
   }, [refetchRelations]);
-  const { confirmDelete: confirmDeleteRelation, dialog: dialogRelation } = useConfirmDelete(doDeleteRelation, 'relation type');
+  const { confirmDelete: confirmDeleteRelation } = useConfirmDelete(doDeleteRelation, 'relation type');
 
   const addRelation = useCallback(async (name: string, description: string) => {
     await createRelationType({ name, description: description || undefined });
@@ -145,7 +145,7 @@ export default function SettingsPage() {
     if (!r.ok) throw new Error('Delete failed');
     toast.success('Deleted'); refetchTypes();
   }, [refetchTypes]);
-  const { confirmDelete: confirmDeleteType, dialog: dialogType } = useConfirmDelete(doDeleteType, 'file type');
+  const { confirmDelete: confirmDeleteType } = useConfirmDelete(doDeleteType, 'file type');
 
   const addType = useCallback(async (name: string, description: string) => {
     await createFileType({ name, description: description || undefined });
@@ -165,7 +165,7 @@ export default function SettingsPage() {
     if (!r.ok) throw new Error('Delete failed');
     toast.success('Deleted'); refetchTechniques();
   }, [refetchTechniques]);
-  const { confirmDelete: confirmDeleteTechnique, dialog: dialogTechnique } = useConfirmDelete(doDeleteTechnique, 'technique');
+  const { confirmDelete: confirmDeleteTechnique } = useConfirmDelete(doDeleteTechnique, 'technique');
 
   const addTechnique = useCallback(async (name: string, description: string) => {
     await createTechnique({ name, description: description || undefined });
@@ -173,9 +173,6 @@ export default function SettingsPage() {
 
   return (
     <div className="flex flex-col gap-4 md:gap-5 p-2 md:p-3 max-w-2xl mx-auto w-full">
-      {dialogRelation}
-      {dialogType}
-      {dialogTechnique}
       <div>
         <Heading level="heading">Settings</Heading>
         <Text variant="caption">Manage reference data used across GenomeHub</Text>

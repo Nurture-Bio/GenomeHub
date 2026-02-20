@@ -18,6 +18,7 @@ import SettingsPage         from './pages/SettingsPage';
 import PageErrorBoundary    from './components/PageErrorBoundary';
 import Breadcrumbs          from './components/Breadcrumbs';
 import GlobalUploadProgress from './components/GlobalUploadProgress';
+import ConfirmDialog        from './components/ConfirmDialog';
 
 // ── DNA helix icon ────────────────────────────────────────
 const GenomicIcon = () => (
@@ -245,7 +246,8 @@ export default function App() {
         <SidebarFooter user={user} logout={logout} />
       </aside>
 
-      {/* Global upload toast */}
+      {/* Global dialogs */}
+      <ConfirmDialog />
       <GlobalUploadProgress />
 
       {/* Main */}

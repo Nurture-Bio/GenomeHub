@@ -1,18 +1,11 @@
 import { useCallback } from 'react';
 import { useConfirm } from './useConfirm';
 
-/**
- * Wraps any delete function with a standardized confirmation dialog.
- * Usage:
- *   const { confirmDelete, dialog } = useConfirmDelete(deleteFn, 'organism');
- *   <button onClick={() => confirmDelete(id, 'E. coli')}>×</button>
- *   {dialog}
- */
 export function useConfirmDelete(
   deleteFn: (id: string) => Promise<void>,
   entityName: string,
 ) {
-  const { confirm, dialog } = useConfirm();
+  const { confirm } = useConfirm();
 
   const confirmDelete = useCallback(async (id: string, displayName?: string) => {
     const ok = await confirm({
@@ -24,5 +17,5 @@ export function useConfirmDelete(
     if (ok) await deleteFn(id);
   }, [confirm, deleteFn, entityName]);
 
-  return { confirmDelete, dialog };
+  return { confirmDelete };
 }
