@@ -54,7 +54,7 @@ export function CollectionPicker({ value, onValueChange, type, placeholder = 'Co
     return (data ?? []).map(c => ({
       id: c.id,
       label: c.name,
-      description: [c.techniqueName, c.organismDisplay].filter(Boolean).join(' / '),
+      description: [...c.techniques.map(t => t.name), ...c.organisms.map(o => o.displayName)].filter(Boolean).join(' / '),
     }));
   }, [data, overrideItems]);
 

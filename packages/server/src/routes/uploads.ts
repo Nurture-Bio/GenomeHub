@@ -13,16 +13,17 @@ const router = Router();
 
 /** Step 1 — register file metadata and initiate S3 multipart */
 router.post('/initiate', asyncWrap(async (req, res) => {
-  const { filename, contentType, sizeBytes, description, tags, organismId, collectionId, type } =
+  const { filename, contentType, sizeBytes, description, tags, organismIds, collectionId, types, type } =
     req.body as {
       filename:    string;
       contentType: string;
       sizeBytes:   number;
       description?: string;
       tags?: string[];
-      organismId?: string;
+      organismIds?: string[];
       collectionId?: string;
-      type?: string;
+      types?: string[];
+      type?: string;  // backward compat: single string
     };
 
   if (!filename) {
@@ -39,7 +40,7 @@ router.post('/initiate', asyncWrap(async (req, res) => {
     status: 'pending',
     s3Key:  '',   // filled after we have the id
     format: detectFormat(filename),
-    type:   type ?? 'raw',
+    type:   types ?? (type ? [type] : ['raw']),
     uploadedBy: (res.locals.user as User)?.email ?? null,
   });
   await repo.save(file);
@@ -56,8 +57,10 @@ router.post('/initiate', asyncWrap(async (req, res) => {
   if (collectionId) {
     await edges.link({ type: 'file', id: file.id }, { type: 'collection', id: collectionId }, 'belongs_to', null, userId);
   }
-  if (organismId) {
-    await edges.link({ type: 'file', id: file.id }, { type: 'organism', id: organismId }, 'from_organism', null, userId);
+  if (organismIds?.length) {
+    for (const orgId of organismIds) {
+      await edges.link({ type: 'file', id: file.id }, { type: 'organism', id: orgId }, 'from_organism', null, userId);
+    }
   }
 
   res.json({ fileId: file.id, uploadId, s3Key });

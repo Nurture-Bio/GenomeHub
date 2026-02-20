@@ -46,8 +46,8 @@ router.get('/', asyncWrap(async (req, res) => {
 
   if (type) {
     qb = filteredFileIds !== null
-      ? qb.andWhere('f.type = :type', { type })
-      : qb.where('f.type = :type', { type });
+      ? qb.andWhere(':type = ANY(f.type)', { type })
+      : qb.where(':type = ANY(f.type)', { type });
   }
 
   const files = await qb.getMany();
@@ -60,9 +60,9 @@ router.get('/', asyncWrap(async (req, res) => {
     .where('e.source_type = :st AND e.source_id IN (:...ids)', { st: 'file', ids: fileIds })
     .getMany();
 
-  // Build maps — many-to-many for collections
+  // Build maps — many-to-many for collections and organisms
   const collectionIdsByFile = new Map<string, string[]>();
-  const organismIdByFile = new Map<string, string>();
+  const organismIdsByFile = new Map<string, string[]>();
 
   for (const e of allEdges) {
     if (e.relation === 'belongs_to' && e.targetType === 'collection') {
@@ -70,12 +70,16 @@ router.get('/', asyncWrap(async (req, res) => {
       arr.push(e.targetId);
       collectionIdsByFile.set(e.sourceId, arr);
     }
-    if (e.relation === 'from_organism') organismIdByFile.set(e.sourceId, e.targetId);
+    if (e.relation === 'from_organism') {
+      const arr = organismIdsByFile.get(e.sourceId) ?? [];
+      arr.push(e.targetId);
+      organismIdsByFile.set(e.sourceId, arr);
+    }
   }
 
   // Load related entities
   const allColIds = [...new Set([...collectionIdsByFile.values()].flat())];
-  const allOrgIds = [...new Set(organismIdByFile.values())];
+  const allOrgIds = [...new Set([...organismIdsByFile.values()].flat())];
 
   const colMap = new Map<string, Collection>();
   const orgMap = new Map<string, Organism>();
@@ -90,7 +94,7 @@ router.get('/', asyncWrap(async (req, res) => {
   }
 
   res.json(files.map(f => {
-    const oId = organismIdByFile.get(f.id);
+    const orgIds = organismIdsByFile.get(f.id) ?? [];
     const colIds = collectionIdsByFile.get(f.id) ?? [];
 
     return {
@@ -99,14 +103,16 @@ router.get('/', asyncWrap(async (req, res) => {
       s3Key:       f.s3Key,
       sizeBytes:   Number(f.sizeBytes),
       format:      f.format,
-      type:        f.type,
+      types:       f.type,
       md5:         f.md5,
       status:      f.status,
       uploadedAt:  f.uploadedAt,
       description: f.description,
       tags:        f.tags,
-      organismId:  oId ?? null,
-      organismDisplay: oId ? (orgMap.get(oId) ? organismDisplay(orgMap.get(oId)!) : null) : null,
+      organisms:   orgIds.map(oId => {
+        const org = orgMap.get(oId);
+        return { id: oId, displayName: org ? organismDisplay(org) : oId };
+      }),
       collections: colIds.map(cId => ({ id: cId, name: colMap.get(cId)?.name ?? null })),
       uploadedBy:  f.uploadedBy,
     };
@@ -170,7 +176,7 @@ router.get('/:id', asyncWrap(async (req, res) => {
   const neighborhood = await edges.getNeighborhood({ type: 'file', id: file.id });
 
   const collectionIds: string[] = [];
-  let organismId: string | null = null;
+  const organismIds: string[] = [];
   const provenanceUp: { fileId: string; relation: string; edgeId: string }[] = [];
   const provenanceDown: { fileId: string; relation: string; edgeId: string }[] = [];
   const linkEdges: EntityEdge[] = [];
@@ -179,7 +185,7 @@ router.get('/:id', asyncWrap(async (req, res) => {
   for (const e of neighborhood) {
     if (e.sourceId === file.id && e.sourceType === 'file') {
       if (e.relation === 'belongs_to' && e.targetType === 'collection') collectionIds.push(e.targetId);
-      if (e.relation === 'from_organism') organismId = e.targetId;
+      if (e.relation === 'from_organism') organismIds.push(e.targetId);
       if (e.relation === 'links_to') linkEdges.push(e);
       if (e.targetType === 'file' && !SYSTEM_RELATIONS.has(e.relation)) {
         provenanceUp.push({ fileId: e.targetId, relation: e.relation, edgeId: e.id });
@@ -195,9 +201,12 @@ router.get('/:id', asyncWrap(async (req, res) => {
   const collections = collectionIds.length
     ? await AppDataSource.getRepository(Collection).findByIds(collectionIds)
     : [];
-  const organism = organismId
-    ? await AppDataSource.getRepository(Organism).findOneBy({ id: organismId })
-    : null;
+
+  const uniqueOrgIds = [...new Set(organismIds)];
+  const organisms = uniqueOrgIds.length
+    ? await AppDataSource.getRepository(Organism).findByIds(uniqueOrgIds)
+    : [];
+  const orgMap = new Map(organisms.map(o => [o.id, o]));
 
   // Load provenance files
   const allProvFileIds = [...new Set([
@@ -215,23 +224,25 @@ router.get('/:id', asyncWrap(async (req, res) => {
     s3Key: file.s3Key,
     sizeBytes: Number(file.sizeBytes),
     format: file.format,
-    type: file.type,
+    types: file.type,
     md5: file.md5,
     status: file.status,
     description: file.description,
     tags: file.tags,
     uploadedBy: file.uploadedBy,
     uploadedAt: file.uploadedAt,
-    collections: collections.map(c => ({ id: c.id, name: c.name, type: c.type })),
-    organismId,
-    organismDisplay: organism ? organismDisplay(organism) : null,
+    collections: collections.map(c => ({ id: c.id, name: c.name, types: c.type })),
+    organisms: organismIds.map(oId => {
+      const org = orgMap.get(oId);
+      return { id: oId, displayName: org ? organismDisplay(org) : oId };
+    }),
     provenance: {
       upstream: provenanceUp.map(p => {
         const f = provFileMap.get(p.fileId);
         return {
           edgeId: p.edgeId,
           relation: p.relation,
-          file: f ? { id: f.id, filename: f.filename, type: f.type, format: f.format } : null,
+          file: f ? { id: f.id, filename: f.filename, types: f.type, format: f.format } : null,
         };
       }),
       downstream: provenanceDown.map(p => {
@@ -239,7 +250,7 @@ router.get('/:id', asyncWrap(async (req, res) => {
         return {
           edgeId: p.edgeId,
           relation: p.relation,
-          file: f ? { id: f.id, filename: f.filename, type: f.type, format: f.format } : null,
+          file: f ? { id: f.id, filename: f.filename, types: f.type, format: f.format } : null,
         };
       }),
     },
@@ -260,22 +271,53 @@ router.put('/:id', asyncWrap(async (req, res) => {
   const file = await repo.findOneBy({ id: req.params.id });
   if (!file) { res.status(404).json({ error: 'not found' }); return; }
 
-  const { type, format, organismId, description, tags } = req.body as Partial<{
-    type: string; format: string; organismId: string | null;
+  const { types, format, description, tags } = req.body as Partial<{
+    types: string[]; format: string;
     description: string | null; tags: string[];
   }>;
 
-  if (type !== undefined) file.type = type;
+  if (types !== undefined) file.type = types;
   if (format !== undefined) file.format = format;
   if (description !== undefined) file.description = description;
   if (tags !== undefined) file.tags = tags;
   await repo.save(file);
 
-  if (organismId !== undefined) {
-    await edges.replaceEdge({ type: 'file', id: file.id }, 'from_organism', 'organism', organismId || null);
-  }
-
   res.json(file);
+}));
+
+// ─── File organism link/unlink ──────────────────────────────
+
+router.post('/:id/organisms', asyncWrap(async (req, res) => {
+  const repo = AppDataSource.getRepository(GenomicFile);
+  const file = await repo.findOneBy({ id: req.params.id });
+  if (!file) { res.status(404).json({ error: 'file not found' }); return; }
+
+  const { organismId } = req.body as { organismId: string };
+  if (!organismId) { res.status(400).json({ error: 'organismId required' }); return; }
+
+  const organism = await AppDataSource.getRepository(Organism).findOneBy({ id: organismId });
+  if (!organism) { res.status(400).json({ error: 'organism not found' }); return; }
+
+  const userId = (res.locals.user as User)?.id ?? null;
+  const edge = await edges.link(
+    { type: 'file', id: file.id },
+    { type: 'organism', id: organismId },
+    'from_organism',
+    null,
+    userId,
+  );
+
+  // Return 201 if newly created, 200 if already existed
+  res.status(edge.createdBy === userId ? 201 : 200).json({ ok: true });
+}));
+
+router.delete('/:id/organisms/:organismId', asyncWrap(async (req, res) => {
+  await edges.unlink(
+    { type: 'file', id: req.params.id },
+    { type: 'organism', id: req.params.organismId },
+    'from_organism',
+  );
+  res.json({ ok: true });
 }));
 
 // ─── Add provenance edge ────────────────────────────────────

@@ -5,10 +5,11 @@ import { cx } from 'class-variance-authority';
 import {
   useFilesQuery, useDeleteFileMutation, useUpdateFileMutation,
   usePresignedUrl, useAddFilesToCollection, useRemoveFilesFromCollection,
+  useAddFileOrganism, useRemoveFileOrganism,
 } from '../hooks/useGenomicQueries';
 import { useConfirm } from '../hooks/useConfirm';
 import { detectFormat, FORMAT_META, formatBytes, formatRelativeTime } from '../lib/formats';
-import { Button, Badge, Input, Text, Heading, Card, iconAction, chip } from '../ui';
+import { Button, Badge, Input, Text, Heading, Card, ChipEditor, iconAction, chip } from '../ui';
 import { CollectionPicker, OrganismPicker, FileTypePicker } from '../ui';
 
 // ── Format icon ──────────────────────────────────────────
@@ -28,59 +29,6 @@ function FormatIcon({ filename, format, size = 32 }: { filename: string; format?
       }}
     >
       {meta.label}
-    </div>
-  );
-}
-
-// ── Inline collection editor ─────────────────────────────
-
-function InlineCollectionEditor({
-  fileId, collections, onAdd, onRemove,
-}: {
-  fileId: string;
-  collections: { id: string; name: string | null }[];
-  onAdd: (collectionId: string, fileIds: string[]) => Promise<void>;
-  onRemove: (collectionId: string, fileIds: string[]) => Promise<void>;
-}) {
-  const [adding, setAdding] = useState(false);
-
-  return (
-    <div className="flex gap-0.5 flex-wrap items-center">
-      {collections.map(c => (
-        <span key={c.id} className={chip()}>
-          <Link to={`/collections/${c.id}`} className="no-underline text-text-secondary hover:text-accent">
-            {c.name}
-          </Link>
-          <button
-            className={iconAction({ color: 'dim' })}
-            style={{ fontSize: 'var(--font-size-micro)' }}
-            onClick={() => onRemove(c.id, [fileId])}
-          >
-            ×
-          </button>
-        </span>
-      ))}
-      {adding ? (
-        <CollectionPicker
-          value=""
-          onValueChange={v => {
-            if (v) onAdd(v, [fileId]);
-            setAdding(false);
-          }}
-          placeholder="Collection..."
-          variant="surface"
-          size="sm"
-          className="w-32"
-        />
-      ) : (
-        <button
-          className={iconAction({ color: 'dim' })}
-          style={{ fontSize: 'var(--font-size-micro)' }}
-          onClick={() => setAdding(true)}
-        >
-          +
-        </button>
-      )}
     </div>
   );
 }
@@ -119,6 +67,8 @@ function FileCard({ file, onDownload, selected, onSelect }: FileCardProps) {
       {/* Metadata row */}
       <div className="flex items-center gap-2 flex-wrap pl-5.5">
         <Text variant="caption">{formatBytes(file.sizeBytes)}</Text>
+        {file.types.map(t => <Badge key={t} variant="count" color="dim">{t}</Badge>)}
+        {file.organisms.map(o => <Text key={o.id} variant="caption" className="italic">{o.displayName}</Text>)}
         {file.status === 'ready'   && <Badge variant="status" color="green">ready</Badge>}
         {file.status === 'pending' && <Badge variant="status" color="yellow">uploading</Badge>}
         {file.status === 'error'   && <Badge variant="status" color="red">error</Badge>}
@@ -138,14 +88,16 @@ function FileCard({ file, onDownload, selected, onSelect }: FileCardProps) {
 interface FileRowProps {
   file: GenomicFile;
   onDownload: (id: string) => void;
-  onUpdate: (id: string, patch: { type?: string; format?: string; organismId?: string | null; tags?: string[] }) => void;
+  onUpdateTypes: (id: string, types: string[]) => void;
+  onAddOrganism: (fileId: string, orgId: string) => void;
+  onRemoveOrganism: (fileId: string, orgId: string) => void;
   onAddToCollection: (collectionId: string, fileIds: string[]) => Promise<void>;
   onRemoveFromCollection: (collectionId: string, fileIds: string[]) => Promise<void>;
   selected: boolean;
   onSelect: (id: string, sel: boolean) => void;
 }
 
-function FileRow({ file, onDownload, onUpdate, onAddToCollection, onRemoveFromCollection, selected, onSelect }: FileRowProps) {
+function FileRow({ file, onDownload, onUpdateTypes, onAddOrganism, onRemoveOrganism, onAddToCollection, onRemoveFromCollection, selected, onSelect }: FileRowProps) {
   return (
     <tr
       className="border-b border-border-subtle transition-colors duration-fast hover:bg-surface group"
@@ -184,31 +136,40 @@ function FileRow({ file, onDownload, onUpdate, onAddToCollection, onRemoveFromCo
         </div>
       </td>
 
-      {/* Organism — always-rendered dropdown */}
+      {/* Organism — ChipEditor */}
       <td className="py-1.5 pr-3 w-36 align-top pt-2">
-        <OrganismPicker
-          value={file.organismId ?? ''}
-          onValueChange={v => onUpdate(file.id, { organismId: v || null })}
-          variant="surface" size="sm" className="w-full"
+        <ChipEditor
+          items={file.organisms.map(o => ({ id: o.id, label: o.displayName }))}
+          onAdd={id => onAddOrganism(file.id, id)}
+          onRemove={id => onRemoveOrganism(file.id, id)}
+          renderPicker={p => <OrganismPicker {...p} variant="surface" size="sm" className="w-32" />}
+          maxVisible={2}
         />
       </td>
 
-      {/* Type — always-rendered dropdown */}
+      {/* Type — ChipEditor */}
       <td className="py-1.5 pr-3 w-28 align-top pt-2">
-        <FileTypePicker
-          value={file.type}
-          onValueChange={v => onUpdate(file.id, { type: v })}
-          variant="surface" size="sm" className="w-full"
+        <ChipEditor
+          items={file.types.map(t => ({ id: t, label: t }))}
+          onAdd={id => onUpdateTypes(file.id, [...file.types, id])}
+          onRemove={id => onUpdateTypes(file.id, file.types.filter(t => t !== id))}
+          renderPicker={p => <FileTypePicker {...p} variant="surface" size="sm" className="w-28" />}
+          maxVisible={2}
         />
       </td>
 
       {/* Collections */}
       <td className="py-1.5 pr-3">
-        <InlineCollectionEditor
-          fileId={file.id}
-          collections={file.collections}
-          onAdd={onAddToCollection}
-          onRemove={onRemoveFromCollection}
+        <ChipEditor
+          items={file.collections.map(c => ({ id: c.id, label: c.name ?? '' }))}
+          onAdd={id => onAddToCollection(id, [file.id])}
+          onRemove={id => onRemoveFromCollection(id, [file.id])}
+          renderPicker={p => <CollectionPicker {...p} variant="surface" size="sm" className="w-32" />}
+          renderLabel={item => (
+            <Link to={`/collections/${item.id}`} className="no-underline text-text-secondary hover:text-accent">
+              {item.label}
+            </Link>
+          )}
         />
       </td>
 
@@ -273,6 +234,8 @@ export default function FilesPage() {
   const { updateFile } = useUpdateFileMutation(refetch);
   const { addFiles } = useAddFilesToCollection();
   const { removeFiles } = useRemoveFilesFromCollection();
+  const { addFileOrganism } = useAddFileOrganism(refetch);
+  const { removeFileOrganism } = useRemoveFileOrganism(refetch);
   const { getUrl } = usePresignedUrl();
   const { confirm, dialog } = useConfirm();
 
@@ -285,7 +248,7 @@ export default function FilesPage() {
 
   const typeFilters = useMemo(() => {
     if (!data) return ['all'];
-    const types = new Set(data.map(f => f.type).filter(Boolean));
+    const types = new Set(data.flatMap(f => f.types).filter(Boolean));
     return ['all', ...Array.from(types).sort()];
   }, [data]);
 
@@ -299,7 +262,7 @@ export default function FilesPage() {
     return data.filter(f => {
       const q = search.toLowerCase();
       const matchSearch = !search || f.filename.toLowerCase().includes(q)
-        || (f.organismDisplay?.toLowerCase().includes(q) ?? false)
+        || f.organisms.some(o => o.displayName.toLowerCase().includes(q))
         || f.collections.some(c => c.name?.toLowerCase().includes(q))
         || f.tags.some(t => t.toLowerCase().includes(q));
       const matchFmt = fmtFilter === 'all' || f.format === fmtFilter;
@@ -342,8 +305,8 @@ export default function FilesPage() {
     refetch();
   };
 
-  const handleInlineUpdate = async (fileId: string, patch: { type?: string; format?: string; organismId?: string | null; tags?: string[] }) => {
-    await updateFile(fileId, patch);
+  const handleUpdateTypes = async (fileId: string, types: string[]) => {
+    await updateFile(fileId, { types });
   };
 
   const handleAddToCollection = async (collectionId: string, fileIds: string[]) => {
@@ -495,7 +458,9 @@ export default function FilesPage() {
                     selected={selected.has(f.id)}
                     onSelect={toggleOne}
                     onDownload={handleDownload}
-                    onUpdate={handleInlineUpdate}
+                    onUpdateTypes={handleUpdateTypes}
+                    onAddOrganism={addFileOrganism}
+                    onRemoveOrganism={removeFileOrganism}
                     onAddToCollection={handleAddToCollection}
                     onRemoveFromCollection={handleRemoveFromCollection}
                   />

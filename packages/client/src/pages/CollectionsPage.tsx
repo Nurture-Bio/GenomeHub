@@ -5,10 +5,12 @@ import {
   useCollectionsQuery, useCreateCollectionMutation,
   useUpdateCollectionMutation, useDeleteCollectionMutation,
   useTechniquesQuery,
+  useAddCollectionOrganism, useRemoveCollectionOrganism,
+  useAddCollectionTechnique, useRemoveCollectionTechnique,
 } from '../hooks/useGenomicQueries';
 import { useConfirmDelete } from '../hooks/useConfirmDelete';
 import { techniqueColor, TechniquePill } from '../lib/techniqueColors';
-import { Badge, Text, Heading, Card, inlineInput, iconAction } from '../ui';
+import { Badge, Text, Heading, Card, ChipEditor, inlineInput, iconAction } from '../ui';
 import { TechniquePicker, OrganismPicker, FileTypePicker } from '../ui';
 
 function SkeletonRow() {
@@ -30,6 +32,10 @@ export default function CollectionsPage() {
   const { deleteCollection } = useDeleteCollectionMutation(refetch);
   const { confirmDelete, dialog } = useConfirmDelete(deleteCollection, 'collection');
   const { data: techniques } = useTechniquesQuery();
+  const { addCollectionOrganism } = useAddCollectionOrganism(refetch);
+  const { removeCollectionOrganism } = useRemoveCollectionOrganism(refetch);
+  const { addCollectionTechnique } = useAddCollectionTechnique(refetch);
+  const { removeCollectionTechnique } = useRemoveCollectionTechnique(refetch);
 
   const [techFilter, setTechFilter] = useState<string>('all');
 
@@ -42,15 +48,15 @@ export default function CollectionsPage() {
   const filtered = useMemo(() => {
     if (!data) return [];
     if (techFilter === 'all') return data;
-    return data.filter(c => c.techniqueName === techFilter);
+    return data.filter(c => c.techniques.some(t => t.name === techFilter));
   }, [data, techFilter]);
 
   const handleCreate = async () => {
     if (!newName.trim()) return;
     await createCollection({
       name: newName.trim(),
-      techniqueId: newTechId || undefined,
-      organismId: newOrgId || undefined,
+      techniqueIds: newTechId ? [newTechId] : undefined,
+      organismIds: newOrgId ? [newOrgId] : undefined,
     });
     setNewName(''); setNewTechId(''); setNewOrgId('');
     nameRef.current?.focus();
@@ -127,24 +133,30 @@ export default function CollectionsPage() {
                         </Link>
                       </td>
                       <td className="py-1.5 pl-2.5 pr-3 w-36">
-                        <TechniquePicker
-                          value={c.techniqueId ?? ''}
-                          onValueChange={v => updateCollection(c.id, { techniqueId: v || undefined })}
-                          variant="surface" size="sm" className="w-full"
+                        <ChipEditor
+                          items={c.techniques.map(t => ({ id: t.id, label: t.name }))}
+                          onAdd={id => addCollectionTechnique(c.id, id)}
+                          onRemove={id => removeCollectionTechnique(c.id, id)}
+                          renderPicker={p => <TechniquePicker {...p} variant="surface" size="sm" className="w-32" />}
+                          maxVisible={2}
                         />
                       </td>
                       <td className="py-1.5 pl-2.5 pr-3 w-40">
-                        <OrganismPicker
-                          value={c.organismId ?? ''}
-                          onValueChange={v => updateCollection(c.id, { organismId: v || undefined })}
-                          variant="surface" size="sm" className="w-full"
+                        <ChipEditor
+                          items={c.organisms.map(o => ({ id: o.id, label: o.displayName }))}
+                          onAdd={id => addCollectionOrganism(c.id, id)}
+                          onRemove={id => removeCollectionOrganism(c.id, id)}
+                          renderPicker={p => <OrganismPicker {...p} variant="surface" size="sm" className="w-36" />}
+                          maxVisible={2}
                         />
                       </td>
                       <td className="py-1.5 pl-2.5 pr-3 w-32">
-                        <FileTypePicker
-                          value={c.type}
-                          onValueChange={v => updateCollection(c.id, { type: v || undefined })}
-                          variant="surface" size="sm" className="w-full"
+                        <ChipEditor
+                          items={c.types.map(t => ({ id: t, label: t }))}
+                          onAdd={id => updateCollection(c.id, { types: [...c.types, id] })}
+                          onRemove={id => updateCollection(c.id, { types: c.types.filter(t => t !== id) })}
+                          renderPicker={p => <FileTypePicker {...p} variant="surface" size="sm" className="w-28" />}
+                          maxVisible={2}
                         />
                       </td>
                       <td className="py-1.5 pl-2.5 pr-3 text-right">
@@ -203,13 +215,13 @@ export default function CollectionsPage() {
               <Link key={c.id} to={`/collections/${c.id}`} className="no-underline">
                 <Card className="p-2.5 flex flex-col gap-1 hover:border-accent transition-colors duration-fast cursor-pointer">
                   <div className="flex items-center gap-2">
-                    {c.techniqueName && <TechniquePill name={c.techniqueName} />}
+                    {c.techniques.map(t => <TechniquePill key={t.id} name={t.name} />)}
                     <Text variant="mono" className="truncate flex-1 min-w-0">{c.name}</Text>
-                    <Badge variant="count" color="dim">{c.type}</Badge>
+                    {c.types.map(t => <Badge key={t} variant="count" color="dim">{t}</Badge>)}
                   </div>
                   {c.description && <Text variant="caption" className="truncate">{c.description}</Text>}
                   <div className="flex items-center gap-2 flex-wrap">
-                    {c.organismDisplay && <Text variant="caption" className="italic">{c.organismDisplay}</Text>}
+                    {c.organisms.map(o => <Text key={o.id} variant="caption" className="italic">{o.displayName}</Text>)}
                     <Text variant="caption">{c.fileCount} files</Text>
                   </div>
                 </Card>

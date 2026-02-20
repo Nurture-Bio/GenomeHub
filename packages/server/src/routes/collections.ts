@@ -34,8 +34,8 @@ router.get('/', asyncWrap(async (req, res) => {
 
   if (type) {
     qb = filteredIds !== null
-      ? qb.andWhere('c.type = :type', { type })
-      : qb.where('c.type = :type', { type });
+      ? qb.andWhere(':type = ANY(c.type)', { type })
+      : qb.where(':type = ANY(c.type)', { type });
   }
 
   const collections = await qb.getMany();
@@ -48,16 +48,24 @@ router.get('/', asyncWrap(async (req, res) => {
     .where('e.source_type = :st AND e.source_id IN (:...ids)', { st: 'collection', ids: colIds })
     .getMany();
 
-  const typeIdByCol = new Map<string, string>();
-  const orgIdByCol = new Map<string, string>();
+  const techniqueIdsByCol = new Map<string, string[]>();
+  const organismIdsByCol = new Map<string, string[]>();
   for (const e of allEdges) {
-    if (e.relation === 'has_type') typeIdByCol.set(e.sourceId, e.targetId);
-    if (e.relation === 'targets' && e.targetType === 'organism') orgIdByCol.set(e.sourceId, e.targetId);
+    if (e.relation === 'has_type') {
+      const arr = techniqueIdsByCol.get(e.sourceId) ?? [];
+      arr.push(e.targetId);
+      techniqueIdsByCol.set(e.sourceId, arr);
+    }
+    if (e.relation === 'targets' && e.targetType === 'organism') {
+      const arr = organismIdsByCol.get(e.sourceId) ?? [];
+      arr.push(e.targetId);
+      organismIdsByCol.set(e.sourceId, arr);
+    }
   }
 
   // Load related entities
-  const allTypeIds = [...new Set(typeIdByCol.values())];
-  const allOrgIds = [...new Set(orgIdByCol.values())];
+  const allTypeIds = [...new Set([...techniqueIdsByCol.values()].flat())];
+  const allOrgIds = [...new Set([...organismIdsByCol.values()].flat())];
 
   const typeMap = new Map<string, Technique>();
   const orgMap = new Map<string, Organism>();
@@ -83,22 +91,24 @@ router.get('/', asyncWrap(async (req, res) => {
   const fileMap = new Map(fileCounts.map(s => [s.targetId, parseInt(s.fileCount)]));
 
   res.json(collections.map(c => {
-    const tId = typeIdByCol.get(c.id);
-    const oId = orgIdByCol.get(c.id);
-    const tech = tId ? typeMap.get(tId) : null;
-    const org = oId ? orgMap.get(oId) : null;
+    const tIds = techniqueIdsByCol.get(c.id) ?? [];
+    const oIds = organismIdsByCol.get(c.id) ?? [];
 
     return {
       id: c.id,
       name: c.name,
       description: c.description,
-      type: c.type,
+      types: c.type,
       metadata: c.metadata,
-      techniqueId: tId ?? null,
-      techniqueName: tech?.name ?? null,
+      techniques: tIds.map(tId => {
+        const tech = typeMap.get(tId);
+        return { id: tId, name: tech?.name ?? tId };
+      }),
+      organisms: oIds.map(oId => {
+        const org = orgMap.get(oId);
+        return { id: oId, displayName: org ? organismDisplay(org) : oId };
+      }),
       createdBy: c.createdBy,
-      organismId: oId ?? null,
-      organismDisplay: org ? organismDisplay(org) : null,
       fileCount: fileMap.get(c.id) ?? 0,
       createdAt: c.createdAt,
     };
@@ -118,15 +128,23 @@ router.get('/:id', asyncWrap(async (req, res) => {
     where: { sourceType: 'collection' as any, sourceId: col.id },
   });
 
-  let typeId: string | null = null;
-  let orgId: string | null = null;
+  const techniqueIds: string[] = [];
+  const orgIds: string[] = [];
   for (const e of colEdges) {
-    if (e.relation === 'has_type') typeId = e.targetId;
-    if (e.relation === 'targets' && e.targetType === 'organism') orgId = e.targetId;
+    if (e.relation === 'has_type') techniqueIds.push(e.targetId);
+    if (e.relation === 'targets' && e.targetType === 'organism') orgIds.push(e.targetId);
   }
 
-  const technique = typeId ? await AppDataSource.getRepository(Technique).findOneBy({ id: typeId }) : null;
-  const organism = orgId ? await AppDataSource.getRepository(Organism).findOneBy({ id: orgId }) : null;
+  const techniques = techniqueIds.length
+    ? await AppDataSource.getRepository(Technique).findByIds(techniqueIds)
+    : [];
+  const techMap = new Map(techniques.map(t => [t.id, t]));
+
+  const uniqueOrgIds = [...new Set(orgIds)];
+  const organisms = uniqueOrgIds.length
+    ? await AppDataSource.getRepository(Organism).findByIds(uniqueOrgIds)
+    : [];
+  const orgMap = new Map(organisms.map(o => [o.id, o]));
 
   // Files belonging to this collection (playlist contents)
   const fileEdges = await edgeRepo.find({
@@ -148,11 +166,16 @@ router.get('/:id', asyncWrap(async (req, res) => {
     id: col.id,
     name: col.name,
     description: col.description,
-    type: col.type,
+    types: col.type,
     metadata: col.metadata,
-    technique: technique ? { id: technique.id, name: technique.name } : null,
-    organismId: orgId,
-    organismDisplay: organism ? organismDisplay(organism) : null,
+    techniques: techniqueIds.map(tId => {
+      const tech = techMap.get(tId);
+      return tech ? { id: tech.id, name: tech.name } : { id: tId, name: tId };
+    }),
+    organisms: orgIds.map(oId => {
+      const org = orgMap.get(oId);
+      return { id: oId, displayName: org ? organismDisplay(org) : oId };
+    }),
     createdBy: col.createdBy,
     fileCount: files.length,
     links: linkEdges.map(e => ({
@@ -165,7 +188,7 @@ router.get('/:id', asyncWrap(async (req, res) => {
     files: files.map(f => ({
       id: f.id,
       filename: f.filename,
-      type: f.type,
+      types: f.type,
       format: f.format,
       sizeBytes: Number(f.sizeBytes),
       status: f.status,
@@ -177,13 +200,13 @@ router.get('/:id', asyncWrap(async (req, res) => {
 // ─── Create collection ──────────────────────────────────────
 
 router.post('/', asyncWrap(async (req, res) => {
-  const { name, type, metadata, description, techniqueId, organismId } = req.body as {
+  const { name, types, metadata, description, techniqueIds, organismIds } = req.body as {
     name: string;
-    type?: string;
+    types?: string[];
     metadata?: Record<string, unknown>;
     description?: string;
-    techniqueId?: string;
-    organismId?: string;
+    techniqueIds?: string[];
+    organismIds?: string[];
   };
   if (!name) {
     res.status(400).json({ error: 'name required' }); return;
@@ -193,7 +216,7 @@ router.post('/', asyncWrap(async (req, res) => {
   const col = repo.create({
     name,
     description: description ?? null,
-    type: type ?? 'experiment',
+    type: types ?? ['experiment'],
     metadata: metadata ?? null,
     createdBy: (res.locals.user as User)?.email ?? null,
   });
@@ -201,11 +224,15 @@ router.post('/', asyncWrap(async (req, res) => {
 
   const userId = (res.locals.user as User)?.id ?? null;
 
-  if (organismId) {
-    await edges.link({ type: 'collection', id: col.id }, { type: 'organism', id: organismId }, 'targets', null, userId);
+  if (organismIds?.length) {
+    for (const orgId of organismIds) {
+      await edges.link({ type: 'collection', id: col.id }, { type: 'organism', id: orgId }, 'targets', null, userId);
+    }
   }
-  if (techniqueId) {
-    await edges.link({ type: 'collection', id: col.id }, { type: 'technique', id: techniqueId }, 'has_type', null, userId);
+  if (techniqueIds?.length) {
+    for (const techId of techniqueIds) {
+      await edges.link({ type: 'collection', id: col.id }, { type: 'technique', id: techId }, 'has_type', null, userId);
+    }
   }
 
   res.status(201).json(col);
@@ -218,29 +245,71 @@ router.put('/:id', asyncWrap(async (req, res) => {
   const col = await repo.findOneBy({ id: req.params.id });
   if (!col) { res.status(404).json({ error: 'not found' }); return; }
 
-  const { name, type, metadata, description, techniqueId, organismId } = req.body as Partial<{
-    name: string; type: string; metadata: Record<string, unknown>;
-    description: string; techniqueId: string; organismId: string;
+  const { name, types, metadata, description } = req.body as Partial<{
+    name: string; types: string[]; metadata: Record<string, unknown>;
+    description: string;
   }>;
 
   if (name !== undefined) col.name = name;
   if (description !== undefined) col.description = description || null;
-  if (type !== undefined) col.type = type;
+  if (types !== undefined) col.type = types;
   if (metadata !== undefined) col.metadata = metadata;
 
   await repo.save(col);
 
-  const userId = (res.locals.user as User)?.id ?? null;
-
-  if (organismId !== undefined) {
-    await edges.replaceEdge({ type: 'collection', id: col.id }, 'targets', 'organism', organismId || null, userId);
-  }
-
-  if (techniqueId !== undefined) {
-    await edges.replaceEdge({ type: 'collection', id: col.id }, 'has_type', 'technique', techniqueId || null, userId);
-  }
-
   res.json(col);
+}));
+
+// ─── Collection organism link/unlink ─────────────────────────
+
+router.post('/:id/organisms', asyncWrap(async (req, res) => {
+  const col = await AppDataSource.getRepository(Collection).findOneBy({ id: req.params.id });
+  if (!col) { res.status(404).json({ error: 'collection not found' }); return; }
+
+  const { organismId } = req.body as { organismId: string };
+  if (!organismId) { res.status(400).json({ error: 'organismId required' }); return; }
+
+  const organism = await AppDataSource.getRepository(Organism).findOneBy({ id: organismId });
+  if (!organism) { res.status(400).json({ error: 'organism not found' }); return; }
+
+  const userId = (res.locals.user as User)?.id ?? null;
+  await edges.link({ type: 'collection', id: col.id }, { type: 'organism', id: organismId }, 'targets', null, userId);
+  res.status(201).json({ ok: true });
+}));
+
+router.delete('/:id/organisms/:organismId', asyncWrap(async (req, res) => {
+  await edges.unlink(
+    { type: 'collection', id: req.params.id },
+    { type: 'organism', id: req.params.organismId },
+    'targets',
+  );
+  res.json({ ok: true });
+}));
+
+// ─── Collection technique link/unlink ────────────────────────
+
+router.post('/:id/techniques', asyncWrap(async (req, res) => {
+  const col = await AppDataSource.getRepository(Collection).findOneBy({ id: req.params.id });
+  if (!col) { res.status(404).json({ error: 'collection not found' }); return; }
+
+  const { techniqueId } = req.body as { techniqueId: string };
+  if (!techniqueId) { res.status(400).json({ error: 'techniqueId required' }); return; }
+
+  const technique = await AppDataSource.getRepository(Technique).findOneBy({ id: techniqueId });
+  if (!technique) { res.status(400).json({ error: 'technique not found' }); return; }
+
+  const userId = (res.locals.user as User)?.id ?? null;
+  await edges.link({ type: 'collection', id: col.id }, { type: 'technique', id: techniqueId }, 'has_type', null, userId);
+  res.status(201).json({ ok: true });
+}));
+
+router.delete('/:id/techniques/:techniqueId', asyncWrap(async (req, res) => {
+  await edges.unlink(
+    { type: 'collection', id: req.params.id },
+    { type: 'technique', id: req.params.techniqueId },
+    'has_type',
+  );
+  res.json({ ok: true });
 }));
 
 // ─── Batch add files to collection ──────────────────────────

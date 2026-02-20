@@ -5,10 +5,11 @@ import {
   useAddFilesToCollection, useRemoveFilesFromCollection,
   useAddProvenance, useRemoveProvenance,
   usePresignedUrl, useDeleteFileMutation,
+  useAddFileOrganism, useRemoveFileOrganism,
 } from '../hooks/useGenomicQueries';
 import { detectFormat, FORMAT_META, TEXT_PREVIEW_FORMATS, formatBytes, formatRelativeTime } from '../lib/formats';
-import { Heading, Text, Card, Badge, Button, InlineInput, Input, iconAction, chip } from '../ui';
-import { CollectionPicker, RelationPicker } from '../ui';
+import { Heading, Text, Card, Badge, Button, InlineInput, Input, ChipEditor, iconAction, chip } from '../ui';
+import { CollectionPicker, OrganismPicker, FileTypePicker, RelationPicker } from '../ui';
 import LinksList from '../components/LinksList';
 
 const FilePreview = lazy(() => import('../components/FilePreview'));
@@ -40,62 +41,6 @@ function FormatPill({ filename }: { filename: string }) {
   );
 }
 
-// ── Inline collection chips (same pattern as FilesPage) ──
-
-function InlineCollections({
-  fileId, collections, onAdd, onRemove,
-}: {
-  fileId: string;
-  collections: { id: string; name: string; type: string }[];
-  onAdd: (collectionId: string, fileIds: string[]) => Promise<void>;
-  onRemove: (collectionId: string, fileIds: string[]) => Promise<void>;
-}) {
-  const [adding, setAdding] = useState(false);
-
-  return (
-    <div className="flex items-center gap-1.5 flex-wrap">
-      {collections.map(c => (
-        <div key={c.id} className="flex items-center gap-1 bg-surface border border-border rounded-sm px-2 py-1 group/chip">
-          <Link to={`/collections/${c.id}`} className="no-underline">
-            <Text variant="mono" className="hover:text-accent transition-colors duration-fast">{c.name}</Text>
-          </Link>
-          <Badge variant="count" color="dim">{c.type}</Badge>
-          <button
-            onClick={() => onRemove(c.id, [fileId])}
-            className={iconAction({ color: 'danger' }) + ' ml-0.5 opacity-0 group-hover/chip:opacity-100'}
-            title="Remove from collection"
-          >
-            ×
-          </button>
-        </div>
-      ))}
-      <div className="relative">
-        <button
-          className={`${iconAction({ color: 'dim' })} ${adding ? 'invisible' : ''}`}
-          onClick={() => setAdding(true)}
-        >
-          + collection
-        </button>
-        {adding && (
-          <div className="absolute top-1/2 left-0 -translate-y-1/2 z-20">
-            <CollectionPicker
-              value=""
-              onValueChange={v => {
-                if (v) onAdd(v, [fileId]);
-                setAdding(false);
-              }}
-              placeholder="Pick collection..."
-              variant="surface"
-              size="sm"
-              className="w-44"
-            />
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 export default function FileDetailPage() {
   const { fileId } = useParams<{ fileId: string }>();
   const { data: file, isLoading, refetch } = useFileDetailQuery(fileId);
@@ -106,6 +51,8 @@ export default function FileDetailPage() {
 
   const { addFiles: addToCol } = useAddFilesToCollection();
   const { removeFiles: removeFromCol } = useRemoveFilesFromCollection();
+  const { addFileOrganism } = useAddFileOrganism(refetch);
+  const { removeFileOrganism } = useRemoveFileOrganism(refetch);
 
   const [addingProv, setAddingProv] = useState(false);
   const [provSearch, setProvSearch] = useState('');
@@ -125,7 +72,7 @@ export default function FileDetailPage() {
     const q = provSearch.toLowerCase();
     return allFiles
       .filter(f => f.id !== file.id)
-      .filter(f => !q || f.filename.toLowerCase().includes(q) || f.type.toLowerCase().includes(q));
+      .filter(f => !q || f.filename.toLowerCase().includes(q) || f.types.some(t => t.toLowerCase().includes(q)));
   }, [allFiles, file, provSearch]);
 
   const handleAddToCollection = async (collectionId: string, fileIds: string[]) => {
@@ -185,11 +132,11 @@ export default function FileDetailPage() {
     <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3">
       {/* Header */}
       <div>
-        <div className="flex items-center gap-2 mb-1">
+        <div className="flex items-center gap-2 mb-1 flex-wrap">
           <Badge variant="status" style={{ background: meta.bg, color: meta.color }}>
             {meta.label}
           </Badge>
-          <Badge variant="count" color="dim">{file.type}</Badge>
+          {file.types.map(t => <Badge key={t} variant="count" color="dim">{t}</Badge>)}
           {file.status === 'ready' && <Badge variant="status" color="green">ready</Badge>}
           {file.status === 'pending' && <Badge variant="status" color="yellow">uploading</Badge>}
           {file.status === 'error' && <Badge variant="status" color="red">error</Badge>}
@@ -207,10 +154,32 @@ export default function FileDetailPage() {
         <div className="flex items-center gap-2 mt-1 flex-wrap">
           <Text variant="caption">{formatBytes(file.sizeBytes)}</Text>
           {file.md5 && <Text variant="mono" className="text-text-dim text-micro">MD5: {file.md5.slice(0, 12)}...</Text>}
-          {file.organismDisplay && <Text variant="caption" className="italic">{file.organismDisplay}</Text>}
           <Text variant="caption">Uploaded {formatRelativeTime(file.uploadedAt)}</Text>
           {file.uploadedBy && <Text variant="caption">by {file.uploadedBy}</Text>}
         </div>
+
+        {/* Organisms */}
+        <div className="flex items-center gap-2 mt-1">
+          <Text variant="caption" className="shrink-0">Organisms:</Text>
+          <ChipEditor
+            items={file.organisms.map(o => ({ id: o.id, label: o.displayName }))}
+            onAdd={id => { if (fileId) addFileOrganism(fileId, id); }}
+            onRemove={id => { if (fileId) removeFileOrganism(fileId, id); }}
+            renderPicker={p => <OrganismPicker {...p} variant="surface" size="sm" className="w-40" />}
+          />
+        </div>
+
+        {/* Types */}
+        <div className="flex items-center gap-2 mt-1">
+          <Text variant="caption" className="shrink-0">Types:</Text>
+          <ChipEditor
+            items={file.types.map(t => ({ id: t, label: t }))}
+            onAdd={id => { if (fileId) updateFile(fileId, { types: [...file.types, id] }); }}
+            onRemove={id => { if (fileId) updateFile(fileId, { types: file.types.filter(t => t !== id) }); }}
+            renderPicker={p => <FileTypePicker {...p} variant="surface" size="sm" className="w-28" />}
+          />
+        </div>
+
         {file.tags.length > 0 && (
           <div className="flex gap-0.5 flex-wrap mt-1">
             {file.tags.map(t => <Badge key={t} variant="count" color="dim">{t}</Badge>)}
@@ -231,24 +200,17 @@ export default function FileDetailPage() {
       {/* Collections */}
       <div>
         <Text variant="overline" className="mb-1.5 block">Collections</Text>
-        {file.collections.length === 0 ? (
-          <div className="flex items-center gap-1.5">
-            <Text variant="caption">Not in any collection.</Text>
-            <InlineCollections
-              fileId={fileId!}
-              collections={[]}
-              onAdd={handleAddToCollection}
-              onRemove={handleRemoveFromCollection}
-            />
-          </div>
-        ) : (
-          <InlineCollections
-            fileId={fileId!}
-            collections={file.collections}
-            onAdd={handleAddToCollection}
-            onRemove={handleRemoveFromCollection}
-          />
-        )}
+        <ChipEditor
+          items={file.collections.map(c => ({ id: c.id, label: c.name }))}
+          onAdd={id => handleAddToCollection(id, [fileId!])}
+          onRemove={id => handleRemoveFromCollection(id, [fileId!])}
+          renderPicker={p => <CollectionPicker {...p} variant="surface" size="sm" className="w-44" />}
+          renderLabel={item => (
+            <Link to={`/collections/${item.id}`} className="no-underline text-text-secondary hover:text-accent">
+              {item.label}
+            </Link>
+          )}
+        />
       </div>
 
       {/* Data Links */}
@@ -310,7 +272,7 @@ export default function FileDetailPage() {
                     >
                       <FormatPill filename={f.filename} />
                       <Text variant="mono" className="truncate flex-1 min-w-0">{f.filename}</Text>
-                      <Badge variant="count" color="dim">{f.type}</Badge>
+                      {f.types.map(t => <Badge key={t} variant="count" color="dim">{t}</Badge>)}
                     </button>
                   ))
                 )}
@@ -330,7 +292,7 @@ export default function FileDetailPage() {
                   <Link to={`/files/${p.file.id}`} className="no-underline flex-1 min-w-0">
                     <Text variant="mono" className="truncate hover:text-accent transition-colors duration-fast">{p.file.filename}</Text>
                   </Link>
-                  <Badge variant="count" color="dim">{p.file.type}</Badge>
+                  {p.file.types.map(t => <Badge key={t} variant="count" color="dim">{t}</Badge>)}
                   <button
                     onClick={() => handleRemoveProvenance(p.edgeId)}
                     disabled={removeProvPending}
@@ -356,7 +318,7 @@ export default function FileDetailPage() {
                   <Link to={`/files/${p.file.id}`} className="no-underline flex-1 min-w-0">
                     <Text variant="mono" className="truncate hover:text-accent transition-colors duration-fast">{p.file.filename}</Text>
                   </Link>
-                  <Badge variant="count" color="dim">{p.file.type}</Badge>
+                  {p.file.types.map(t => <Badge key={t} variant="count" color="dim">{t}</Badge>)}
                   <button
                     onClick={() => handleRemoveProvenance(p.edgeId)}
                     disabled={removeProvPending}

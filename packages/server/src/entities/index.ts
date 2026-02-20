@@ -124,8 +124,8 @@ export class Collection {
   @Column({ type: 'text', nullable: true })
   description!: string | null;
 
-  @Column({ type: 'text', default: 'experiment' })
-  type!: string;
+  @Column({ type: 'text', array: true, default: () => "'{}'" })
+  type!: string[];
 
   @Column({ type: 'jsonb', nullable: true })
   metadata!: Record<string, unknown> | null;
@@ -238,8 +238,8 @@ export class GenomicFile {
   @Column({ type: 'text', default: 'other' })
   format!: string;
 
-  @Column({ type: 'text', default: 'raw' })
-  type!: string;
+  @Column({ type: 'text', array: true, default: () => "'{raw}'" })
+  type!: string[];
 
   @Column({ type: 'text', nullable: true })
   md5!: string | null;

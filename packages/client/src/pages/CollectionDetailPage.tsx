@@ -4,10 +4,12 @@ import {
   useCollectionDetailQuery, useFilesQuery,
   useUpdateCollectionMutation,
   useAddFilesToCollection, useRemoveFilesFromCollection,
+  useAddCollectionOrganism, useRemoveCollectionOrganism,
+  useAddCollectionTechnique, useRemoveCollectionTechnique,
 } from '../hooks/useGenomicQueries';
 import { detectFormat, FORMAT_META, formatBytes } from '../lib/formats';
-import { Heading, Text, Badge, InlineInput, Input, iconAction } from '../ui';
-import { TechniquePicker, OrganismPicker } from '../ui';
+import { Heading, Text, Badge, InlineInput, Input, ChipEditor, iconAction } from '../ui';
+import { TechniquePicker, OrganismPicker, FileTypePicker } from '../ui';
 import LinksList from '../components/LinksList';
 import { useAppStore } from '../stores/useAppStore';
 
@@ -16,6 +18,10 @@ export default function CollectionDetailPage() {
   const { data: collection, isLoading, refetch } = useCollectionDetailQuery(collectionId);
   const { updateCollection } = useUpdateCollectionMutation(refetch);
   const setBreadcrumbLabel = useAppStore(s => s.setBreadcrumbLabel);
+  const { addCollectionOrganism } = useAddCollectionOrganism(refetch);
+  const { removeCollectionOrganism } = useRemoveCollectionOrganism(refetch);
+  const { addCollectionTechnique } = useAddCollectionTechnique(refetch);
+  const { removeCollectionTechnique } = useRemoveCollectionTechnique(refetch);
 
   const [addSearch, setAddSearch] = useState('');
   const [addSelected, setAddSelected] = useState<Set<string>>(new Set());
@@ -38,8 +44,8 @@ export default function CollectionDetailPage() {
     return allFiles
       .filter(f => !existingIds.has(f.id))
       .filter(f => !q || f.filename.toLowerCase().includes(q)
-        || f.type.toLowerCase().includes(q)
-        || (f.organismDisplay?.toLowerCase().includes(q) ?? false));
+        || f.types.some(t => t.toLowerCase().includes(q))
+        || f.organisms.some(o => o.displayName.toLowerCase().includes(q)));
   }, [allFiles, collection, addSearch]);
 
   const handleAddFiles = async () => {
@@ -84,13 +90,19 @@ export default function CollectionDetailPage() {
     <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3">
       {/* Header — inline editable */}
       <div>
-        <div className="flex items-center gap-2 mb-1">
-          <TechniquePicker
-            value={collection.technique?.id ?? ''}
-            onValueChange={v => { if (collectionId) updateCollection(collectionId, { techniqueId: v || undefined }); }}
-            variant="surface" size="sm" className="w-36"
+        <div className="flex items-center gap-2 mb-1 flex-wrap">
+          <ChipEditor
+            items={collection.techniques.map(t => ({ id: t.id, label: t.name }))}
+            onAdd={id => { if (collectionId) addCollectionTechnique(collectionId, id); }}
+            onRemove={id => { if (collectionId) removeCollectionTechnique(collectionId, id); }}
+            renderPicker={p => <TechniquePicker {...p} variant="surface" size="sm" className="w-36" />}
           />
-          <Badge variant="count" color="dim">{collection.type}</Badge>
+          <ChipEditor
+            items={collection.types.map(t => ({ id: t, label: t }))}
+            onAdd={id => { if (collectionId) updateCollection(collectionId, { types: [...collection.types, id] }); }}
+            onRemove={id => { if (collectionId) updateCollection(collectionId, { types: collection.types.filter(t => t !== id) }); }}
+            renderPicker={p => <FileTypePicker {...p} variant="surface" size="sm" className="w-28" />}
+          />
         </div>
 
         <InlineInput
@@ -109,10 +121,11 @@ export default function CollectionDetailPage() {
         </div>
 
         <div className="flex items-center gap-2 mt-1 flex-wrap">
-          <OrganismPicker
-            value={collection.organismId ?? ''}
-            onValueChange={v => { if (collectionId) updateCollection(collectionId, { organismId: v || undefined }); }}
-            variant="surface" size="sm" className="w-40"
+          <ChipEditor
+            items={collection.organisms.map(o => ({ id: o.id, label: o.displayName }))}
+            onAdd={id => { if (collectionId) addCollectionOrganism(collectionId, id); }}
+            onRemove={id => { if (collectionId) removeCollectionOrganism(collectionId, id); }}
+            renderPicker={p => <OrganismPicker {...p} variant="surface" size="sm" className="w-40" />}
           />
           <Badge variant="count" color="accent">{collection.fileCount} files</Badge>
         </div>
@@ -181,7 +194,7 @@ export default function CollectionDetailPage() {
                         {meta.label}
                       </Badge>
                       <Text variant="mono" className="truncate flex-1 min-w-0">{file.filename}</Text>
-                      <Badge variant="count" color="dim">{file.type}</Badge>
+                      {file.types.map(t => <Badge key={t} variant="count" color="dim">{t}</Badge>)}
                       <Text variant="caption" className="shrink-0">{formatBytes(file.sizeBytes)}</Text>
                     </label>
                   );
@@ -225,7 +238,9 @@ export default function CollectionDetailPage() {
                         </div>
                       </td>
                       <td className="py-1.5 pr-3">
-                        <Badge variant="count" color="dim">{file.type}</Badge>
+                        <div className="flex gap-0.5 flex-wrap">
+                          {file.types.map(t => <Badge key={t} variant="count" color="dim">{t}</Badge>)}
+                        </div>
                       </td>
                       <td className="py-1.5 pr-3 text-right">
                         <Text variant="mono" className="text-text-secondary">{formatBytes(file.sizeBytes)}</Text>

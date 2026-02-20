@@ -23,13 +23,11 @@ export interface Collection {
   id:              string;
   name:            string;
   description:     string | null;
-  type:            string;
+  types:           string[];
   metadata:        Record<string, unknown> | null;
-  techniqueId:     string | null;
-  techniqueName:   string | null;
+  techniques:      { id: string; name: string }[];
+  organisms:       { id: string; displayName: string }[];
   createdBy:       string | null;
-  organismId:      string | null;
-  organismDisplay: string | null;
   fileCount:       number;
   createdAt:       string;
 }
@@ -40,14 +38,13 @@ export interface GenomicFile {
   s3Key:           string;
   sizeBytes:       number;
   format:          string;
-  type:            string;
+  types:           string[];
   md5:             string | null;
   status:          'pending' | 'ready' | 'error';
   uploadedAt:      string;
   description:     string | null;
   tags:            string[];
-  organismId:      string | null;
-  organismDisplay: string | null;
+  organisms:       { id: string; displayName: string }[];
   collections:     { id: string; name: string | null }[];
   uploadedBy:      string | null;
 }
@@ -58,16 +55,15 @@ export interface FileDetail {
   s3Key:           string;
   sizeBytes:       number;
   format:          string;
-  type:            string;
+  types:           string[];
   md5:             string | null;
   status:          'pending' | 'ready' | 'error';
   description:     string | null;
   tags:            string[];
   uploadedBy:      string | null;
   uploadedAt:      string;
-  collections:     { id: string; name: string; type: string }[];
-  organismId:      string | null;
-  organismDisplay: string | null;
+  collections:     { id: string; name: string; types: string[] }[];
+  organisms:       { id: string; displayName: string }[];
   provenance: {
     upstream:   ProvenanceEdge[];
     downstream: ProvenanceEdge[];
@@ -78,7 +74,7 @@ export interface FileDetail {
 export interface ProvenanceEdge {
   edgeId:   string;
   relation: string;
-  file:     { id: string; filename: string; type: string; format: string } | null;
+  file:     { id: string; filename: string; types: string[]; format: string } | null;
 }
 
 export interface StorageStats {
@@ -130,7 +126,7 @@ export interface ExternalLink {
 export interface CollectionFile {
   id:        string;
   filename:  string;
-  type:      string;
+  types:     string[];
   format:    string;
   sizeBytes: number;
   status:    string;
@@ -140,11 +136,10 @@ export interface CollectionDetail {
   id:              string;
   name:            string;
   description:     string | null;
-  type:            string;
+  types:           string[];
   metadata:        Record<string, unknown> | null;
-  technique:       { id: string; name: string } | null;
-  organismId:      string | null;
-  organismDisplay: string | null;
+  techniques:      { id: string; name: string }[];
+  organisms:       { id: string; displayName: string }[];
   createdBy:       string | null;
   fileCount:       number;
   links:           ExternalLink[];
@@ -175,7 +170,7 @@ export function useDeleteFileMutation(onSuccess?: () => void) {
 
 export function useUpdateFileMutation(onSuccess?: () => void) {
   const { mutate, pending } = useApiMutation<[string, {
-    type?: string; format?: string; organismId?: string | null;
+    types?: string[]; format?: string;
     description?: string | null; tags?: string[];
   }], GenomicFile>(
     (fileId, body) => ({
@@ -223,10 +218,10 @@ export function useCollectionDetailQuery(collectionId?: string) {
 
 export function useCreateCollectionMutation(onSuccess?: () => void) {
   const { mutate, pending } = useApiMutation<[{
-    name: string; type?: string;
+    name: string; types?: string[];
     metadata?: Record<string, unknown>;
     description?: string;
-    techniqueId?: string; organismId?: string;
+    techniqueIds?: string[]; organismIds?: string[];
   }], Collection>(
     (body) => ({
       url: '/api/collections',
@@ -239,7 +234,7 @@ export function useCreateCollectionMutation(onSuccess?: () => void) {
 
 export function useUpdateCollectionMutation(onSuccess?: () => void) {
   const { mutate, pending } = useApiMutation<[string, {
-    name?: string; description?: string; type?: string; techniqueId?: string; organismId?: string;
+    name?: string; description?: string; types?: string[];
   }]>(
     (id, body) => ({
       url: `/api/collections/${id}`,
@@ -414,6 +409,78 @@ export function useRemoveFilesFromCollection() {
   return { removeFiles, pending };
 }
 
+// ─── File organism link/unlink ─────────────────────────────
+
+export function useAddFileOrganism(onSuccess?: () => void) {
+  const { mutate, pending } = useApiMutation<[string, string]>(
+    (fileId, organismId) => ({
+      url: `/api/files/${fileId}/organisms`,
+      init: { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organismId }) },
+    }),
+    { errorMessage: 'Failed to add organism', onSuccess },
+  );
+  return { addFileOrganism: mutate, pending };
+}
+
+export function useRemoveFileOrganism(onSuccess?: () => void) {
+  const { mutate, pending } = useApiMutation<[string, string]>(
+    (fileId, organismId) => ({
+      url: `/api/files/${fileId}/organisms/${organismId}`,
+      init: { method: 'DELETE' },
+    }),
+    { errorMessage: 'Failed to remove organism', onSuccess },
+  );
+  return { removeFileOrganism: mutate, pending };
+}
+
+// ─── Collection organism link/unlink ───────────────────────
+
+export function useAddCollectionOrganism(onSuccess?: () => void) {
+  const { mutate, pending } = useApiMutation<[string, string]>(
+    (collectionId, organismId) => ({
+      url: `/api/collections/${collectionId}/organisms`,
+      init: { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organismId }) },
+    }),
+    { errorMessage: 'Failed to add organism', onSuccess },
+  );
+  return { addCollectionOrganism: mutate, pending };
+}
+
+export function useRemoveCollectionOrganism(onSuccess?: () => void) {
+  const { mutate, pending } = useApiMutation<[string, string]>(
+    (collectionId, organismId) => ({
+      url: `/api/collections/${collectionId}/organisms/${organismId}`,
+      init: { method: 'DELETE' },
+    }),
+    { errorMessage: 'Failed to remove organism', onSuccess },
+  );
+  return { removeCollectionOrganism: mutate, pending };
+}
+
+// ─── Collection technique link/unlink ──────────────────────
+
+export function useAddCollectionTechnique(onSuccess?: () => void) {
+  const { mutate, pending } = useApiMutation<[string, string]>(
+    (collectionId, techniqueId) => ({
+      url: `/api/collections/${collectionId}/techniques`,
+      init: { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ techniqueId }) },
+    }),
+    { errorMessage: 'Failed to add technique', onSuccess },
+  );
+  return { addCollectionTechnique: mutate, pending };
+}
+
+export function useRemoveCollectionTechnique(onSuccess?: () => void) {
+  const { mutate, pending } = useApiMutation<[string, string]>(
+    (collectionId, techniqueId) => ({
+      url: `/api/collections/${collectionId}/techniques/${techniqueId}`,
+      init: { method: 'DELETE' },
+    }),
+    { errorMessage: 'Failed to remove technique', onSuccess },
+  );
+  return { removeCollectionTechnique: mutate, pending };
+}
+
 // ─── Provenance ───────────────────────────────────────────
 
 export function useAddProvenance() {
@@ -493,9 +560,9 @@ export function useMultipartUpload() {
     opts: {
       description?: string;
       tags?: string[];
-      organismId?: string;
+      organismIds?: string[];
       collectionId?: string;
-      type?: string;
+      types?: string[];
     },
   ) => {
     const tmpId = crypto.randomUUID();
@@ -516,9 +583,9 @@ export function useMultipartUpload() {
           sizeBytes: file.size,
           description: opts.description,
           tags: opts.tags,
-          organismId: opts.organismId,
+          organismIds: opts.organismIds,
           collectionId: opts.collectionId,
-          type: opts.type,
+          types: opts.types,
         }),
       });
       const { fileId, uploadId, s3Key } = await initRes.json();

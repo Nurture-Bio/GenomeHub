@@ -211,9 +211,12 @@ export default function UploadPage() {
     const techMap = new Map<string, Technique>();
     for (const t of techniques) techMap.set(t.id, t);
     for (const col of collections) {
-      if (col.techniqueId) {
-        const t = techMap.get(col.techniqueId);
-        if (t?.defaultTags?.length) map.set(col.id, t.defaultTags);
+      for (const tech of col.techniques) {
+        const t = techMap.get(tech.id);
+        if (t?.defaultTags?.length) {
+          const existing = map.get(col.id) ?? [];
+          map.set(col.id, [...existing, ...t.defaultTags]);
+        }
       }
     }
     return map;
@@ -276,9 +279,9 @@ export default function UploadPage() {
       queue.map(e => upload(e.file, {
         description: e.description || undefined,
         tags: e.tags ? e.tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
-        organismId: e.organismId || undefined,
+        organismIds: e.organismId ? [e.organismId] : undefined,
         collectionId: e.collectionId || undefined,
-        type: e.type || undefined,
+        types: e.type ? [e.type] : undefined,
       }))
     );
     setUploading(false);
