@@ -7,11 +7,7 @@ export { detectFormat, TEXT_PREVIEW_FORMATS } from '@genome-hub/shared';
 
 // ── Deterministic color from string ─────────────────────
 
-function hashHue(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
-  return ((h % 360) + 360) % 360;
-}
+import { hashColor } from './colors';
 
 export interface FormatMeta {
   label: string;
@@ -23,15 +19,15 @@ const _cache: Record<string, FormatMeta> = {};
 
 /**
  * Get display metadata for a format id (file extension).
- * Deterministic color hashing — same extension always gets the same color.
+ * Colors via the canonical hashColor() — same as chips, filters, and badges.
  */
 export function formatMeta(fmt: string): FormatMeta {
   if (_cache[fmt]) return _cache[fmt];
-  const hue = hashHue(fmt);
+  const { color, bg } = hashColor(fmt);
   const meta: FormatMeta = {
     label: fmt === 'other' ? 'FILE' : fmt.toUpperCase(),
-    color: `oklch(0.65 0.15 ${hue})`,
-    bg:    `oklch(0.18 0.02 ${hue})`,
+    color,
+    bg,
   };
   _cache[fmt] = meta;
   return meta;

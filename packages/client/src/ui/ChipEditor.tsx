@@ -1,25 +1,10 @@
 import { useState, type ReactNode, type CSSProperties } from 'react';
 import type { ComboBoxItem } from './ComboBox';
-
-/** Deterministic hue from a string — no library needed.
- *  Uses Knuth multiplicative hashing to spread similar strings (e.g. "gtf"
- *  vs "gbff") far apart on the hue wheel. */
-function strHue(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) {
-    h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
-  }
-  // Knuth multiplicative hash — scrambles adjacent values across the full range
-  h = Math.imul(h >>> 0, 2654435761) >>> 0;
-  return h % 360;
-}
+import { hashColor } from '../lib/colors';
 
 export function chipColorStyle(label: string): CSSProperties {
-  const hue = strHue(label);
-  return {
-    backgroundColor: `hsl(${hue} 55% 88%)`,
-    color:           `hsl(${hue} 55% 28%)`,
-  };
+  const { bg, color } = hashColor(label);
+  return { backgroundColor: bg, color };
 }
 
 export interface ChipItem {

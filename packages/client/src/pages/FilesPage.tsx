@@ -9,6 +9,7 @@ import {
 } from '../hooks/useGenomicQueries';
 import { useConfirm } from '../hooks/useConfirm';
 import { detectFormat, FORMAT_META, formatBytes, formatRelativeTime } from '../lib/formats';
+import { hashColor } from '../lib/colors';
 import { Button, Badge, Input, Text, Heading, Card, ChipEditor, iconAction } from '../ui';
 import { CollectionPicker, OrganismPicker, FileTypePicker } from '../ui';
 
@@ -163,12 +164,13 @@ function FileRow({ file, onDownload, onUpdateTypes, onAddOrganism, onRemoveOrgan
       {/* Collections */}
       <td className="py-1.5 pr-3">
         <ChipEditor
+          colored
           items={file.collections.map(c => ({ id: c.id, label: c.name ?? '' }))}
           onAdd={id => onAddToCollection(id, [file.id])}
           onRemove={id => onRemoveFromCollection(id, [file.id])}
           renderPicker={p => <CollectionPicker {...p} variant="surface" size="sm" className="w-32" />}
           renderLabel={item => (
-            <Link to={`/collections/${item.id}`} className="no-underline text-text-secondary hover:text-accent">
+            <Link to={`/collections/${item.id}`} className="no-underline hover:opacity-80">
               {item.label}
             </Link>
           )}
@@ -382,16 +384,16 @@ export default function FilesPage() {
         <div className="flex gap-1 flex-wrap">
           {typeFilters.map(k => {
             const active = k === 'all' ? !filterType : filterType === k;
+            const hc = k === 'all' ? null : hashColor(k);
             return (
               <button
                 key={k}
                 onClick={() => setFilterType(k === 'all' ? '' : k)}
                 className="font-body text-micro px-1.5 py-1 md:py-0.5 rounded-sm border transition-colors duration-fast cursor-pointer min-h-5.5 md:min-h-0"
-                style={{
-                  background: active ? 'var(--color-accent)' : 'var(--color-surface-2)',
-                  color:      active ? 'var(--color-bg)'     : 'var(--color-text-secondary)',
-                  borderColor: active ? 'transparent'        : 'var(--color-border)',
-                }}
+                style={active && hc
+                  ? { background: hc.bg, color: hc.color, borderColor: hc.color }
+                  : { background: 'var(--color-surface-2)', color: 'var(--color-text-secondary)', borderColor: 'var(--color-border)' }
+                }
               >
                 {k === 'all' ? 'All types' : k}
               </button>
@@ -402,18 +404,18 @@ export default function FilesPage() {
         <div className="flex gap-1 flex-wrap">
           {formatFilters.map(f => {
             const active = fmtFilter === f;
+            const hc = f === 'all' ? null : FORMAT_META[f];
             return (
               <button
                 key={f}
                 onClick={() => setFmtFilter(f)}
                 className="font-body text-micro px-1.5 py-1 md:py-0.5 rounded-sm border transition-colors duration-fast cursor-pointer min-h-5.5 md:min-h-0"
-                style={{
-                  background: active ? 'var(--color-accent)' : 'var(--color-surface-2)',
-                  color:      active ? 'var(--color-bg)'     : 'var(--color-text-secondary)',
-                  borderColor: active ? 'transparent'        : 'var(--color-border)',
-                }}
+                style={active && hc
+                  ? { background: hc.bg, color: hc.color, borderColor: hc.color }
+                  : { background: 'var(--color-surface-2)', color: 'var(--color-text-secondary)', borderColor: 'var(--color-border)' }
+                }
               >
-                {f === 'all' ? 'All formats' : FORMAT_META[f as keyof typeof FORMAT_META]?.label ?? f}
+                {f === 'all' ? 'All formats' : hc?.label ?? f}
               </button>
             );
           })}

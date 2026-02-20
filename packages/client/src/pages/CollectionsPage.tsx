@@ -81,16 +81,15 @@ export default function CollectionsPage() {
       {/* Technique filters */}
       <div className="flex gap-1 flex-wrap shrink-0">
         {techniqueFilters.map(t => {
-          const colors = t === 'all' ? null : techniqueColor(t);
+          const hc = t === 'all' ? null : techniqueColor(t);
           const active = techFilter === t;
           return (
             <button key={t} onClick={() => setTechFilter(t)}
               className="font-body text-micro px-1.5 py-1 md:py-0.5 rounded-sm border transition-colors duration-fast cursor-pointer min-h-5.5 md:min-h-0"
-              style={{
-                background: active ? (colors?.color ?? 'var(--color-accent)') : 'var(--color-surface-2)',
-                color: active ? 'var(--color-bg)' : 'var(--color-text-secondary)',
-                borderColor: active ? 'transparent' : 'var(--color-border)',
-              }}>
+              style={active && hc
+                ? { background: hc.bg, color: hc.color, borderColor: hc.color }
+                : { background: 'var(--color-surface-2)', color: 'var(--color-text-secondary)', borderColor: 'var(--color-border)' }
+              }>
               {t === 'all' ? 'All' : t}
             </button>
           );
