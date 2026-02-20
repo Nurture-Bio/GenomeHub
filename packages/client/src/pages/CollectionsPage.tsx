@@ -96,16 +96,16 @@ export default function CollectionsPage() {
       </div>
 
       {/* Desktop table */}
-      <div className="hidden md:block flex-1 overflow-auto min-h-0 border border-border rounded-md bg-surface">
-        <table className="w-full border-collapse text-left">
+      <div className="hidden md:block flex-1 overflow-auto min-h-0 border border-border rounded-md bg-surface" style={{ scrollbarGutter: 'stable' }}>
+        <table className="w-full border-collapse text-left table-fixed">
           <thead className="sticky top-0 bg-surface-2 z-10">
             <tr className="border-b border-border">
               <th className="py-1.5 pr-3 pl-2.5"><Text variant="overline">Name</Text></th>
               <th className="py-1.5 pr-3 pl-2.5 w-36"><Text variant="overline">Technique</Text></th>
               <th className="py-1.5 pr-3 pl-2.5 w-40"><Text variant="overline">Organism</Text></th>
-              <th className="py-1.5 pr-3 pl-2.5"><Text variant="overline">Type</Text></th>
-              <th className="py-1.5 pr-3 pl-2.5 text-right"><Text variant="overline">Files</Text></th>
-              <th className="w-6" />
+              <th className="py-1.5 pr-3 pl-2.5 w-32"><Text variant="overline">Type</Text></th>
+              <th className="py-1.5 pr-3 pl-2.5 w-16 text-right"><Text variant="overline">Files</Text></th>
+              <th className="w-8" />
             </tr>
           </thead>
           <tbody>
@@ -130,7 +130,7 @@ export default function CollectionsPage() {
                           {c.description && <Text variant="caption" className="truncate max-w-xs block">{c.description}</Text>}
                         </Link>
                       </td>
-                      <td className="py-1.5 pl-2.5 pr-3 w-36">
+                      <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
                         <ChipEditor
                           colored
                           items={c.techniques.map(t => ({ id: t.id, label: t.name }))}
@@ -140,7 +140,7 @@ export default function CollectionsPage() {
                           maxVisible={2}
                         />
                       </td>
-                      <td className="py-1.5 pl-2.5 pr-3 w-40">
+                      <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
                         <ChipEditor
                           colored
                           items={c.organisms.map(o => ({ id: o.id, label: o.displayName }))}
@@ -150,7 +150,7 @@ export default function CollectionsPage() {
                           maxVisible={2}
                         />
                       </td>
-                      <td className="py-1.5 pl-2.5 pr-3 w-32">
+                      <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
                         <ChipEditor
                           colored
                           items={c.types.map(t => ({ id: t, label: t }))}

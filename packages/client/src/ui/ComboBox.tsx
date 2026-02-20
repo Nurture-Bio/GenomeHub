@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Command } from 'cmdk';
 import * as Popover from '@radix-ui/react-popover';
 import { cx } from 'class-variance-authority';
@@ -25,6 +25,8 @@ export interface ComboBoxProps {
   disabled?: boolean;
   loading?: boolean;
   onCreate?: (search: string) => void;
+  /** Render a custom trigger via Radix asChild instead of the default value button. */
+  trigger?: React.ReactNode;
 }
 
 export default function ComboBox({
@@ -40,10 +42,10 @@ export default function ComboBox({
   disabled,
   loading,
   onCreate,
+  trigger,
 }: ComboBoxProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const triggerRef = useRef<HTMLButtonElement>(null);
 
   const selected = items.find(i => i.id === value);
   const hasExactMatch = items.some(i => i.label.toLowerCase() === search.toLowerCase());
@@ -68,26 +70,29 @@ export default function ComboBox({
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
-      <Popover.Trigger asChild>
-        <button
-          ref={triggerRef}
-          disabled={disabled}
-          className={cx(
-            input({ variant, size }),
-            'flex items-center gap-1.5 text-left cursor-pointer',
-            !selected && 'text-text-dim',
-            disabled && 'opacity-50 cursor-not-allowed',
-            className,
-          )}
-        >
-          <span className="flex-1 min-w-0 truncate">
-            {loading ? 'Loading...' : selected ? selected.label : placeholder}
-          </span>
-          <svg width="12" height="12" viewBox="0 0 12 12" className="shrink-0 text-text-dim">
-            <path d="M3 5l3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
-      </Popover.Trigger>
+      {trigger ? (
+        <Popover.Trigger asChild>{trigger}</Popover.Trigger>
+      ) : (
+        <Popover.Trigger asChild>
+          <button
+            disabled={disabled}
+            className={cx(
+              input({ variant, size }),
+              'flex items-center gap-1.5 text-left cursor-pointer',
+              !selected && 'text-text-dim',
+              disabled && 'opacity-50 cursor-not-allowed',
+              className,
+            )}
+          >
+            <span className="flex-1 min-w-0 truncate">
+              {loading ? 'Loading...' : selected ? selected.label : placeholder}
+            </span>
+            <svg width="12" height="12" viewBox="0 0 12 12" className="shrink-0 text-text-dim">
+              <path d="M3 5l3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        </Popover.Trigger>
+      )}
 
       <Popover.Portal>
         <Popover.Content

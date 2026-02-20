@@ -138,7 +138,7 @@ function FileRow({ file, onDownload, onUpdateTypes, onAddOrganism, onRemoveOrgan
       </td>
 
       {/* Organism — ChipEditor */}
-      <td className="py-1.5 pr-3 w-36 align-top pt-2">
+      <td className="py-1.5 pr-3 align-top pt-2 overflow-hidden">
         <ChipEditor
           colored
           items={file.organisms.map(o => ({ id: o.id, label: o.displayName }))}
@@ -150,7 +150,7 @@ function FileRow({ file, onDownload, onUpdateTypes, onAddOrganism, onRemoveOrgan
       </td>
 
       {/* Type — ChipEditor */}
-      <td className="py-1.5 pr-3 w-28 align-top pt-2">
+      <td className="py-1.5 pr-3 align-top pt-2 overflow-hidden">
         <ChipEditor
           colored
           items={file.types.map(t => ({ id: t, label: t }))}
@@ -162,7 +162,7 @@ function FileRow({ file, onDownload, onUpdateTypes, onAddOrganism, onRemoveOrgan
       </td>
 
       {/* Collections */}
-      <td className="py-1.5 pr-3">
+      <td className="py-1.5 pr-3 overflow-hidden">
         <ChipEditor
           colored
           items={file.collections.map(c => ({ id: c.id, label: c.name ?? '' }))}
@@ -178,7 +178,7 @@ function FileRow({ file, onDownload, onUpdateTypes, onAddOrganism, onRemoveOrgan
       </td>
 
       {/* Download */}
-      <td className="py-1.5 pr-3 w-6 align-top pt-2">
+      <td className="py-1.5 pr-3 align-top pt-2">
         <button
           onClick={() => onDownload(file.id)}
           className={iconAction({ color: 'dim', reveal: true })}
@@ -419,11 +419,11 @@ export default function FilesPage() {
       </div>
 
       {/* Desktop table — hidden below md */}
-      <div className="hidden md:block flex-1 overflow-auto min-h-0 border border-border rounded-md bg-surface">
-        <table className="w-full border-collapse text-left min-w-2xl">
+      <div className="hidden md:block flex-1 overflow-auto min-h-0 border border-border rounded-md bg-surface" style={{ scrollbarGutter: 'stable' }}>
+        <table className="w-full border-collapse text-left table-fixed">
           <thead className="sticky top-0 bg-surface-2 z-10">
             <tr className="border-b border-border">
-              <th className="pl-3 pr-1 py-1.5 w-6">
+              <th className="pl-3 pr-1 py-1.5 w-7">
                 <input
                   type="checkbox"
                   checked={allSelected}
@@ -431,11 +431,11 @@ export default function FilesPage() {
                   className="accent-accent cursor-pointer"
                 />
               </th>
-              {['File', 'Organism', 'Type', 'Collections', ''].map(h => (
-                <th key={h} className="py-1.5 pr-3">
-                  <Text variant="overline">{h}</Text>
-                </th>
-              ))}
+              <th className="py-1.5 pr-3"><Text variant="overline">File</Text></th>
+              <th className="py-1.5 pr-3 w-36"><Text variant="overline">Organism</Text></th>
+              <th className="py-1.5 pr-3 w-28"><Text variant="overline">Type</Text></th>
+              <th className="py-1.5 pr-3 w-44"><Text variant="overline">Collections</Text></th>
+              <th className="w-8" />
             </tr>
           </thead>
           <tbody>

@@ -1,4 +1,4 @@
-import { useState, type ReactNode, type CSSProperties } from 'react';
+import { type ReactNode, type CSSProperties } from 'react';
 import type { ComboBoxItem } from './ComboBox';
 import { hashColor } from '../lib/colors';
 
@@ -20,6 +20,7 @@ export interface ChipEditorProps {
     value: string;
     onValueChange: (id: string) => void;
     items?: ComboBoxItem[];
+    trigger?: ReactNode;
   }) => ReactNode;
   size?: 'sm' | 'md';
   colored?: boolean;
@@ -33,8 +34,6 @@ export default function ChipEditor({
   items, onAdd, onRemove, renderPicker,
   colored, disabled, maxVisible, renderLabel,
 }: ChipEditorProps) {
-  const [adding, setAdding] = useState(false);
-
   const visible = maxVisible && items.length > maxVisible
     ? items.slice(0, maxVisible)
     : items;
@@ -45,8 +44,21 @@ export default function ChipEditor({
   const handleAdd = (id: string) => {
     if (!id || items.some(i => i.id === id)) return;
     onAdd(id);
-    setAdding(false);
   };
+
+  const addTrigger = (
+    <button
+      type="button"
+      aria-label="Add"
+      className="size-5 shrink-0 flex items-center justify-center rounded-full
+                 opacity-0 group-hover/editor:opacity-100
+                 transition-opacity duration-fast
+                 bg-surface-2 text-text-dim hover:text-text hover:bg-surface-3
+                 cursor-pointer border-0 font-body text-caption leading-none"
+    >
+      +
+    </button>
+  );
 
   return (
     <div className="group/editor flex gap-1 flex-wrap items-center">
@@ -83,30 +95,11 @@ export default function ChipEditor({
         </span>
       )}
 
-      {!disabled && (
-        adding ? (
-          renderPicker({
-            value: '',
-            onValueChange: (v) => {
-              if (v) handleAdd(v);
-              else setAdding(false);
-            },
-          })
-        ) : (
-          <button
-            type="button"
-            aria-label="Add"
-            className="size-5 shrink-0 flex items-center justify-center rounded-full
-                       opacity-0 group-hover/editor:opacity-100
-                       transition-opacity duration-fast
-                       bg-surface-2 text-text-dim hover:text-text hover:bg-surface-3
-                       cursor-pointer border-0 font-body text-caption leading-none"
-            onClick={() => setAdding(true)}
-          >
-            +
-          </button>
-        )
-      )}
+      {!disabled && renderPicker({
+        value: '',
+        onValueChange: handleAdd,
+        trigger: addTrigger,
+      })}
 
     </div>
   );

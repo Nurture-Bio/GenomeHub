@@ -249,7 +249,7 @@ export default function App() {
       <GlobalUploadProgress />
 
       {/* Main */}
-      <main className="flex-1 overflow-auto min-w-0">
+      <main className="flex-1 overflow-auto min-w-0" style={{ scrollbarGutter: 'stable' }}>
         <Breadcrumbs />
         <Routes>
           <Route path="/" element={<PageErrorBoundary><DashboardPage /></PageErrorBoundary>} />

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import ComboBox, { type ComboBoxItem } from './ComboBox';
 import {
   useOrganismsQuery, useCollectionsQuery,
@@ -22,6 +22,7 @@ interface PickerBaseProps {
   className?: string;
   disabled?: boolean;
   items?: ComboBoxItem[];
+  trigger?: ReactNode;
 }
 
 function useRecent(kind: 'collections') {
