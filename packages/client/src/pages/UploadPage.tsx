@@ -3,7 +3,7 @@ import { useMultipartUpload, useCollectionsQuery, useTechniquesQuery } from '../
 import type { Collection, Technique } from '../hooks/useGenomicQueries';
 import { detectFormat, FORMAT_META, formatBytes } from '../lib/formats';
 import { Button, Text, Heading, Input, Badge } from '../ui';
-import { CollectionPicker, OrganismPicker, FileKindPicker } from '../ui';
+import { CollectionPicker, OrganismPicker, FileTypePicker } from '../ui';
 
 // ── Drop zone ─────────────────────────────────────────────
 
@@ -82,14 +82,14 @@ interface QueueItemProps {
   file:      File;
   organismId: string;
   collectionId: string;
-  kind: string;
+  type: string;
   description: string;
   tags: string;
   onRemove:  () => void;
-  onChange: (patch: Partial<{ organismId: string; collectionId: string; kind: string; description: string; tags: string }>) => void;
+  onChange: (patch: Partial<{ organismId: string; collectionId: string; type: string; description: string; tags: string }>) => void;
 }
 
-function QueueItem({ file, organismId, collectionId, kind, description, tags, onRemove, onChange }: QueueItemProps) {
+function QueueItem({ file, organismId, collectionId, type, description, tags, onRemove, onChange }: QueueItemProps) {
   const fmt  = detectFormat(file.name);
   const meta = FORMAT_META[fmt];
 
@@ -119,10 +119,10 @@ function QueueItem({ file, organismId, collectionId, kind, description, tags, on
           placeholder="Collection"
           variant="surface" size="sm" className="w-full sm:w-40"
         />
-        <FileKindPicker
-          value={kind}
-          onValueChange={v => onChange({ kind: v })}
-          placeholder="Kind"
+        <FileTypePicker
+          value={type}
+          onValueChange={v => onChange({ type: v })}
+          placeholder="Type"
           variant="surface" size="sm" className="w-full sm:w-32"
         />
       </div>
@@ -219,19 +219,19 @@ export default function UploadPage() {
     return map;
   }, [collections, techniques]);
 
-  type QueueEntry = { file: File; organismId: string; collectionId: string; kind: string; tags: string; description: string };
+  type QueueEntry = { file: File; organismId: string; collectionId: string; type: string; tags: string; description: string };
   const [queue,      setQueue]      = useState<QueueEntry[]>([]);
   const [defaultOrg, setDefaultOrg] = useState('');
   const [defaultCol, setDefaultCol] = useState('');
-  const [defaultKind, setDefaultKind] = useState('raw');
+  const [defaultType, setDefaultType] = useState('raw');
   const [uploading,  setUploading]  = useState(false);
 
   const addFiles = useCallback((files: File[]) => {
     setQueue(prev => [
       ...prev,
-      ...files.map(f => ({ file: f, organismId: defaultOrg, collectionId: defaultCol, kind: defaultKind, tags: '', description: '' })),
+      ...files.map(f => ({ file: f, organismId: defaultOrg, collectionId: defaultCol, type: defaultType, tags: '', description: '' })),
     ]);
-  }, [defaultOrg, defaultCol, defaultKind]);
+  }, [defaultOrg, defaultCol, defaultType]);
 
   const handleDefaultOrg = (id: string) => {
     setDefaultOrg(id);
@@ -249,9 +249,9 @@ export default function UploadPage() {
       return updated;
     }));
   };
-  const handleDefaultKind = (k: string) => {
-    setDefaultKind(k);
-    setQueue(prev => prev.map(e => (e.kind === 'raw' || !e.kind ? { ...e, kind: k } : e)));
+  const handleDefaultType = (t: string) => {
+    setDefaultType(t);
+    setQueue(prev => prev.map(e => (e.type === 'raw' || !e.type ? { ...e, type: t } : e)));
   };
 
   const removeFromQueue = (idx: number) =>
@@ -278,7 +278,7 @@ export default function UploadPage() {
         tags: e.tags ? e.tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
         organismId: e.organismId || undefined,
         collectionId: e.collectionId || undefined,
-        kind: e.kind || undefined,
+        type: e.type || undefined,
       }))
     );
     setUploading(false);
@@ -311,9 +311,9 @@ export default function UploadPage() {
                 value={defaultCol} onValueChange={handleDefaultCol}
                 placeholder="Collection" variant="surface" size="sm" className="w-full sm:w-40"
               />
-              <FileKindPicker
-                value={defaultKind} onValueChange={handleDefaultKind}
-                placeholder="Kind" variant="surface" size="sm" className="w-full sm:w-32"
+              <FileTypePicker
+                value={defaultType} onValueChange={handleDefaultType}
+                placeholder="Type" variant="surface" size="sm" className="w-full sm:w-32"
               />
             </div>
           </div>
@@ -325,7 +325,7 @@ export default function UploadPage() {
                 file={e.file}
                 organismId={e.organismId}
                 collectionId={e.collectionId}
-                kind={e.kind}
+                type={e.type}
                 description={e.description}
                 tags={e.tags}
                 onRemove={() => removeFromQueue(i)}

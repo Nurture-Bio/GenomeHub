@@ -9,7 +9,7 @@ import {
 import { useConfirmDelete } from '../hooks/useConfirmDelete';
 import { techniqueColor, TechniquePill } from '../lib/techniqueColors';
 import { Badge, Text, Heading, Card, inlineInput, iconAction } from '../ui';
-import { TechniquePicker, OrganismPicker, FileKindPicker } from '../ui';
+import { TechniquePicker, OrganismPicker, FileTypePicker } from '../ui';
 
 function SkeletonRow() {
   return (
@@ -99,7 +99,7 @@ export default function CollectionsPage() {
               <th className="py-1.5 pr-3 pl-2.5"><Text variant="overline">Name</Text></th>
               <th className="py-1.5 pr-3 pl-2.5 w-36"><Text variant="overline">Technique</Text></th>
               <th className="py-1.5 pr-3 pl-2.5 w-40"><Text variant="overline">Organism</Text></th>
-              <th className="py-1.5 pr-3 pl-2.5"><Text variant="overline">Kind</Text></th>
+              <th className="py-1.5 pr-3 pl-2.5"><Text variant="overline">Type</Text></th>
               <th className="py-1.5 pr-3 pl-2.5 text-right"><Text variant="overline">Files</Text></th>
               <th className="w-6" />
             </tr>
@@ -141,9 +141,9 @@ export default function CollectionsPage() {
                         />
                       </td>
                       <td className="py-1.5 pl-2.5 pr-3 w-32">
-                        <FileKindPicker
-                          value={c.kind}
-                          onValueChange={v => updateCollection(c.id, { kind: v || undefined })}
+                        <FileTypePicker
+                          value={c.type}
+                          onValueChange={v => updateCollection(c.id, { type: v || undefined })}
                           variant="surface" size="sm" className="w-full"
                         />
                       </td>
@@ -205,7 +205,7 @@ export default function CollectionsPage() {
                   <div className="flex items-center gap-2">
                     {c.techniqueName && <TechniquePill name={c.techniqueName} />}
                     <Text variant="mono" className="truncate flex-1 min-w-0">{c.name}</Text>
-                    <Badge variant="count" color="dim">{c.kind}</Badge>
+                    <Badge variant="count" color="dim">{c.type}</Badge>
                   </div>
                   {c.description && <Text variant="caption" className="truncate">{c.description}</Text>}
                   <div className="flex items-center gap-2 flex-wrap">

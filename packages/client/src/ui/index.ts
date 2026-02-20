@@ -8,7 +8,7 @@ export { default as InlineInput }     from './InlineInput';
 export type { ComboBoxItem }          from './ComboBox';
 export {
   CollectionPicker, OrganismPicker,
-  FileKindPicker, TechniquePicker, RelationPicker,
+  FileTypePicker, TechniquePicker, RelationPicker,
 } from './EntityPicker';
 
 export {

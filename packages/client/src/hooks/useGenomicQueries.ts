@@ -23,7 +23,7 @@ export interface Collection {
   id:              string;
   name:            string;
   description:     string | null;
-  kind:            string;
+  type:            string;
   metadata:        Record<string, unknown> | null;
   techniqueId:     string | null;
   techniqueName:   string | null;
@@ -40,7 +40,7 @@ export interface GenomicFile {
   s3Key:           string;
   sizeBytes:       number;
   format:          string;
-  kind:            string;
+  type:            string;
   md5:             string | null;
   status:          'pending' | 'ready' | 'error';
   uploadedAt:      string;
@@ -58,14 +58,14 @@ export interface FileDetail {
   s3Key:           string;
   sizeBytes:       number;
   format:          string;
-  kind:            string;
+  type:            string;
   md5:             string | null;
   status:          'pending' | 'ready' | 'error';
   description:     string | null;
   tags:            string[];
   uploadedBy:      string | null;
   uploadedAt:      string;
-  collections:     { id: string; name: string; kind: string }[];
+  collections:     { id: string; name: string; type: string }[];
   organismId:      string | null;
   organismDisplay: string | null;
   provenance: {
@@ -78,7 +78,7 @@ export interface FileDetail {
 export interface ProvenanceEdge {
   edgeId:   string;
   relation: string;
-  file:     { id: string; filename: string; kind: string; format: string } | null;
+  file:     { id: string; filename: string; type: string; format: string } | null;
 }
 
 export interface StorageStats {
@@ -102,7 +102,7 @@ export interface RelationType {
   createdAt:   string;
 }
 
-export interface FileKind {
+export interface FileType {
   id:          string;
   name:        string;
   description: string | null;
@@ -130,7 +130,7 @@ export interface ExternalLink {
 export interface CollectionFile {
   id:        string;
   filename:  string;
-  kind:      string;
+  type:      string;
   format:    string;
   sizeBytes: number;
   status:    string;
@@ -140,7 +140,7 @@ export interface CollectionDetail {
   id:              string;
   name:            string;
   description:     string | null;
-  kind:            string;
+  type:            string;
   metadata:        Record<string, unknown> | null;
   technique:       { id: string; name: string } | null;
   organismId:      string | null;
@@ -153,12 +153,12 @@ export interface CollectionDetail {
 
 // ─── Files ────────────────────────────────────────────────
 
-export function useFilesQuery(filters?: { collectionId?: string; kind?: string }) {
+export function useFilesQuery(filters?: { collectionId?: string; type?: string }) {
   const params = new URLSearchParams();
   if (filters?.collectionId) params.set('collectionId', filters.collectionId);
-  if (filters?.kind) params.set('kind', filters.kind);
+  if (filters?.type) params.set('type', filters.type);
   const qs = params.toString();
-  return useApiQuery<GenomicFile[]>(`/api/files${qs ? '?' + qs : ''}`, [filters?.collectionId, filters?.kind]);
+  return useApiQuery<GenomicFile[]>(`/api/files${qs ? '?' + qs : ''}`, [filters?.collectionId, filters?.type]);
 }
 
 export function useFileDetailQuery(fileId?: string) {
@@ -175,7 +175,7 @@ export function useDeleteFileMutation(onSuccess?: () => void) {
 
 export function useUpdateFileMutation(onSuccess?: () => void) {
   const { mutate, pending } = useApiMutation<[string, {
-    kind?: string; format?: string; organismId?: string | null;
+    type?: string; format?: string; organismId?: string | null;
     description?: string | null; tags?: string[];
   }], GenomicFile>(
     (fileId, body) => ({
@@ -209,12 +209,12 @@ export function useCreateOrganismMutation(onSuccess?: () => void) {
 
 // ─── Collections ──────────────────────────────────────────
 
-export function useCollectionsQuery(filters?: { organismId?: string; kind?: string }) {
+export function useCollectionsQuery(filters?: { organismId?: string; type?: string }) {
   const params = new URLSearchParams();
   if (filters?.organismId) params.set('organismId', filters.organismId);
-  if (filters?.kind) params.set('kind', filters.kind);
+  if (filters?.type) params.set('type', filters.type);
   const qs = params.toString();
-  return useApiQuery<Collection[]>(`/api/collections${qs ? '?' + qs : ''}`, [filters?.organismId, filters?.kind]);
+  return useApiQuery<Collection[]>(`/api/collections${qs ? '?' + qs : ''}`, [filters?.organismId, filters?.type]);
 }
 
 export function useCollectionDetailQuery(collectionId?: string) {
@@ -223,7 +223,7 @@ export function useCollectionDetailQuery(collectionId?: string) {
 
 export function useCreateCollectionMutation(onSuccess?: () => void) {
   const { mutate, pending } = useApiMutation<[{
-    name: string; kind?: string;
+    name: string; type?: string;
     metadata?: Record<string, unknown>;
     description?: string;
     techniqueId?: string; organismId?: string;
@@ -239,7 +239,7 @@ export function useCreateCollectionMutation(onSuccess?: () => void) {
 
 export function useUpdateCollectionMutation(onSuccess?: () => void) {
   const { mutate, pending } = useApiMutation<[string, {
-    name?: string; description?: string; kind?: string; techniqueId?: string; organismId?: string;
+    name?: string; description?: string; type?: string; techniqueId?: string; organismId?: string;
   }]>(
     (id, body) => ({
       url: `/api/collections/${id}`,
@@ -277,23 +277,23 @@ export function useCreateTechniqueMutation(onSuccess?: () => void) {
   return { createTechnique: mutate, pending };
 }
 
-// ─── File kinds ──────────────────────────────────────────
+// ─── File types ──────────────────────────────────────────
 
-export function useFileKindsQuery() {
-  return useApiQuery<FileKind[]>('/api/file-kinds');
+export function useFileTypesQuery() {
+  return useApiQuery<FileType[]>('/api/file-types');
 }
 
-export function useCreateFileKindMutation(onSuccess?: () => void) {
+export function useCreateFileTypeMutation(onSuccess?: () => void) {
   const { mutate, pending } = useApiMutation<[{
     name: string; description?: string;
-  }], FileKind>(
+  }], FileType>(
     (body) => ({
-      url: '/api/file-kinds',
+      url: '/api/file-types',
       init: { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
     }),
-    { successMessage: 'File kind created', errorMessage: 'Failed to create file kind', onSuccess },
+    { successMessage: 'File type created', errorMessage: 'Failed to create file type', onSuccess },
   );
-  return { createFileKind: mutate, pending };
+  return { createFileType: mutate, pending };
 }
 
 // ─── Relation types ──────────────────────────────────────
@@ -495,7 +495,7 @@ export function useMultipartUpload() {
       tags?: string[];
       organismId?: string;
       collectionId?: string;
-      kind?: string;
+      type?: string;
     },
   ) => {
     const tmpId = crypto.randomUUID();
@@ -518,7 +518,7 @@ export function useMultipartUpload() {
           tags: opts.tags,
           organismId: opts.organismId,
           collectionId: opts.collectionId,
-          kind: opts.kind,
+          type: opts.type,
         }),
       });
       const { fileId, uploadId, s3Key } = await initRes.json();

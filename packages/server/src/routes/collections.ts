@@ -10,8 +10,8 @@ const router = Router();
 // ─── List collections ───────────────────────────────────────
 
 router.get('/', asyncWrap(async (req, res) => {
-  const { organismId, kind } = req.query as {
-    organismId?: string; kind?: string;
+  const { organismId, type } = req.query as {
+    organismId?: string; type?: string;
   };
 
   const edgeRepo = AppDataSource.getRepository(EntityEdge);
@@ -32,10 +32,10 @@ router.get('/', asyncWrap(async (req, res) => {
     qb = qb.where('c.id IN (:...ids)', { ids: filteredIds });
   }
 
-  if (kind) {
+  if (type) {
     qb = filteredIds !== null
-      ? qb.andWhere('c.kind = :kind', { kind })
-      : qb.where('c.kind = :kind', { kind });
+      ? qb.andWhere('c.type = :type', { type })
+      : qb.where('c.type = :type', { type });
   }
 
   const collections = await qb.getMany();
@@ -92,7 +92,7 @@ router.get('/', asyncWrap(async (req, res) => {
       id: c.id,
       name: c.name,
       description: c.description,
-      kind: c.kind,
+      type: c.type,
       metadata: c.metadata,
       techniqueId: tId ?? null,
       techniqueName: tech?.name ?? null,
@@ -148,7 +148,7 @@ router.get('/:id', asyncWrap(async (req, res) => {
     id: col.id,
     name: col.name,
     description: col.description,
-    kind: col.kind,
+    type: col.type,
     metadata: col.metadata,
     technique: technique ? { id: technique.id, name: technique.name } : null,
     organismId: orgId,
@@ -165,7 +165,7 @@ router.get('/:id', asyncWrap(async (req, res) => {
     files: files.map(f => ({
       id: f.id,
       filename: f.filename,
-      kind: f.kind,
+      type: f.type,
       format: f.format,
       sizeBytes: Number(f.sizeBytes),
       status: f.status,
@@ -177,9 +177,9 @@ router.get('/:id', asyncWrap(async (req, res) => {
 // ─── Create collection ──────────────────────────────────────
 
 router.post('/', asyncWrap(async (req, res) => {
-  const { name, kind, metadata, description, techniqueId, organismId } = req.body as {
+  const { name, type, metadata, description, techniqueId, organismId } = req.body as {
     name: string;
-    kind?: string;
+    type?: string;
     metadata?: Record<string, unknown>;
     description?: string;
     techniqueId?: string;
@@ -193,7 +193,7 @@ router.post('/', asyncWrap(async (req, res) => {
   const col = repo.create({
     name,
     description: description ?? null,
-    kind: kind ?? 'experiment',
+    type: type ?? 'experiment',
     metadata: metadata ?? null,
     createdBy: (res.locals.user as User)?.email ?? null,
   });
@@ -218,14 +218,14 @@ router.put('/:id', asyncWrap(async (req, res) => {
   const col = await repo.findOneBy({ id: req.params.id });
   if (!col) { res.status(404).json({ error: 'not found' }); return; }
 
-  const { name, kind, metadata, description, techniqueId, organismId } = req.body as Partial<{
-    name: string; kind: string; metadata: Record<string, unknown>;
+  const { name, type, metadata, description, techniqueId, organismId } = req.body as Partial<{
+    name: string; type: string; metadata: Record<string, unknown>;
     description: string; techniqueId: string; organismId: string;
   }>;
 
   if (name !== undefined) col.name = name;
   if (description !== undefined) col.description = description || null;
-  if (kind !== undefined) col.kind = kind;
+  if (type !== undefined) col.type = type;
   if (metadata !== undefined) col.metadata = metadata;
 
   await repo.save(col);

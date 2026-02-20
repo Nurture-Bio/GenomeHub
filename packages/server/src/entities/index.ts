@@ -109,8 +109,8 @@ export class Technique {
 }
 
 // ─── Collection ──────────────────────────────────────────
-// A named group of files. Kind determines what type of collection
-// (experiment, batch, analysis, custom, etc.). Kind-specific
+// A named group of files. Type determines what type of collection
+// (experiment, batch, analysis, custom, etc.). Type-specific
 // fields live in JSONB metadata — no hardcoded columns.
 
 @Entity('collections')
@@ -125,7 +125,7 @@ export class Collection {
   description!: string | null;
 
   @Column({ type: 'text', default: 'experiment' })
-  kind!: string;
+  type!: string;
 
   @Column({ type: 'jsonb', nullable: true })
   metadata!: Record<string, unknown> | null;
@@ -140,11 +140,11 @@ export class Collection {
   updatedAt!: Date;
 }
 
-// ─── FileKind ───────────────────────────────────────────
+// ─── FileType ───────────────────────────────────────────
 // First-class entity — users manage these through the UX.
 
-@Entity('file_kinds')
-export class FileKind {
+@Entity('file_types')
+export class FileType {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
@@ -239,7 +239,7 @@ export class GenomicFile {
   format!: string;
 
   @Column({ type: 'text', default: 'raw' })
-  kind!: string;
+  type!: string;
 
   @Column({ type: 'text', nullable: true })
   md5!: string | null;

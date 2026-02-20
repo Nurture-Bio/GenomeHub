@@ -9,7 +9,7 @@ import {
 import { useConfirm } from '../hooks/useConfirm';
 import { detectFormat, FORMAT_META, formatBytes, formatRelativeTime } from '../lib/formats';
 import { Button, Badge, Input, Text, Heading, Card, iconAction, chip } from '../ui';
-import { CollectionPicker, OrganismPicker, FileKindPicker } from '../ui';
+import { CollectionPicker, OrganismPicker, FileTypePicker } from '../ui';
 
 // ── Format icon ──────────────────────────────────────────
 
@@ -138,7 +138,7 @@ function FileCard({ file, onDownload, selected, onSelect }: FileCardProps) {
 interface FileRowProps {
   file: GenomicFile;
   onDownload: (id: string) => void;
-  onUpdate: (id: string, patch: { kind?: string; format?: string; organismId?: string | null; tags?: string[] }) => void;
+  onUpdate: (id: string, patch: { type?: string; format?: string; organismId?: string | null; tags?: string[] }) => void;
   onAddToCollection: (collectionId: string, fileIds: string[]) => Promise<void>;
   onRemoveFromCollection: (collectionId: string, fileIds: string[]) => Promise<void>;
   selected: boolean;
@@ -193,11 +193,11 @@ function FileRow({ file, onDownload, onUpdate, onAddToCollection, onRemoveFromCo
         />
       </td>
 
-      {/* Kind — always-rendered dropdown */}
+      {/* Type — always-rendered dropdown */}
       <td className="py-1.5 pr-3 w-28 align-top pt-2">
-        <FileKindPicker
-          value={file.kind}
-          onValueChange={v => onUpdate(file.id, { kind: v })}
+        <FileTypePicker
+          value={file.type}
+          onValueChange={v => onUpdate(file.id, { type: v })}
           variant="surface" size="sm" className="w-full"
         />
       </td>
@@ -263,11 +263,11 @@ function SkeletonCard() {
 
 export default function FilesPage() {
   const [filterCollectionId, setFilterCollectionId] = useState('');
-  const [filterKind, setFilterKind] = useState('');
+  const [filterType, setFilterType] = useState('');
 
   const { data, isLoading, refetch } = useFilesQuery({
     collectionId: filterCollectionId || undefined,
-    kind: filterKind || undefined,
+    type: filterType || undefined,
   });
   const { deleteFile, pending: deletePending } = useDeleteFileMutation(refetch);
   const { updateFile } = useUpdateFileMutation(refetch);
@@ -276,17 +276,17 @@ export default function FilesPage() {
   const { getUrl } = usePresignedUrl();
   const { confirm, dialog } = useConfirm();
 
-  // Derive format and kind filters from actual data
+  // Derive format and type filters from actual data
   const formatFilters = useMemo(() => {
     if (!data) return ['all'];
     const fmts = new Set(data.map(f => f.format));
     return ['all', ...Array.from(fmts).sort()];
   }, [data]);
 
-  const kindFilters = useMemo(() => {
+  const typeFilters = useMemo(() => {
     if (!data) return ['all'];
-    const kinds = new Set(data.map(f => f.kind).filter(Boolean));
-    return ['all', ...Array.from(kinds).sort()];
+    const types = new Set(data.map(f => f.type).filter(Boolean));
+    return ['all', ...Array.from(types).sort()];
   }, [data]);
 
   const [search,     setSearch]     = useState('');
@@ -342,7 +342,7 @@ export default function FilesPage() {
     refetch();
   };
 
-  const handleInlineUpdate = async (fileId: string, patch: { kind?: string; format?: string; organismId?: string | null; tags?: string[] }) => {
+  const handleInlineUpdate = async (fileId: string, patch: { type?: string; format?: string; organismId?: string | null; tags?: string[] }) => {
     await updateFile(fileId, patch);
   };
 
@@ -415,12 +415,12 @@ export default function FilesPage() {
         />
 
         <div className="flex gap-1 flex-wrap">
-          {kindFilters.map(k => {
-            const active = k === 'all' ? !filterKind : filterKind === k;
+          {typeFilters.map(k => {
+            const active = k === 'all' ? !filterType : filterType === k;
             return (
               <button
                 key={k}
-                onClick={() => setFilterKind(k === 'all' ? '' : k)}
+                onClick={() => setFilterType(k === 'all' ? '' : k)}
                 className="font-body text-micro px-1.5 py-1 md:py-0.5 rounded-sm border transition-colors duration-fast cursor-pointer min-h-5.5 md:min-h-0"
                 style={{
                   background: active ? 'var(--color-accent)' : 'var(--color-surface-2)',
@@ -428,7 +428,7 @@ export default function FilesPage() {
                   borderColor: active ? 'transparent'        : 'var(--color-border)',
                 }}
               >
-                {k === 'all' ? 'All kinds' : k}
+                {k === 'all' ? 'All types' : k}
               </button>
             );
           })}
@@ -468,7 +468,7 @@ export default function FilesPage() {
                   className="accent-accent cursor-pointer"
                 />
               </th>
-              {['File', 'Organism', 'Kind', 'Collections', ''].map(h => (
+              {['File', 'Organism', 'Type', 'Collections', ''].map(h => (
                 <th key={h} className="py-1.5 pr-3">
                   <Text variant="overline">{h}</Text>
                 </th>

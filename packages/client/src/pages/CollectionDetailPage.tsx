@@ -38,7 +38,7 @@ export default function CollectionDetailPage() {
     return allFiles
       .filter(f => !existingIds.has(f.id))
       .filter(f => !q || f.filename.toLowerCase().includes(q)
-        || f.kind.toLowerCase().includes(q)
+        || f.type.toLowerCase().includes(q)
         || (f.organismDisplay?.toLowerCase().includes(q) ?? false));
   }, [allFiles, collection, addSearch]);
 
@@ -90,7 +90,7 @@ export default function CollectionDetailPage() {
             onValueChange={v => { if (collectionId) updateCollection(collectionId, { techniqueId: v || undefined }); }}
             variant="surface" size="sm" className="w-36"
           />
-          <Badge variant="count" color="dim">{collection.kind}</Badge>
+          <Badge variant="count" color="dim">{collection.type}</Badge>
         </div>
 
         <InlineInput
@@ -181,7 +181,7 @@ export default function CollectionDetailPage() {
                         {meta.label}
                       </Badge>
                       <Text variant="mono" className="truncate flex-1 min-w-0">{file.filename}</Text>
-                      <Badge variant="count" color="dim">{file.kind}</Badge>
+                      <Badge variant="count" color="dim">{file.type}</Badge>
                       <Text variant="caption" className="shrink-0">{formatBytes(file.sizeBytes)}</Text>
                     </label>
                   );
@@ -200,7 +200,7 @@ export default function CollectionDetailPage() {
               <thead>
                 <tr className="border-b border-border bg-surface-2">
                   <th className="py-1.5 pl-2.5 pr-3"><Text variant="overline">File</Text></th>
-                  <th className="py-1.5 pr-3 w-24"><Text variant="overline">Kind</Text></th>
+                  <th className="py-1.5 pr-3 w-24"><Text variant="overline">Type</Text></th>
                   <th className="py-1.5 pr-3 text-right w-20"><Text variant="overline">Size</Text></th>
                   <th className="py-1.5 pr-3 w-20"><Text variant="overline">Status</Text></th>
                   <th className="w-6" />
@@ -225,7 +225,7 @@ export default function CollectionDetailPage() {
                         </div>
                       </td>
                       <td className="py-1.5 pr-3">
-                        <Badge variant="count" color="dim">{file.kind}</Badge>
+                        <Badge variant="count" color="dim">{file.type}</Badge>
                       </td>
                       <td className="py-1.5 pr-3 text-right">
                         <Text variant="mono" className="text-text-secondary">{formatBytes(file.sizeBytes)}</Text>

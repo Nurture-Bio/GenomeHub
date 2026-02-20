@@ -3,7 +3,7 @@ import { cx } from 'class-variance-authority';
 import {
   useTechniquesQuery, useCreateTechniqueMutation,
   useRelationTypesQuery, useCreateRelationTypeMutation,
-  useFileKindsQuery, useCreateFileKindMutation,
+  useFileTypesQuery, useCreateFileTypeMutation,
 } from '../hooks/useGenomicQueries';
 import { useConfirmDelete } from '../hooks/useConfirmDelete';
 import { apiFetch } from '../lib/api';
@@ -131,25 +131,25 @@ export default function SettingsPage() {
     await createRelationType({ name, description: description || undefined });
   }, [createRelationType]);
 
-  const { data: fileKinds, refetch: refetchKinds } = useFileKindsQuery();
-  const { createFileKind } = useCreateFileKindMutation(refetchKinds);
+  const { data: fileTypes, refetch: refetchTypes } = useFileTypesQuery();
+  const { createFileType } = useCreateFileTypeMutation(refetchTypes);
 
-  const saveKind = useCallback(async (id: string, patch: { name?: string; description?: string }) => {
-    const r = await apiFetch(`/api/file-kinds/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
+  const saveType = useCallback(async (id: string, patch: { name?: string; description?: string }) => {
+    const r = await apiFetch(`/api/file-types/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
     if (!r.ok) throw new Error('Update failed');
-    toast.success('Updated'); refetchKinds();
-  }, [refetchKinds]);
+    toast.success('Updated'); refetchTypes();
+  }, [refetchTypes]);
 
-  const doDeleteKind = useCallback(async (id: string) => {
-    const r = await apiFetch(`/api/file-kinds/${id}`, { method: 'DELETE' });
+  const doDeleteType = useCallback(async (id: string) => {
+    const r = await apiFetch(`/api/file-types/${id}`, { method: 'DELETE' });
     if (!r.ok) throw new Error('Delete failed');
-    toast.success('Deleted'); refetchKinds();
-  }, [refetchKinds]);
-  const { confirmDelete: confirmDeleteKind, dialog: dialogKind } = useConfirmDelete(doDeleteKind, 'file kind');
+    toast.success('Deleted'); refetchTypes();
+  }, [refetchTypes]);
+  const { confirmDelete: confirmDeleteType, dialog: dialogType } = useConfirmDelete(doDeleteType, 'file type');
 
-  const addKind = useCallback(async (name: string, description: string) => {
-    await createFileKind({ name, description: description || undefined });
-  }, [createFileKind]);
+  const addType = useCallback(async (name: string, description: string) => {
+    await createFileType({ name, description: description || undefined });
+  }, [createFileType]);
 
   const { data: techniques, refetch: refetchTechniques } = useTechniquesQuery();
   const { createTechnique } = useCreateTechniqueMutation(refetchTechniques);
@@ -174,7 +174,7 @@ export default function SettingsPage() {
   return (
     <div className="flex flex-col gap-4 md:gap-5 p-2 md:p-3 max-w-2xl mx-auto w-full">
       {dialogRelation}
-      {dialogKind}
+      {dialogType}
       {dialogTechnique}
       <div>
         <Heading level="heading">Settings</Heading>
@@ -188,11 +188,11 @@ export default function SettingsPage() {
         <AddRow placeholder="+ new relation type" onAdd={addRelation} />
       </SectionTable>
 
-      <SectionTable title="File Kinds" subtitle="Classify files by their biological meaning">
-        {(fileKinds ?? []).map(fk => (
-          <EditableRow key={fk.id} id={fk.id} name={fk.name} description={fk.description} onSave={saveKind} onDelete={confirmDeleteKind} />
+      <SectionTable title="File Types" subtitle="Classify files by their biological meaning">
+        {(fileTypes ?? []).map(ft => (
+          <EditableRow key={ft.id} id={ft.id} name={ft.name} description={ft.description} onSave={saveType} onDelete={confirmDeleteType} />
         ))}
-        <AddRow placeholder="+ new file kind" onAdd={addKind} />
+        <AddRow placeholder="+ new file type" onAdd={addType} />
       </SectionTable>
 
       <SectionTable title="Techniques" subtitle="Sequencing techniques linked to collections">

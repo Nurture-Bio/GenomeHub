@@ -46,7 +46,7 @@ function InlineCollections({
   fileId, collections, onAdd, onRemove,
 }: {
   fileId: string;
-  collections: { id: string; name: string; kind: string }[];
+  collections: { id: string; name: string; type: string }[];
   onAdd: (collectionId: string, fileIds: string[]) => Promise<void>;
   onRemove: (collectionId: string, fileIds: string[]) => Promise<void>;
 }) {
@@ -59,7 +59,7 @@ function InlineCollections({
           <Link to={`/collections/${c.id}`} className="no-underline">
             <Text variant="mono" className="hover:text-accent transition-colors duration-fast">{c.name}</Text>
           </Link>
-          <Badge variant="count" color="dim">{c.kind}</Badge>
+          <Badge variant="count" color="dim">{c.type}</Badge>
           <button
             onClick={() => onRemove(c.id, [fileId])}
             className={iconAction({ color: 'danger' }) + ' ml-0.5 opacity-0 group-hover/chip:opacity-100'}
@@ -125,7 +125,7 @@ export default function FileDetailPage() {
     const q = provSearch.toLowerCase();
     return allFiles
       .filter(f => f.id !== file.id)
-      .filter(f => !q || f.filename.toLowerCase().includes(q) || f.kind.toLowerCase().includes(q));
+      .filter(f => !q || f.filename.toLowerCase().includes(q) || f.type.toLowerCase().includes(q));
   }, [allFiles, file, provSearch]);
 
   const handleAddToCollection = async (collectionId: string, fileIds: string[]) => {
@@ -189,7 +189,7 @@ export default function FileDetailPage() {
           <Badge variant="status" style={{ background: meta.bg, color: meta.color }}>
             {meta.label}
           </Badge>
-          <Badge variant="count" color="dim">{file.kind}</Badge>
+          <Badge variant="count" color="dim">{file.type}</Badge>
           {file.status === 'ready' && <Badge variant="status" color="green">ready</Badge>}
           {file.status === 'pending' && <Badge variant="status" color="yellow">uploading</Badge>}
           {file.status === 'error' && <Badge variant="status" color="red">error</Badge>}
@@ -310,7 +310,7 @@ export default function FileDetailPage() {
                     >
                       <FormatPill filename={f.filename} />
                       <Text variant="mono" className="truncate flex-1 min-w-0">{f.filename}</Text>
-                      <Badge variant="count" color="dim">{f.kind}</Badge>
+                      <Badge variant="count" color="dim">{f.type}</Badge>
                     </button>
                   ))
                 )}
@@ -330,7 +330,7 @@ export default function FileDetailPage() {
                   <Link to={`/files/${p.file.id}`} className="no-underline flex-1 min-w-0">
                     <Text variant="mono" className="truncate hover:text-accent transition-colors duration-fast">{p.file.filename}</Text>
                   </Link>
-                  <Badge variant="count" color="dim">{p.file.kind}</Badge>
+                  <Badge variant="count" color="dim">{p.file.type}</Badge>
                   <button
                     onClick={() => handleRemoveProvenance(p.edgeId)}
                     disabled={removeProvPending}
@@ -356,7 +356,7 @@ export default function FileDetailPage() {
                   <Link to={`/files/${p.file.id}`} className="no-underline flex-1 min-w-0">
                     <Text variant="mono" className="truncate hover:text-accent transition-colors duration-fast">{p.file.filename}</Text>
                   </Link>
-                  <Badge variant="count" color="dim">{p.file.kind}</Badge>
+                  <Badge variant="count" color="dim">{p.file.type}</Badge>
                   <button
                     onClick={() => handleRemoveProvenance(p.edgeId)}
                     disabled={removeProvPending}

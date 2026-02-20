@@ -2,12 +2,12 @@ import { useMemo } from 'react';
 import ComboBox, { type ComboBoxItem } from './ComboBox';
 import {
   useOrganismsQuery, useCollectionsQuery,
-  useTechniquesQuery, useRelationTypesQuery, useFileKindsQuery,
+  useTechniquesQuery, useRelationTypesQuery, useFileTypesQuery,
   useCreateOrganismMutation,
   useCreateCollectionMutation,
   useCreateTechniqueMutation,
   useCreateRelationTypeMutation,
-  useCreateFileKindMutation,
+  useCreateFileTypeMutation,
 } from '../hooks/useGenomicQueries';
 import { useAppStore } from '../stores/useAppStore';
 
@@ -38,12 +38,12 @@ function useTrackSelection(kind: 'collections') {
 // ── CollectionPicker ────────────────────────────────────
 
 interface CollectionPickerProps extends PickerBaseProps {
-  kind?: string;
+  type?: string;
 }
 
-export function CollectionPicker({ value, onValueChange, kind, placeholder = 'Collection', items: overrideItems, ...rest }: CollectionPickerProps) {
+export function CollectionPicker({ value, onValueChange, type, placeholder = 'Collection', items: overrideItems, ...rest }: CollectionPickerProps) {
   const { data, isLoading, refetch } = useCollectionsQuery(
-    kind ? { kind } : undefined,
+    type ? { type } : undefined,
   );
   const { createCollection } = useCreateCollectionMutation(refetch);
   const recentIds = useRecent('collections');
@@ -122,12 +122,12 @@ export function OrganismPicker({ value, onValueChange, placeholder = 'Organism',
   );
 }
 
-// ── FileKindPicker ──────────────────────────────────────
-// Fetches from file_kinds table. Value is the kind name (not id).
+// ── FileTypePicker ──────────────────────────────────────
+// Fetches from file_types table. Value is the type name (not id).
 
-export function FileKindPicker({ value, onValueChange, placeholder = 'Kind', items: overrideItems, ...rest }: PickerBaseProps) {
-  const { data, isLoading, refetch } = useFileKindsQuery();
-  const { createFileKind } = useCreateFileKindMutation(refetch);
+export function FileTypePicker({ value, onValueChange, placeholder = 'Type', items: overrideItems, ...rest }: PickerBaseProps) {
+  const { data, isLoading, refetch } = useFileTypesQuery();
+  const { createFileType } = useCreateFileTypeMutation(refetch);
 
   const items = useMemo(() => {
     if (overrideItems) return overrideItems;
@@ -140,7 +140,7 @@ export function FileKindPicker({ value, onValueChange, placeholder = 'Kind', ite
 
   const handleCreate = async (name: string) => {
     try {
-      const created = await createFileKind({ name });
+      const created = await createFileType({ name });
       await refetch();
       onValueChange(created.name);
     } catch { /* toast already shown */ }

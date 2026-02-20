@@ -13,8 +13,8 @@ const router = Router();
 // ─── List files ─────────────────────────────────────────────
 
 router.get('/', asyncWrap(async (req, res) => {
-  const { organismId, collectionId, kind } = req.query as {
-    organismId?: string; collectionId?: string; kind?: string;
+  const { organismId, collectionId, type } = req.query as {
+    organismId?: string; collectionId?: string; type?: string;
   };
 
   const edgeRepo = AppDataSource.getRepository(EntityEdge);
@@ -44,10 +44,10 @@ router.get('/', asyncWrap(async (req, res) => {
     qb = qb.where('f.id IN (:...ids)', { ids: filteredFileIds });
   }
 
-  if (kind) {
+  if (type) {
     qb = filteredFileIds !== null
-      ? qb.andWhere('f.kind = :kind', { kind })
-      : qb.where('f.kind = :kind', { kind });
+      ? qb.andWhere('f.type = :type', { type })
+      : qb.where('f.type = :type', { type });
   }
 
   const files = await qb.getMany();
@@ -99,7 +99,7 @@ router.get('/', asyncWrap(async (req, res) => {
       s3Key:       f.s3Key,
       sizeBytes:   Number(f.sizeBytes),
       format:      f.format,
-      kind:        f.kind,
+      type:        f.type,
       md5:         f.md5,
       status:      f.status,
       uploadedAt:  f.uploadedAt,
@@ -215,14 +215,14 @@ router.get('/:id', asyncWrap(async (req, res) => {
     s3Key: file.s3Key,
     sizeBytes: Number(file.sizeBytes),
     format: file.format,
-    kind: file.kind,
+    type: file.type,
     md5: file.md5,
     status: file.status,
     description: file.description,
     tags: file.tags,
     uploadedBy: file.uploadedBy,
     uploadedAt: file.uploadedAt,
-    collections: collections.map(c => ({ id: c.id, name: c.name, kind: c.kind })),
+    collections: collections.map(c => ({ id: c.id, name: c.name, type: c.type })),
     organismId,
     organismDisplay: organism ? organismDisplay(organism) : null,
     provenance: {
@@ -231,7 +231,7 @@ router.get('/:id', asyncWrap(async (req, res) => {
         return {
           edgeId: p.edgeId,
           relation: p.relation,
-          file: f ? { id: f.id, filename: f.filename, kind: f.kind, format: f.format } : null,
+          file: f ? { id: f.id, filename: f.filename, type: f.type, format: f.format } : null,
         };
       }),
       downstream: provenanceDown.map(p => {
@@ -239,7 +239,7 @@ router.get('/:id', asyncWrap(async (req, res) => {
         return {
           edgeId: p.edgeId,
           relation: p.relation,
-          file: f ? { id: f.id, filename: f.filename, kind: f.kind, format: f.format } : null,
+          file: f ? { id: f.id, filename: f.filename, type: f.type, format: f.format } : null,
         };
       }),
     },
@@ -260,12 +260,12 @@ router.put('/:id', asyncWrap(async (req, res) => {
   const file = await repo.findOneBy({ id: req.params.id });
   if (!file) { res.status(404).json({ error: 'not found' }); return; }
 
-  const { kind, format, organismId, description, tags } = req.body as Partial<{
-    kind: string; format: string; organismId: string | null;
+  const { type, format, organismId, description, tags } = req.body as Partial<{
+    type: string; format: string; organismId: string | null;
     description: string | null; tags: string[];
   }>;
 
-  if (kind !== undefined) file.kind = kind;
+  if (type !== undefined) file.type = type;
   if (format !== undefined) file.format = format;
   if (description !== undefined) file.description = description;
   if (tags !== undefined) file.tags = tags;

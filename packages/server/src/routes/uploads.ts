@@ -13,7 +13,7 @@ const router = Router();
 
 /** Step 1 — register file metadata and initiate S3 multipart */
 router.post('/initiate', asyncWrap(async (req, res) => {
-  const { filename, contentType, sizeBytes, description, tags, organismId, collectionId, kind } =
+  const { filename, contentType, sizeBytes, description, tags, organismId, collectionId, type } =
     req.body as {
       filename:    string;
       contentType: string;
@@ -22,7 +22,7 @@ router.post('/initiate', asyncWrap(async (req, res) => {
       tags?: string[];
       organismId?: string;
       collectionId?: string;
-      kind?: string;
+      type?: string;
     };
 
   if (!filename) {
@@ -39,7 +39,7 @@ router.post('/initiate', asyncWrap(async (req, res) => {
     status: 'pending',
     s3Key:  '',   // filled after we have the id
     format: detectFormat(filename),
-    kind:   kind ?? 'raw',
+    type:   type ?? 'raw',
     uploadedBy: (res.locals.user as User)?.email ?? null,
   });
   await repo.save(file);
