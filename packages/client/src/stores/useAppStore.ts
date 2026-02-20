@@ -31,6 +31,7 @@ interface AppState extends PersistedState {
   setUpload: (id: string, progress: UploadProgress) => void;
   updateUpload: (id: string, patch: Partial<UploadProgress>) => void;
   clearDoneUploads: () => void;
+  clearUploads: () => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -94,6 +95,8 @@ export const useAppStore = create<AppState>()(
           }
           return { uploads: next };
         }),
+
+      clearUploads: () => set({ uploads: new Map() }),
     }),
     {
       name: 'genomehub-app',
