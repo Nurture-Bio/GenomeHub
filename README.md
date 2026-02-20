@@ -37,6 +37,37 @@ The browser uploads directly to S3 via presigned multipart URLs. The server only
 | Database | PostgreSQL 16 on RDS | Isolated subnet, encrypted at rest, 7-day backups |
 | CDN | CloudFront | HTTPS termination; large downloads bypass via presigned S3 URLs |
 
+### Chip coloring
+
+Metadata tags (file types, organisms, sequencing techniques) are rendered as colored chips. Each chip's color is derived deterministically from its label text — no color palette to maintain, no database column needed.
+
+The algorithm is a two-step hash:
+
+1. **Polynomial string hash** — accumulates character codes with a multiply-add loop (`h = 31h + c`), the same family used by Java's `String.hashCode()`.
+2. **Knuth multiplicative scramble** — multiplies the raw hash by the constant `2654435761` (⌊2³² / φ⌋, derived from the golden ratio) and takes the result modulo 360 to get a hue angle.
+
+```ts
+function strHue(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  }
+  h = Math.imul(h >>> 0, 2654435761) >>> 0;
+  return h % 360;
+}
+```
+
+The Knuth step is the key insight. A plain modulo on the polynomial hash clusters visually similar labels together — `gtf` and `gbff` share the prefix `g` and most character values, so their raw hashes differ by a small delta and they land on nearly identical hues. Multiplying by 2654435761 before taking modulo maps that small delta to a large, pseudo-random offset across the full 360° wheel, so similar-looking format names reliably get distinct colors.
+
+The hue feeds a fixed-saturation HSL triplet:
+
+```ts
+backgroundColor: `hsl(${hue} 55% 88%)`,
+color:           `hsl(${hue} 55% 28%)`,
+```
+
+No library dependency, no config, zero bytes of color data shipped.
+
 ---
 
 ## Quick start
