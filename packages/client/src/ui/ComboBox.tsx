@@ -61,8 +61,12 @@ export default function ComboBox({
   const recentItems = recentIds
     ? items.filter(i => recentSet.has(i.id) && i.id !== value)
     : [];
+  // Exclude recent items from the main list so cmdk never sees duplicate values
+  const mainItems = recentItems.length > 0
+    ? items.filter(i => !recentSet.has(i.id) || i.id === value)
+    : items;
   const groups = new Map<string, ComboBoxItem[]>();
-  for (const item of items) {
+  for (const item of mainItems) {
     const g = item.group ?? '';
     if (!groups.has(g)) groups.set(g, []);
     groups.get(g)!.push(item);
@@ -138,7 +142,7 @@ export default function ComboBox({
 
               {/* Grouped or ungrouped items */}
               {groups.size <= 1 ? (
-                items.map(item => (
+                mainItems.map(item => (
                   <ComboBoxOption key={item.id} item={item} selected={item.id === value} onSelect={() => { onValueChange(item.id); setOpen(false); }} />
                 ))
               ) : (
