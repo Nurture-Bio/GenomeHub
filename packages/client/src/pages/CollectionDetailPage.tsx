@@ -7,6 +7,7 @@ import {
   useAddCollectionOrganism, useRemoveCollectionOrganism,
   useAddCollectionTechnique, useRemoveCollectionTechnique,
 } from '../hooks/useGenomicQueries';
+import { Glide } from 'concertina';
 import { detectFormat, FORMAT_META, formatBytes } from '../lib/formats';
 import { Heading, Text, Badge, InlineInput, Input, ChipEditor, HashPill, iconAction } from '../ui';
 import { TechniquePicker, OrganismPicker, FileTypePicker } from '../ui';
@@ -66,11 +67,13 @@ export default function CollectionDetailPage() {
   if (isLoading) {
     return (
       <div className="flex flex-col gap-3 p-2 md:p-3">
-        <div className="skeleton h-6 w-48 rounded-sm" />
-        <div className="skeleton h-4 w-72 rounded-sm" />
+        <div className="concertina-warmup-line concertina-warmup-line-long" style={{ height: 'var(--font-size-heading)' }} />
+        <div className="concertina-warmup-line concertina-warmup-line-short" />
         <div className="flex flex-col gap-1">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="skeleton h-10 rounded-md" />
+            <div key={i} className="py-1.5 border-b border-border-subtle">
+              <div className="concertina-warmup-line concertina-warmup-line-long" />
+            </div>
           ))}
         </div>
       </div>
@@ -147,7 +150,7 @@ export default function CollectionDetailPage() {
         </div>
 
         {/* Add files panel */}
-        {showAddPanel && (
+        <Glide show={showAddPanel}>
           <div className="border border-border rounded-md p-2.5 mb-2 bg-surface-2">
             <div className="flex items-center gap-2 mb-2">
               <Input
@@ -203,7 +206,7 @@ export default function CollectionDetailPage() {
               )}
             </div>
           </div>
-        )}
+        </Glide>
 
         {/* Existing files */}
         {collection.files.length === 0 && !showAddPanel ? (

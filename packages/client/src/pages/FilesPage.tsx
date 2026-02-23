@@ -3,6 +3,7 @@ import { useState, useMemo } from 'react';
 import type { CSSProperties } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { cx } from 'class-variance-authority';
+import { Gigbag } from 'concertina';
 import {
   useFilesQuery, useDeleteFileMutation, useUpdateFileMutation,
   usePresignedUrl, useAddFilesToCollection, useRemoveFilesFromCollection,
@@ -16,19 +17,13 @@ import { CollectionPicker, OrganismPicker, FileTypePicker } from '../ui';
 
 // ── Format icon ──────────────────────────────────────────
 
-function FormatIcon({ filename, format, size = 32 }: { filename: string; format?: string; size?: number }) {
+function FormatIcon({ filename, format, className }: { filename: string; format?: string; className?: string }) {
   const fmt   = format ?? detectFormat(filename);
   const meta  = FORMAT_META[fmt] ?? FORMAT_META['other'];
   return (
     <div
-      className="flex items-center justify-center rounded-sm shrink-0 font-mono font-bold"
-      style={{
-        width: size, height: size,
-        background: meta.bg,
-        color: meta.color,
-        fontSize: size * 0.28,
-        letterSpacing: '-0.02em',
-      }}
+      className={cx('format-icon shrink-0 font-mono font-bold', className)}
+      style={{ background: meta.bg, color: meta.color }}
     >
       {meta.label}
     </div>
@@ -117,7 +112,7 @@ function FileRow({ file, onDownload, onUpdateTypes, onAddOrganism, onRemoveOrgan
       {/* File: icon + name (line 1), size · status · date (line 2) */}
       <td className="py-1.5 pr-3">
         <div className="flex items-center gap-2">
-          <FormatIcon filename={file.filename} format={file.format} size={28} />
+          <FormatIcon filename={file.filename} format={file.format} />
           <div className="min-w-0 flex-1">
             <Link to={`/files/${file.id}`} className="no-underline">
               <Text variant="mono" className="truncate block hover:text-accent transition-colors duration-fast">
@@ -196,11 +191,28 @@ function FileRow({ file, onDownload, onUpdateTypes, onAddOrganism, onRemoveOrgan
 function SkeletonRow() {
   return (
     <tr className="border-b border-border-subtle">
-      {[...Array(6)].map((_, i) => (
-        <td key={i} className="py-2 pr-3">
-          <div className="skeleton h-4 rounded-sm" style={{ width: `${40 + Math.random() * 40}%` }} />
-        </td>
-      ))}
+      <td className="pl-3 pr-1 py-1.5 w-6 align-top pt-2.5">
+        <div className="concertina-warmup-line rounded-sm" style={{ width: 'var(--target-min-icon)', height: 'var(--target-min-icon)' }} />
+      </td>
+      <td className="py-1.5 pr-3">
+        <div className="flex items-center gap-2">
+          <div className="concertina-warmup-line rounded-sm shrink-0" style={{ width: 'var(--format-icon-size)', height: 'var(--format-icon-size)' }} />
+          <div className="flex flex-col gap-1 flex-1 min-w-0">
+            <div className="concertina-warmup-line concertina-warmup-line-long" />
+            <div className="concertina-warmup-line concertina-warmup-line-short" />
+          </div>
+        </div>
+      </td>
+      <td className="py-1.5 pr-3 align-top pt-2">
+        <div className="concertina-warmup-line concertina-warmup-line-short rounded-full" />
+      </td>
+      <td className="py-1.5 pr-3 align-top pt-2">
+        <div className="concertina-warmup-line concertina-warmup-line-short rounded-full" />
+      </td>
+      <td className="py-1.5 pr-3 align-top pt-2">
+        <div className="concertina-warmup-line concertina-warmup-line-short rounded-full" />
+      </td>
+      <td />
     </tr>
   );
 }
@@ -211,14 +223,14 @@ function SkeletonCard() {
   return (
     <Card className="p-2.5 flex flex-col gap-1.5">
       <div className="flex items-center gap-2">
-        <div className="skeleton h-4 w-4 rounded-sm" />
-        <div className="skeleton h-3 rounded-sm" style={{ width: '40px' }} />
-        <div className="skeleton h-3 rounded-sm flex-1" />
+        <div className="concertina-warmup-line rounded-sm" style={{ width: 'var(--target-min-icon)', height: 'var(--target-min-icon)' }} />
+        <div className="concertina-warmup-line rounded-sm shrink-0" style={{ width: 'var(--format-icon-size)', height: 'var(--format-icon-size)' }} />
+        <div className="concertina-warmup-line concertina-warmup-line-long flex-1" />
       </div>
-      <div className="flex gap-2 pl-5.5">
-        <div className="skeleton h-3 rounded-sm w-16" />
-        <div className="skeleton h-3 rounded-sm w-12" />
-        <div className="skeleton h-3 rounded-sm w-10" />
+      <div className="flex gap-2 pl-11">
+        <div className="concertina-warmup-line concertina-warmup-line-short flex-1" />
+        <div className="concertina-warmup-line concertina-warmup-line-short rounded-full flex-1" />
+        <div className="concertina-warmup-line concertina-warmup-line-short flex-1" />
       </div>
     </Card>
   );
@@ -515,6 +527,7 @@ export default function FilesPage() {
 
       {/* Desktop table — hidden below md */}
       <div className="hidden md:block flex-1 overflow-auto min-h-0 border border-border rounded-md bg-surface" style={{ scrollbarGutter: 'stable' }}>
+        <Gigbag className="w-full">
         <table className="w-full border-collapse text-left table-fixed">
           <thead className="sticky top-0 bg-surface-2 z-10">
             <tr className="border-b border-border">
@@ -563,6 +576,7 @@ export default function FilesPage() {
             }
           </tbody>
         </table>
+        </Gigbag>
       </div>
 
       {/* Mobile cards — visible below md */}

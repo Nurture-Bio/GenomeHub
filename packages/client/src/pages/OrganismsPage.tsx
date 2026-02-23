@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import { cx } from 'class-variance-authority';
+import { Gigbag } from 'concertina';
 import { useOrganismsQuery, useCreateOrganismMutation } from '../hooks/useGenomicQueries';
 import { useConfirmDelete } from '../hooks/useConfirmDelete';
 import { apiFetch } from '../lib/api';
@@ -10,11 +11,25 @@ import { formatRelativeTime } from '../lib/formats';
 function SkeletonRow() {
   return (
     <tr className="border-b border-border-subtle">
-      {[...Array(5)].map((_, i) => (
-        <td key={i} className="py-2 pr-3 pl-2.5">
-          <div className="skeleton h-4 rounded-sm" style={{ width: `${40 + Math.random() * 40}%` }} />
-        </td>
-      ))}
+      <td className="py-1.5 pl-2.5 pr-3">
+        <div className="flex flex-col gap-1">
+          <div className="concertina-warmup-line concertina-warmup-line-long" />
+          <div className="concertina-warmup-line concertina-warmup-line-short" />
+        </div>
+      </td>
+      <td className="py-1.5 pl-2.5 pr-3">
+        <div className="flex flex-col gap-1">
+          <div className="concertina-warmup-line concertina-warmup-line-short" />
+          <div className="concertina-warmup-line concertina-warmup-line-short" />
+        </div>
+      </td>
+      <td className="py-1.5 pl-2.5 pr-3 text-right align-top pt-2">
+        <div className="concertina-warmup-line concertina-warmup-line-short ml-auto" />
+      </td>
+      <td className="py-1.5 pl-2.5 pr-3 text-right align-top pt-2">
+        <div className="concertina-warmup-line concertina-warmup-line-short ml-auto" />
+      </td>
+      <td />
     </tr>
   );
 }
@@ -69,6 +84,7 @@ export default function OrganismsPage() {
 
       {/* Desktop table */}
       <div className="hidden md:block flex-1 overflow-auto min-h-0 border border-border rounded-md bg-surface">
+        <Gigbag className="w-full">
         <table className="w-full border-collapse text-left table-fixed">
           <thead className="sticky top-0 bg-surface-2 z-10">
             <tr className="border-b border-border">
@@ -144,15 +160,16 @@ export default function OrganismsPage() {
               )}
           </tbody>
         </table>
+        </Gigbag>
       </div>
 
       {/* Mobile cards */}
       <div className="flex flex-col gap-1.5 md:hidden flex-1 overflow-auto min-h-0">
         {isLoading
           ? [...Array(4)].map((_, i) => (
-            <Card key={i} className="p-2.5">
-              <div className="skeleton h-4 rounded-sm w-1/2 mb-1" />
-              <div className="skeleton h-3 rounded-sm w-3/4" />
+            <Card key={i} className="p-2.5 flex flex-col gap-1">
+              <div className="concertina-warmup-line concertina-warmup-line-long" />
+              <div className="concertina-warmup-line concertina-warmup-line-short" />
             </Card>
           ))
           : !data?.length

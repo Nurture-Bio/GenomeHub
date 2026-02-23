@@ -1,5 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Nunito+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;700&display=swap');
 @import "tailwindcss";
+@import "concertina/styles.css";
 
 @theme {
   /* ═══════════════════════════════════════════════════════
@@ -209,6 +210,20 @@
   --aspect-treemap-mobile: 3/2;
   /* TUNABLE — taller on narrow screens to prevent cells from
      becoming too wide and flat */
+}
+
+/* ── Concertina warmup — linked to design tokens ──────── */
+:root {
+  --concertina-warmup-line-short:     var(--font-size-micro);       /* 0.64rem — badges, chips */
+  --concertina-warmup-line-long:      var(--font-size-caption);     /* 0.8rem  — labels, filenames */
+  --concertina-warmup-line-color:     var(--color-surface-2);
+  --concertina-warmup-line-highlight: var(--color-surface-3);
+  --concertina-warmup-line-radius:    var(--radius-sm);
+  --concertina-glide-duration:        var(--duration-fast);
+
+  /* Shared layout constants — real components & skeletons reference the same vars */
+  --format-icon-size: calc(var(--space-unit) * 3.5);  /* 28px = 3.5 × 8px grid */
+  --target-min-icon:  calc(var(--space-unit) * 1.75);  /* 14px = checkbox intrinsic */
 }
 
 /* ── Base styles (in Tailwind's base layer) ────────────── */
@@ -649,10 +664,6 @@
   from { background-position: 40px 0; }
   to   { background-position: 0 0; }
 }
-@keyframes shimmer {
-  from { transform: translateX(-100%); }
-  to   { transform: translateX(100%); }
-}
 .progress-stripe {
   background-image: repeating-linear-gradient(
     45deg, transparent, transparent 10px,
@@ -660,15 +671,24 @@
   );
   animation: progress-stripe 0.8s linear infinite;
 }
-.skeleton {
-  position: relative;
-  overflow: hidden;
-  background: var(--color-surface-2);
+.format-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width:  var(--format-icon-size);
+  height: var(--format-icon-size);
+  border-radius: var(--radius-sm);
+  font-size: calc(var(--format-icon-size) * 0.28);
+  letter-spacing: -0.02em;
 }
-.skeleton::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, transparent 0%, oklch(1 0 0 / 0.04) 50%, transparent 100%);
-  animation: shimmer 1.5s infinite;
+.skeleton {
+  border-radius: var(--concertina-warmup-line-radius);
+  background: linear-gradient(
+    90deg,
+    var(--concertina-warmup-line-color) 25%,
+    var(--concertina-warmup-line-highlight) 50%,
+    var(--concertina-warmup-line-color) 75%
+  );
+  background-size: 200% 100%;
+  animation: concertina-shimmer 1.5s ease-in-out infinite;
 }

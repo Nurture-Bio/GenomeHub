@@ -16,6 +16,7 @@
     "@react-oauth/google": "^0.13.4",
     "class-variance-authority": "^0.7.0",
     "cmdk": "^1.1.1",
+    "concertina": "^0.8.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-error-boundary": "^6.1.1",
