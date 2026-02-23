@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { apiFetch } from '../lib/api';
-import { useApiQuery, useApiMutation } from './useApi';
+import { queryKeys } from '../lib/queryKeys';
+import { fetchApi, mutateApi } from '../lib/queryFn';
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -153,53 +155,127 @@ export function useFilesQuery(filters?: { collectionId?: string; type?: string }
   if (filters?.collectionId) params.set('collectionId', filters.collectionId);
   if (filters?.type) params.set('type', filters.type);
   const qs = params.toString();
-  return useApiQuery<GenomicFile[]>(`/api/files${qs ? '?' + qs : ''}`, [filters?.collectionId, filters?.type]);
+  const url = `/api/files${qs ? '?' + qs : ''}`;
+
+  return useQuery({
+    queryKey: queryKeys.files.list(filters),
+    queryFn: () => fetchApi<GenomicFile[]>(url),
+  });
 }
 
 export function useFileDetailQuery(fileId?: string) {
-  return useApiQuery<FileDetail>(fileId ? `/api/files/${fileId}` : null, [fileId]);
+  return useQuery({
+    queryKey: queryKeys.files.detail(fileId!),
+    queryFn: () => fetchApi<FileDetail>(`/api/files/${fileId}`),
+    enabled: !!fileId,
+  });
 }
 
-export function useDeleteFileMutation(onSuccess?: () => void) {
-  const { mutate, pending } = useApiMutation<[string]>(
-    (fileId) => ({ url: `/api/files/${fileId}`, init: { method: 'DELETE' } }),
-    { successMessage: 'File deleted', errorMessage: 'Failed to delete file', onSuccess },
-  );
-  return { deleteFile: mutate, pending };
+export function useDeleteFileMutation() {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (fileId: string) =>
+      mutateApi(`/api/files/${fileId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.files.all });
+      qc.invalidateQueries({ queryKey: queryKeys.collections.all });
+      qc.invalidateQueries({ queryKey: queryKeys.stats.storage });
+      toast.success('File deleted');
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to delete file'),
+  });
+  return { deleteFile: mutation.mutateAsync, pending: mutation.isPending };
 }
 
-export function useUpdateFileMutation(onSuccess?: () => void) {
-  const { mutate, pending } = useApiMutation<[string, {
-    types?: string[]; format?: string;
-    description?: string | null; tags?: string[];
-  }], GenomicFile>(
-    (fileId, body) => ({
-      url: `/api/files/${fileId}`,
-      init: { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
-    }),
-    { errorMessage: 'Failed to update file', onSuccess },
+export function useUpdateFileMutation() {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: ({ fileId, body }: {
+      fileId: string;
+      body: { types?: string[]; format?: string; description?: string | null; tags?: string[] };
+    }) =>
+      mutateApi<GenomicFile>(`/api/files/${fileId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (_data, { fileId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.files.all });
+      qc.invalidateQueries({ queryKey: queryKeys.files.detail(fileId) });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to update file'),
+  });
+  const updateFile = useCallback(
+    (fileId: string, body: { types?: string[]; format?: string; description?: string | null; tags?: string[] }) =>
+      mutation.mutateAsync({ fileId, body }),
+    [mutation],
   );
-  return { updateFile: mutate, pending };
+  return { updateFile, pending: mutation.isPending };
 }
 
 // ─── Organisms ────────────────────────────────────────────
 
 export function useOrganismsQuery() {
-  return useApiQuery<Organism[]>('/api/organisms');
+  return useQuery({
+    queryKey: queryKeys.organisms.list(),
+    queryFn: () => fetchApi<Organism[]>('/api/organisms'),
+    staleTime: 60_000,
+  });
 }
 
-export function useCreateOrganismMutation(onSuccess?: () => void) {
-  const { mutate, pending } = useApiMutation<[{
-    genus: string; species: string; strain?: string;
-    commonName?: string; ncbiTaxId?: number; referenceGenome?: string;
-  }], Organism>(
-    (body) => ({
-      url: '/api/organisms',
-      init: { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
-    }),
-    { successMessage: 'Organism created', errorMessage: 'Failed to create organism', onSuccess },
-  );
-  return { createOrganism: mutate, pending };
+export function useCreateOrganismMutation() {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (body: {
+      genus: string; species: string; strain?: string;
+      commonName?: string; ncbiTaxId?: number; referenceGenome?: string;
+    }) =>
+      mutateApi<Organism>('/api/organisms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (created) => {
+      qc.setQueryData(queryKeys.organisms.list(), (old: Organism[] | undefined) =>
+        old ? [created, ...old] : [created],
+      );
+      qc.invalidateQueries({ queryKey: queryKeys.organisms.all });
+      toast.success('Organism created');
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to create organism'),
+  });
+  return { createOrganism: mutation.mutateAsync, pending: mutation.isPending };
+}
+
+export function useUpdateOrganismMutation() {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: Record<string, unknown> }) =>
+      mutateApi(`/api/organisms/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.organisms.all });
+    },
+    onError: () => toast.error('Failed to update organism'),
+  });
+  return { updateOrganism: mutation.mutateAsync, pending: mutation.isPending };
+}
+
+export function useDeleteOrganismMutation() {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (id: string) =>
+      mutateApi(`/api/organisms/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.organisms.all });
+      toast.success('Deleted');
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to delete organism'),
+  });
+  return { deleteOrganism: mutation.mutateAsync, pending: mutation.isPending };
 }
 
 // ─── Collections ──────────────────────────────────────────
@@ -209,300 +285,562 @@ export function useCollectionsQuery(filters?: { organismId?: string; type?: stri
   if (filters?.organismId) params.set('organismId', filters.organismId);
   if (filters?.type) params.set('type', filters.type);
   const qs = params.toString();
-  return useApiQuery<Collection[]>(`/api/collections${qs ? '?' + qs : ''}`, [filters?.organismId, filters?.type]);
+  const url = `/api/collections${qs ? '?' + qs : ''}`;
+
+  return useQuery({
+    queryKey: queryKeys.collections.list(filters),
+    queryFn: () => fetchApi<Collection[]>(url),
+  });
 }
 
 export function useCollectionDetailQuery(collectionId?: string) {
-  return useApiQuery<CollectionDetail>(collectionId ? `/api/collections/${collectionId}` : null, [collectionId]);
+  return useQuery({
+    queryKey: queryKeys.collections.detail(collectionId!),
+    queryFn: () => fetchApi<CollectionDetail>(`/api/collections/${collectionId}`),
+    enabled: !!collectionId,
+  });
 }
 
-export function useCreateCollectionMutation(onSuccess?: () => void) {
-  const { mutate, pending } = useApiMutation<[{
-    name: string; types?: string[];
-    metadata?: Record<string, unknown>;
-    description?: string;
-    techniqueIds?: string[]; organismIds?: string[];
-  }], Collection>(
-    (body) => ({
-      url: '/api/collections',
-      init: { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
-    }),
-    { successMessage: 'Collection created', errorMessage: 'Failed to create collection', onSuccess },
-  );
-  return { createCollection: mutate, pending };
+export function useCreateCollectionMutation() {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (body: {
+      name: string; types?: string[];
+      metadata?: Record<string, unknown>;
+      description?: string;
+      techniqueIds?: string[]; organismIds?: string[];
+    }) =>
+      mutateApi<Collection>('/api/collections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (created) => {
+      // Seed cache so pickers see the new entity immediately
+      qc.setQueryData(queryKeys.collections.list({}), (old: Collection[] | undefined) =>
+        old ? [created, ...old] : [created],
+      );
+      qc.invalidateQueries({ queryKey: queryKeys.collections.all });
+      qc.invalidateQueries({ queryKey: queryKeys.stats.storage });
+      toast.success('Collection created');
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to create collection'),
+  });
+  return { createCollection: mutation.mutateAsync, pending: mutation.isPending };
 }
 
-export function useUpdateCollectionMutation(onSuccess?: () => void) {
-  const { mutate, pending } = useApiMutation<[string, {
-    name?: string; description?: string; types?: string[];
-  }]>(
-    (id, body) => ({
-      url: `/api/collections/${id}`,
-      init: { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
-    }),
-    { errorMessage: 'Failed to update collection', onSuccess },
+export function useUpdateCollectionMutation() {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: { name?: string; description?: string; types?: string[] } }) =>
+      mutateApi(`/api/collections/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (_data, { id }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.collections.all });
+      qc.invalidateQueries({ queryKey: queryKeys.collections.detail(id) });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to update collection'),
+  });
+  const updateCollection = useCallback(
+    (id: string, body: { name?: string; description?: string; types?: string[] }) =>
+      mutation.mutateAsync({ id, body }),
+    [mutation],
   );
-  return { updateCollection: mutate, pending };
+  return { updateCollection, pending: mutation.isPending };
 }
 
-export function useDeleteCollectionMutation(onSuccess?: () => void) {
-  const { mutate, pending } = useApiMutation<[string]>(
-    (id) => ({ url: `/api/collections/${id}`, init: { method: 'DELETE' } }),
-    { successMessage: 'Collection deleted', errorMessage: 'Failed to delete collection', onSuccess },
-  );
-  return { deleteCollection: mutate, pending };
+export function useDeleteCollectionMutation() {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (id: string) =>
+      mutateApi(`/api/collections/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.collections.all });
+      qc.invalidateQueries({ queryKey: queryKeys.stats.storage });
+      toast.success('Collection deleted');
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to delete collection'),
+  });
+  return { deleteCollection: mutation.mutateAsync, pending: mutation.isPending };
 }
 
 // ─── Techniques ──────────────────────────────────────────
 
 export function useTechniquesQuery() {
-  return useApiQuery<Technique[]>('/api/techniques');
+  return useQuery({
+    queryKey: queryKeys.techniques.all,
+    queryFn: () => fetchApi<Technique[]>('/api/techniques'),
+    staleTime: 120_000,
+  });
 }
 
-export function useCreateTechniqueMutation(onSuccess?: () => void) {
-  const { mutate, pending } = useApiMutation<[{
-    name: string; description?: string; defaultTags?: string[];
-  }], Technique>(
-    (body) => ({
-      url: '/api/techniques',
-      init: { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
-    }),
-    { successMessage: 'Technique created', errorMessage: 'Failed to create technique', onSuccess },
-  );
-  return { createTechnique: mutate, pending };
+export function useCreateTechniqueMutation() {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (body: { name: string; description?: string; defaultTags?: string[] }) =>
+      mutateApi<Technique>('/api/techniques', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (created) => {
+      qc.setQueryData(queryKeys.techniques.all, (old: Technique[] | undefined) =>
+        old ? [created, ...old] : [created],
+      );
+      qc.invalidateQueries({ queryKey: queryKeys.techniques.all });
+      toast.success('Technique created');
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to create technique'),
+  });
+  return { createTechnique: mutation.mutateAsync, pending: mutation.isPending };
+}
+
+export function useUpdateTechniqueMutation() {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: { name?: string; description?: string } }) =>
+      mutateApi(`/api/techniques/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.techniques.all });
+      toast.success('Updated');
+    },
+    onError: () => toast.error('Update failed'),
+  });
+  return { updateTechnique: mutation.mutateAsync, pending: mutation.isPending };
+}
+
+export function useDeleteTechniqueMutation() {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (id: string) =>
+      mutateApi(`/api/techniques/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.techniques.all });
+      toast.success('Deleted');
+    },
+    onError: () => toast.error('Delete failed'),
+  });
+  return { deleteTechnique: mutation.mutateAsync, pending: mutation.isPending };
 }
 
 // ─── File types ──────────────────────────────────────────
 
 export function useFileTypesQuery() {
-  return useApiQuery<FileType[]>('/api/file-types');
+  return useQuery({
+    queryKey: queryKeys.fileTypes.all,
+    queryFn: () => fetchApi<FileType[]>('/api/file-types'),
+    staleTime: 120_000,
+  });
 }
 
-export function useCreateFileTypeMutation(onSuccess?: () => void) {
-  const { mutate, pending } = useApiMutation<[{
-    name: string; description?: string;
-  }], FileType>(
-    (body) => ({
-      url: '/api/file-types',
-      init: { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
-    }),
-    { successMessage: 'File type created', errorMessage: 'Failed to create file type', onSuccess },
-  );
-  return { createFileType: mutate, pending };
+export function useCreateFileTypeMutation() {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (body: { name: string; description?: string }) =>
+      mutateApi<FileType>('/api/file-types', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (created) => {
+      qc.setQueryData(queryKeys.fileTypes.all, (old: FileType[] | undefined) =>
+        old ? [created, ...old] : [created],
+      );
+      qc.invalidateQueries({ queryKey: queryKeys.fileTypes.all });
+      toast.success('File type created');
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to create file type'),
+  });
+  return { createFileType: mutation.mutateAsync, pending: mutation.isPending };
+}
+
+export function useUpdateFileTypeMutation() {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: { name?: string; description?: string } }) =>
+      mutateApi(`/api/file-types/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.fileTypes.all });
+      toast.success('Updated');
+    },
+    onError: () => toast.error('Update failed'),
+  });
+  return { updateFileType: mutation.mutateAsync, pending: mutation.isPending };
+}
+
+export function useDeleteFileTypeMutation() {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (id: string) =>
+      mutateApi(`/api/file-types/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.fileTypes.all });
+      toast.success('Deleted');
+    },
+    onError: () => toast.error('Delete failed'),
+  });
+  return { deleteFileType: mutation.mutateAsync, pending: mutation.isPending };
 }
 
 // ─── Relation types ──────────────────────────────────────
 
 export function useRelationTypesQuery() {
-  return useApiQuery<RelationType[]>('/api/relation-types');
+  return useQuery({
+    queryKey: queryKeys.relationTypes.all,
+    queryFn: () => fetchApi<RelationType[]>('/api/relation-types'),
+    staleTime: 120_000,
+  });
 }
 
-export function useCreateRelationTypeMutation(onSuccess?: () => void) {
-  const { mutate, pending } = useApiMutation<[{
-    name: string; description?: string;
-  }], RelationType>(
-    (body) => ({
-      url: '/api/relation-types',
-      init: { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
-    }),
-    { successMessage: 'Relation type created', errorMessage: 'Failed to create relation type', onSuccess },
-  );
-  return { createRelationType: mutate, pending };
+export function useCreateRelationTypeMutation() {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (body: { name: string; description?: string }) =>
+      mutateApi<RelationType>('/api/relation-types', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (created) => {
+      qc.setQueryData(queryKeys.relationTypes.all, (old: RelationType[] | undefined) =>
+        old ? [created, ...old] : [created],
+      );
+      qc.invalidateQueries({ queryKey: queryKeys.relationTypes.all });
+      toast.success('Relation type created');
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to create relation type'),
+  });
+  return { createRelationType: mutation.mutateAsync, pending: mutation.isPending };
+}
+
+export function useUpdateRelationTypeMutation() {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: { name?: string; description?: string } }) =>
+      mutateApi(`/api/relation-types/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.relationTypes.all });
+      toast.success('Updated');
+    },
+    onError: () => toast.error('Update failed'),
+  });
+  return { updateRelationType: mutation.mutateAsync, pending: mutation.isPending };
+}
+
+export function useDeleteRelationTypeMutation() {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (id: string) =>
+      mutateApi(`/api/relation-types/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.relationTypes.all });
+      toast.success('Deleted');
+    },
+    onError: () => toast.error('Delete failed'),
+  });
+  return { deleteRelationType: mutation.mutateAsync, pending: mutation.isPending };
 }
 
 // ─── External links ──────────────────────────────────────
 
 export function useLinksQuery(parentType?: LinkParentType, parentId?: string) {
-  const url = parentType && parentId
-    ? `/api/links?parentType=${parentType}&parentId=${parentId}`
-    : null;
-  const result = useApiQuery<ExternalLink[]>(url, [parentType, parentId]);
-  // When skipping, return empty array instead of null for backward compat
-  return { ...result, data: result.data ?? (url ? null : []) };
+  const enabled = !!parentType && !!parentId;
+  const result = useQuery({
+    queryKey: queryKeys.links.list(parentType!, parentId!),
+    queryFn: () => fetchApi<ExternalLink[]>(
+      `/api/links?parentType=${parentType}&parentId=${parentId}`,
+    ),
+    enabled,
+  });
+  return { ...result, data: result.data ?? (enabled ? undefined : []) };
 }
 
-export function useCreateLinkMutation(onSuccess?: () => void) {
-  const { mutate, pending } = useApiMutation<[{
-    parentType: LinkParentType; parentId: string;
-    url: string; label?: string;
-  }]>(
-    (body) => ({
-      url: '/api/links',
-      init: { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
-    }),
-    { successMessage: 'Link added', errorMessage: 'Failed to add link', onSuccess },
-  );
-  return { createLink: mutate, pending };
+export function useCreateLinkMutation() {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (body: {
+      parentType: LinkParentType; parentId: string;
+      url: string; label?: string;
+    }) =>
+      mutateApi('/api/links', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({
+        queryKey: queryKeys.links.list(variables.parentType, variables.parentId),
+      });
+      toast.success('Link added');
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to add link'),
+  });
+  return { createLink: mutation.mutateAsync, pending: mutation.isPending };
 }
 
-export function useDeleteLinkMutation(onSuccess?: () => void) {
-  const { mutate, pending } = useApiMutation<[string]>(
-    (linkId) => ({ url: `/api/links/${linkId}`, init: { method: 'DELETE' } }),
-    { successMessage: 'Link removed', errorMessage: 'Failed to remove link', onSuccess },
-  );
-  return { deleteLink: mutate, pending };
+export function useDeleteLinkMutation(parentType?: LinkParentType, parentId?: string) {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (linkId: string) =>
+      mutateApi(`/api/links/${linkId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      if (parentType && parentId) {
+        qc.invalidateQueries({ queryKey: queryKeys.links.list(parentType, parentId) });
+      }
+      toast.success('Link removed');
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to remove link'),
+  });
+  return { deleteLink: mutation.mutateAsync, pending: mutation.isPending };
 }
 
 // ─── Storage stats ────────────────────────────────────────
 
 export function useStorageStats() {
-  const [data, setData] = useState<StorageStats | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    apiFetch('/api/stats')
-      .then(r => r.json())
-      .then(setData)
-      .finally(() => setIsLoading(false));
-  }, []);
-
-  return { data, isLoading };
+  return useQuery({
+    queryKey: queryKeys.stats.storage,
+    queryFn: () => fetchApi<StorageStats>('/api/stats'),
+  });
 }
 
 // ─── Collection membership ────────────────────────────────
 
 export function useAddFilesToCollection() {
-  const [pending, setPending] = useState(false);
-
-  const addFiles = useCallback(async (collectionId: string, fileIds: string[]) => {
-    setPending(true);
-    try {
-      const r = await apiFetch(`/api/collections/${collectionId}/files`, {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: ({ collectionId, fileIds }: { collectionId: string; fileIds: string[] }) =>
+      mutateApi(`/api/collections/${collectionId}/files`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fileIds }),
-      });
-      if (!r.ok) throw new Error('Failed to add files');
+      }),
+    onSuccess: (_data, { collectionId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.collections.detail(collectionId) });
+      qc.invalidateQueries({ queryKey: queryKeys.collections.all });
+      qc.invalidateQueries({ queryKey: queryKeys.files.all });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to add files'),
+  });
+  const addFiles = useCallback(
+    (collectionId: string, fileIds: string[]) => {
       toast.success(`Added ${fileIds.length} file${fileIds.length !== 1 ? 's' : ''} to collection`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to add files');
-      throw err;
-    } finally {
-      setPending(false);
-    }
-  }, []);
-
-  return { addFiles, pending };
+      return mutation.mutateAsync({ collectionId, fileIds });
+    },
+    [mutation],
+  );
+  return { addFiles, pending: mutation.isPending };
 }
 
 export function useRemoveFilesFromCollection() {
-  const [pending, setPending] = useState(false);
-
-  const removeFiles = useCallback(async (collectionId: string, fileIds: string[]) => {
-    setPending(true);
-    try {
-      const r = await apiFetch(`/api/collections/${collectionId}/files`, {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: ({ collectionId, fileIds }: { collectionId: string; fileIds: string[] }) =>
+      mutateApi(`/api/collections/${collectionId}/files`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fileIds }),
-      });
-      if (!r.ok) throw new Error('Failed to remove files');
+      }),
+    onSuccess: (_data, { collectionId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.collections.detail(collectionId) });
+      qc.invalidateQueries({ queryKey: queryKeys.collections.all });
+      qc.invalidateQueries({ queryKey: queryKeys.files.all });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to remove files'),
+  });
+  const removeFiles = useCallback(
+    (collectionId: string, fileIds: string[]) => {
       toast.success(`Removed ${fileIds.length} file${fileIds.length !== 1 ? 's' : ''} from collection`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to remove files');
-      throw err;
-    } finally {
-      setPending(false);
-    }
-  }, []);
-
-  return { removeFiles, pending };
+      return mutation.mutateAsync({ collectionId, fileIds });
+    },
+    [mutation],
+  );
+  return { removeFiles, pending: mutation.isPending };
 }
 
 // ─── File organism link/unlink ─────────────────────────────
 
-export function useAddFileOrganism(onSuccess?: () => void) {
-  const { mutate, pending } = useApiMutation<[string, string]>(
-    (fileId, organismId) => ({
-      url: `/api/files/${fileId}/organisms`,
-      init: { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organismId }) },
-    }),
-    { errorMessage: 'Failed to add organism', onSuccess },
+export function useAddFileOrganism() {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: ({ fileId, organismId }: { fileId: string; organismId: string }) =>
+      mutateApi(`/api/files/${fileId}/organisms`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ organismId }),
+      }),
+    onSuccess: (_data, { fileId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.files.all });
+      qc.invalidateQueries({ queryKey: queryKeys.files.detail(fileId) });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to add organism'),
+  });
+  const addFileOrganism = useCallback(
+    (fileId: string, organismId: string) => mutation.mutateAsync({ fileId, organismId }),
+    [mutation],
   );
-  return { addFileOrganism: mutate, pending };
+  return { addFileOrganism, pending: mutation.isPending };
 }
 
-export function useRemoveFileOrganism(onSuccess?: () => void) {
-  const { mutate, pending } = useApiMutation<[string, string]>(
-    (fileId, organismId) => ({
-      url: `/api/files/${fileId}/organisms/${organismId}`,
-      init: { method: 'DELETE' },
-    }),
-    { errorMessage: 'Failed to remove organism', onSuccess },
+export function useRemoveFileOrganism() {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: ({ fileId, organismId }: { fileId: string; organismId: string }) =>
+      mutateApi(`/api/files/${fileId}/organisms/${organismId}`, { method: 'DELETE' }),
+    onSuccess: (_data, { fileId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.files.all });
+      qc.invalidateQueries({ queryKey: queryKeys.files.detail(fileId) });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to remove organism'),
+  });
+  const removeFileOrganism = useCallback(
+    (fileId: string, organismId: string) => mutation.mutateAsync({ fileId, organismId }),
+    [mutation],
   );
-  return { removeFileOrganism: mutate, pending };
+  return { removeFileOrganism, pending: mutation.isPending };
 }
 
 // ─── Collection organism link/unlink ───────────────────────
 
-export function useAddCollectionOrganism(onSuccess?: () => void) {
-  const { mutate, pending } = useApiMutation<[string, string]>(
-    (collectionId, organismId) => ({
-      url: `/api/collections/${collectionId}/organisms`,
-      init: { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organismId }) },
-    }),
-    { errorMessage: 'Failed to add organism', onSuccess },
+export function useAddCollectionOrganism() {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: ({ collectionId, organismId }: { collectionId: string; organismId: string }) =>
+      mutateApi(`/api/collections/${collectionId}/organisms`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ organismId }),
+      }),
+    onSuccess: (_data, { collectionId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.collections.detail(collectionId) });
+      qc.invalidateQueries({ queryKey: queryKeys.collections.all });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to add organism'),
+  });
+  const addCollectionOrganism = useCallback(
+    (collectionId: string, organismId: string) => mutation.mutateAsync({ collectionId, organismId }),
+    [mutation],
   );
-  return { addCollectionOrganism: mutate, pending };
+  return { addCollectionOrganism, pending: mutation.isPending };
 }
 
-export function useRemoveCollectionOrganism(onSuccess?: () => void) {
-  const { mutate, pending } = useApiMutation<[string, string]>(
-    (collectionId, organismId) => ({
-      url: `/api/collections/${collectionId}/organisms/${organismId}`,
-      init: { method: 'DELETE' },
-    }),
-    { errorMessage: 'Failed to remove organism', onSuccess },
+export function useRemoveCollectionOrganism() {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: ({ collectionId, organismId }: { collectionId: string; organismId: string }) =>
+      mutateApi(`/api/collections/${collectionId}/organisms/${organismId}`, { method: 'DELETE' }),
+    onSuccess: (_data, { collectionId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.collections.detail(collectionId) });
+      qc.invalidateQueries({ queryKey: queryKeys.collections.all });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to remove organism'),
+  });
+  const removeCollectionOrganism = useCallback(
+    (collectionId: string, organismId: string) => mutation.mutateAsync({ collectionId, organismId }),
+    [mutation],
   );
-  return { removeCollectionOrganism: mutate, pending };
+  return { removeCollectionOrganism, pending: mutation.isPending };
 }
 
 // ─── Collection technique link/unlink ──────────────────────
 
-export function useAddCollectionTechnique(onSuccess?: () => void) {
-  const { mutate, pending } = useApiMutation<[string, string]>(
-    (collectionId, techniqueId) => ({
-      url: `/api/collections/${collectionId}/techniques`,
-      init: { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ techniqueId }) },
-    }),
-    { errorMessage: 'Failed to add technique', onSuccess },
+export function useAddCollectionTechnique() {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: ({ collectionId, techniqueId }: { collectionId: string; techniqueId: string }) =>
+      mutateApi(`/api/collections/${collectionId}/techniques`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ techniqueId }),
+      }),
+    onSuccess: (_data, { collectionId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.collections.detail(collectionId) });
+      qc.invalidateQueries({ queryKey: queryKeys.collections.all });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to add technique'),
+  });
+  const addCollectionTechnique = useCallback(
+    (collectionId: string, techniqueId: string) => mutation.mutateAsync({ collectionId, techniqueId }),
+    [mutation],
   );
-  return { addCollectionTechnique: mutate, pending };
+  return { addCollectionTechnique, pending: mutation.isPending };
 }
 
-export function useRemoveCollectionTechnique(onSuccess?: () => void) {
-  const { mutate, pending } = useApiMutation<[string, string]>(
-    (collectionId, techniqueId) => ({
-      url: `/api/collections/${collectionId}/techniques/${techniqueId}`,
-      init: { method: 'DELETE' },
-    }),
-    { errorMessage: 'Failed to remove technique', onSuccess },
+export function useRemoveCollectionTechnique() {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: ({ collectionId, techniqueId }: { collectionId: string; techniqueId: string }) =>
+      mutateApi(`/api/collections/${collectionId}/techniques/${techniqueId}`, { method: 'DELETE' }),
+    onSuccess: (_data, { collectionId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.collections.detail(collectionId) });
+      qc.invalidateQueries({ queryKey: queryKeys.collections.all });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to remove technique'),
+  });
+  const removeCollectionTechnique = useCallback(
+    (collectionId: string, techniqueId: string) => mutation.mutateAsync({ collectionId, techniqueId }),
+    [mutation],
   );
-  return { removeCollectionTechnique: mutate, pending };
+  return { removeCollectionTechnique, pending: mutation.isPending };
 }
 
 // ─── Provenance ───────────────────────────────────────────
 
 export function useAddProvenance() {
-  const { mutate, pending } = useApiMutation<[string, string, string]>(
-    (fileId, targetFileId, relation) => ({
-      url: `/api/files/${fileId}/provenance`,
-      init: { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ targetFileId, relation }) },
-    }),
-    { successMessage: 'Provenance link added', errorMessage: 'Failed to add provenance' },
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: ({ fileId, targetFileId, relation }: {
+      fileId: string; targetFileId: string; relation: string;
+    }) =>
+      mutateApi(`/api/files/${fileId}/provenance`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetFileId, relation }),
+      }),
+    onSuccess: (_data, { fileId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.files.detail(fileId) });
+      toast.success('Provenance link added');
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to add provenance'),
+  });
+  const addProvenance = useCallback(
+    (fileId: string, targetFileId: string, relation: string) =>
+      mutation.mutateAsync({ fileId, targetFileId, relation }),
+    [mutation],
   );
-  return { addProvenance: mutate, pending };
+  return { addProvenance, pending: mutation.isPending };
 }
 
 export function useRemoveProvenance() {
-  const { mutate, pending } = useApiMutation<[string, string]>(
-    (fileId, edgeId) => ({
-      url: `/api/files/${fileId}/provenance/${edgeId}`,
-      init: { method: 'DELETE' },
-    }),
-    { successMessage: 'Provenance link removed', errorMessage: 'Failed to remove provenance' },
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: ({ fileId, edgeId }: { fileId: string; edgeId: string }) =>
+      mutateApi(`/api/files/${fileId}/provenance/${edgeId}`, { method: 'DELETE' }),
+    onSuccess: (_data, { fileId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.files.detail(fileId) });
+      toast.success('Provenance link removed');
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to remove provenance'),
+  });
+  const removeProvenance = useCallback(
+    (fileId: string, edgeId: string) => mutation.mutateAsync({ fileId, edgeId }),
+    [mutation],
   );
-  return { removeProvenance: mutate, pending };
+  return { removeProvenance, pending: mutation.isPending };
 }
 
 // ─── File preview ────────────────────────────────────────
@@ -516,10 +854,12 @@ export interface FilePreviewResult {
 }
 
 export function useFilePreview(fileId: string | undefined) {
-  return useApiQuery<FilePreviewResult>(
-    fileId ? `/api/files/${fileId}/preview` : null,
-    [fileId],
-  );
+  return useQuery({
+    queryKey: queryKeys.files.preview(fileId!),
+    queryFn: () => fetchApi<FilePreviewResult>(`/api/files/${fileId}/preview`),
+    enabled: !!fileId,
+    staleTime: Infinity,
+  });
 }
 
 // ─── Presigned URL ────────────────────────────────────────
@@ -554,6 +894,7 @@ export function useMultipartUpload() {
   const setUpload = useAppStore(s => s.setUpload);
   const updateUploadStore = useAppStore(s => s.updateUpload);
   const clearDone = useAppStore(s => s.clearDoneUploads);
+  const qc = useQueryClient();
 
   const upload = useCallback(async (
     file:      File,
@@ -629,6 +970,10 @@ export function useMultipartUpload() {
 
       updateUploadStore(tmpId, { status: 'done', loaded: file.size });
       toast.success(`Upload complete: ${file.name}`);
+
+      // Invalidate relevant queries
+      qc.invalidateQueries({ queryKey: queryKeys.files.all });
+      qc.invalidateQueries({ queryKey: queryKeys.stats.storage });
     } catch (err: unknown) {
       updateUploadStore(tmpId, {
         status: 'error',
@@ -636,7 +981,7 @@ export function useMultipartUpload() {
       });
       toast.error(`Upload failed: ${file.name}`);
     }
-  }, [setUpload, updateUploadStore]);
+  }, [setUpload, updateUploadStore, qc]);
 
   return { uploads, upload, clearDone };
 }

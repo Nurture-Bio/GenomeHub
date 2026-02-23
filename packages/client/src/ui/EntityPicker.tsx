@@ -43,10 +43,10 @@ interface CollectionPickerProps extends PickerBaseProps {
 }
 
 export function CollectionPicker({ value, onValueChange, type, placeholder = 'Collection', items: overrideItems, ...rest }: CollectionPickerProps) {
-  const { data, isLoading, refetch } = useCollectionsQuery(
+  const { data, isLoading } = useCollectionsQuery(
     type ? { type } : undefined,
   );
-  const { createCollection } = useCreateCollectionMutation(refetch);
+  const { createCollection } = useCreateCollectionMutation();
   const recentIds = useRecent('collections');
   const track = useTrackSelection('collections');
 
@@ -62,7 +62,6 @@ export function CollectionPicker({ value, onValueChange, type, placeholder = 'Co
   const handleCreate = async (name: string) => {
     try {
       const created = await createCollection({ name });
-      await refetch();
       track(created.id);
       onValueChange(created.id);
     } catch { /* toast already shown */ }
@@ -85,8 +84,8 @@ export function CollectionPicker({ value, onValueChange, type, placeholder = 'Co
 // ── OrganismPicker ───────────────────────────────────────
 
 export function OrganismPicker({ value, onValueChange, placeholder = 'Organism', items: overrideItems, ...rest }: PickerBaseProps) {
-  const { data, isLoading, refetch } = useOrganismsQuery();
-  const { createOrganism } = useCreateOrganismMutation(refetch);
+  const { data, isLoading } = useOrganismsQuery();
+  const { createOrganism } = useCreateOrganismMutation();
 
   const items = useMemo(() => {
     if (overrideItems) return overrideItems;
@@ -105,7 +104,6 @@ export function OrganismPicker({ value, onValueChange, placeholder = 'Organism',
       const species = parts[1] ?? 'sp.';
       const strain = parts.slice(2).join(' ') || undefined;
       const created = await createOrganism({ genus, species, strain });
-      await refetch();
       onValueChange(created.id);
     } catch { /* toast already shown */ }
   };
@@ -127,8 +125,8 @@ export function OrganismPicker({ value, onValueChange, placeholder = 'Organism',
 // Fetches from file_types table. Value is the type name (not id).
 
 export function FileTypePicker({ value, onValueChange, placeholder = 'Type', items: overrideItems, ...rest }: PickerBaseProps) {
-  const { data, isLoading, refetch } = useFileTypesQuery();
-  const { createFileType } = useCreateFileTypeMutation(refetch);
+  const { data, isLoading } = useFileTypesQuery();
+  const { createFileType } = useCreateFileTypeMutation();
 
   const items = useMemo(() => {
     if (overrideItems) return overrideItems;
@@ -142,7 +140,6 @@ export function FileTypePicker({ value, onValueChange, placeholder = 'Type', ite
   const handleCreate = async (name: string) => {
     try {
       const created = await createFileType({ name });
-      await refetch();
       onValueChange(created.name);
     } catch { /* toast already shown */ }
   };
@@ -163,8 +160,8 @@ export function FileTypePicker({ value, onValueChange, placeholder = 'Type', ite
 // ── TechniquePicker ─────────────────────────────────────
 
 export function TechniquePicker({ value, onValueChange, placeholder = 'Technique', items: overrideItems, ...rest }: PickerBaseProps) {
-  const { data, isLoading, refetch } = useTechniquesQuery();
-  const { createTechnique } = useCreateTechniqueMutation(refetch);
+  const { data, isLoading } = useTechniquesQuery();
+  const { createTechnique } = useCreateTechniqueMutation();
 
   const items = useMemo(() => {
     if (overrideItems) return overrideItems;
@@ -178,7 +175,6 @@ export function TechniquePicker({ value, onValueChange, placeholder = 'Technique
   const handleCreate = async (name: string) => {
     try {
       const created = await createTechnique({ name });
-      await refetch();
       onValueChange(created.id);
     } catch { /* toast already shown */ }
   };
@@ -200,8 +196,8 @@ export function TechniquePicker({ value, onValueChange, placeholder = 'Technique
 // Picks from relation_types table. Value is the relation name (not id).
 
 export function RelationPicker({ value, onValueChange, placeholder = 'Relation', items: overrideItems, ...rest }: PickerBaseProps) {
-  const { data, isLoading, refetch } = useRelationTypesQuery();
-  const { createRelationType } = useCreateRelationTypeMutation(refetch);
+  const { data, isLoading } = useRelationTypesQuery();
+  const { createRelationType } = useCreateRelationTypeMutation();
 
   const items = useMemo(() => {
     if (overrideItems) return overrideItems;
@@ -215,7 +211,6 @@ export function RelationPicker({ value, onValueChange, placeholder = 'Relation',
   const handleCreate = async (name: string) => {
     try {
       const created = await createRelationType({ name });
-      await refetch();
       onValueChange(created.name);
     } catch { /* toast already shown */ }
   };

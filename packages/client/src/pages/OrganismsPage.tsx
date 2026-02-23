@@ -1,10 +1,11 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef } from 'react';
 import { cx } from 'class-variance-authority';
 import { Gigbag } from 'concertina';
-import { useOrganismsQuery, useCreateOrganismMutation } from '../hooks/useGenomicQueries';
+import {
+  useOrganismsQuery, useCreateOrganismMutation,
+  useUpdateOrganismMutation, useDeleteOrganismMutation,
+} from '../hooks/useGenomicQueries';
 import { useConfirmDelete } from '../hooks/useConfirmDelete';
-import { apiFetch } from '../lib/api';
-import { toast } from 'sonner';
 import { Badge, Text, Heading, Card, InlineInput, inlineInput, iconAction } from '../ui';
 import { formatRelativeTime } from '../lib/formats';
 
@@ -35,8 +36,11 @@ function SkeletonRow() {
 }
 
 export default function OrganismsPage() {
-  const { data, isLoading, refetch } = useOrganismsQuery();
-  const { createOrganism, pending } = useCreateOrganismMutation(refetch);
+  const { data, isLoading } = useOrganismsQuery();
+  const { createOrganism, pending } = useCreateOrganismMutation();
+  const { updateOrganism } = useUpdateOrganismMutation();
+  const { deleteOrganism } = useDeleteOrganismMutation();
+  const { confirmDelete } = useConfirmDelete(deleteOrganism, 'organism');
 
   const [newGenus, setNewGenus] = useState('');
   const [newSpecies, setNewSpecies] = useState('');
@@ -50,26 +54,8 @@ export default function OrganismsPage() {
   };
 
   const handleUpdate = async (id: string, patch: Record<string, unknown>) => {
-    try {
-      const r = await apiFetch(`/api/organisms/${id}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch),
-      });
-      if (!r.ok) throw new Error('Update failed');
-      refetch();
-    } catch { toast.error('Failed to update organism'); }
+    await updateOrganism({ id, patch });
   };
-
-  const doDelete = useCallback(async (id: string) => {
-    try {
-      const r = await apiFetch(`/api/organisms/${id}`, { method: 'DELETE' });
-      if (!r.ok) {
-        const body = await r.json().catch(() => null);
-        throw new Error(body?.error ?? 'Delete failed');
-      }
-      toast.success('Deleted'); refetch();
-    } catch (err) { toast.error(err instanceof Error ? err.message : 'Failed to delete organism'); }
-  }, [refetch]);
-  const { confirmDelete } = useConfirmDelete(doDelete, 'organism');
 
   const ready = newGenus.trim().length > 0 && newSpecies.trim().length > 0;
 

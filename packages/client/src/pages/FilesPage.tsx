@@ -242,16 +242,16 @@ export default function FilesPage() {
   const [filterCollectionId, setFilterCollectionId] = useState('');
   const [filterType, setFilterType] = useState('');
 
-  const { data, isLoading, refetch } = useFilesQuery({
+  const { data, isLoading } = useFilesQuery({
     collectionId: filterCollectionId || undefined,
     type: filterType || undefined,
   });
-  const { deleteFile, pending: deletePending } = useDeleteFileMutation(refetch);
-  const { updateFile } = useUpdateFileMutation(refetch);
+  const { deleteFile, pending: deletePending } = useDeleteFileMutation();
+  const { updateFile } = useUpdateFileMutation();
   const { addFiles } = useAddFilesToCollection();
   const { removeFiles } = useRemoveFilesFromCollection();
-  const { addFileOrganism } = useAddFileOrganism(refetch);
-  const { removeFileOrganism } = useRemoveFileOrganism(refetch);
+  const { addFileOrganism } = useAddFileOrganism();
+  const { removeFileOrganism } = useRemoveFileOrganism();
   const { getUrl } = usePresignedUrl();
   const { confirm } = useConfirm();
 
@@ -318,7 +318,6 @@ export default function FilesPage() {
     await addFiles(collectionId, [...selected]);
     setSelected(new Set());
     setAddToColId(null);
-    refetch();
   };
 
   const handleUpdateTypes = async (fileId: string, types: string[]) => {
@@ -327,12 +326,10 @@ export default function FilesPage() {
 
   const handleAddToCollection = async (collectionId: string, fileIds: string[]) => {
     await addFiles(collectionId, fileIds);
-    refetch();
   };
 
   const handleRemoveFromCollection = async (collectionId: string, fileIds: string[]) => {
     await removeFiles(collectionId, fileIds);
-    refetch();
   };
 
   return (

@@ -14,6 +14,8 @@
     "@radix-ui/react-popover": "^1.1.15",
     "@radix-ui/react-toast": "^1.2.15",
     "@react-oauth/google": "^0.13.4",
+    "@tanstack/react-query": "^5.90.21",
+    "@tanstack/react-query-devtools": "^5.91.3",
     "class-variance-authority": "^0.7.0",
     "cmdk": "^1.1.1",
     "concertina": "^0.8.1",

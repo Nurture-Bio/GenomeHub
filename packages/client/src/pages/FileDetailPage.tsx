@@ -39,16 +39,16 @@ function FormatPill({ filename }: { filename: string }) {
 
 export default function FileDetailPage() {
   const { fileId } = useParams<{ fileId: string }>();
-  const { data: file, isLoading, refetch } = useFileDetailQuery(fileId);
-  const { updateFile } = useUpdateFileMutation(refetch);
+  const { data: file, isLoading } = useFileDetailQuery(fileId);
+  const { updateFile } = useUpdateFileMutation();
   const setBreadcrumbLabel = useAppStore(s => s.setBreadcrumbLabel);
   const { getUrl } = usePresignedUrl();
   const { deleteFile } = useDeleteFileMutation();
 
   const { addFiles: addToCol } = useAddFilesToCollection();
   const { removeFiles: removeFromCol } = useRemoveFilesFromCollection();
-  const { addFileOrganism } = useAddFileOrganism(refetch);
-  const { removeFileOrganism } = useRemoveFileOrganism(refetch);
+  const { addFileOrganism } = useAddFileOrganism();
+  const { removeFileOrganism } = useRemoveFileOrganism();
 
   const [addingProv, setAddingProv] = useState(false);
   const [provSearch, setProvSearch] = useState('');
@@ -73,12 +73,10 @@ export default function FileDetailPage() {
 
   const handleAddToCollection = async (collectionId: string, fileIds: string[]) => {
     await addToCol(collectionId, fileIds);
-    refetch();
   };
 
   const handleRemoveFromCollection = async (collectionId: string, fileIds: string[]) => {
     await removeFromCol(collectionId, fileIds);
-    refetch();
   };
 
   const handleAddProvenance = async () => {
@@ -87,13 +85,11 @@ export default function FileDetailPage() {
     setProvTargetId(null);
     setProvSearch('');
     setAddingProv(false);
-    refetch();
   };
 
   const handleRemoveProvenance = async (edgeId: string) => {
     if (!fileId) return;
     await removeProvenance(fileId, edgeId);
-    refetch();
   };
 
   const handleDownload = async () => {

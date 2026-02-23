@@ -16,13 +16,13 @@ import { useAppStore } from '../stores/useAppStore';
 
 export default function CollectionDetailPage() {
   const { collectionId } = useParams<{ collectionId: string }>();
-  const { data: collection, isLoading, refetch } = useCollectionDetailQuery(collectionId);
-  const { updateCollection } = useUpdateCollectionMutation(refetch);
+  const { data: collection, isLoading } = useCollectionDetailQuery(collectionId);
+  const { updateCollection } = useUpdateCollectionMutation();
   const setBreadcrumbLabel = useAppStore(s => s.setBreadcrumbLabel);
-  const { addCollectionOrganism } = useAddCollectionOrganism(refetch);
-  const { removeCollectionOrganism } = useRemoveCollectionOrganism(refetch);
-  const { addCollectionTechnique } = useAddCollectionTechnique(refetch);
-  const { removeCollectionTechnique } = useRemoveCollectionTechnique(refetch);
+  const { addCollectionOrganism } = useAddCollectionOrganism();
+  const { removeCollectionOrganism } = useRemoveCollectionOrganism();
+  const { addCollectionTechnique } = useAddCollectionTechnique();
+  const { removeCollectionTechnique } = useRemoveCollectionTechnique();
 
   const [addSearch, setAddSearch] = useState('');
   const [addSelected, setAddSelected] = useState<Set<string>>(new Set());
@@ -55,13 +55,11 @@ export default function CollectionDetailPage() {
     setAddSelected(new Set());
     setShowAddPanel(false);
     setAddSearch('');
-    refetch();
   };
 
   const handleRemoveFile = async (fileId: string) => {
     if (!collectionId) return;
     await removeFiles(collectionId, [fileId]);
-    refetch();
   };
 
   if (isLoading) {

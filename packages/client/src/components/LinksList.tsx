@@ -9,9 +9,9 @@ interface LinksListProps {
 }
 
 export default function LinksList({ parentType, parentId }: LinksListProps) {
-  const { data: links, refetch } = useLinksQuery(parentType, parentId);
-  const { createLink } = useCreateLinkMutation(refetch);
-  const { deleteLink } = useDeleteLinkMutation(refetch);
+  const { data: links } = useLinksQuery(parentType, parentId);
+  const { createLink } = useCreateLinkMutation();
+  const { deleteLink } = useDeleteLinkMutation(parentType, parentId);
   const [newUrl, setNewUrl] = useState('');
 
   const handleAdd = async () => {

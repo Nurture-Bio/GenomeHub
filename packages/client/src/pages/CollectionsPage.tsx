@@ -41,17 +41,17 @@ function SkeletonRow() {
 }
 
 export default function CollectionsPage() {
-  const { data, isLoading, refetch } = useCollectionsQuery();
-  const { createCollection, pending: createPending } = useCreateCollectionMutation(refetch);
-  const { updateCollection } = useUpdateCollectionMutation(refetch);
-  const { deleteCollection } = useDeleteCollectionMutation(refetch);
+  const { data, isLoading } = useCollectionsQuery();
+  const { createCollection, pending: createPending } = useCreateCollectionMutation();
+  const { updateCollection } = useUpdateCollectionMutation();
+  const { deleteCollection } = useDeleteCollectionMutation();
   const { confirmDelete } = useConfirmDelete(deleteCollection, 'collection');
   const { data: techniques } = useTechniquesQuery();
   const { data: organisms }  = useOrganismsQuery();
-  const { addCollectionOrganism } = useAddCollectionOrganism(refetch);
-  const { removeCollectionOrganism } = useRemoveCollectionOrganism(refetch);
-  const { addCollectionTechnique } = useAddCollectionTechnique(refetch);
-  const { removeCollectionTechnique } = useRemoveCollectionTechnique(refetch);
+  const { addCollectionOrganism } = useAddCollectionOrganism();
+  const { removeCollectionOrganism } = useRemoveCollectionOrganism();
+  const { addCollectionTechnique } = useAddCollectionTechnique();
+  const { removeCollectionTechnique } = useRemoveCollectionTechnique();
 
   const [techFilter, setTechFilter] = useState<string>('all');
 

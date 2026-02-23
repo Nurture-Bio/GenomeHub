@@ -2,12 +2,13 @@ import { useState, useCallback, useRef } from 'react';
 import { cx } from 'class-variance-authority';
 import {
   useTechniquesQuery, useCreateTechniqueMutation,
+  useUpdateTechniqueMutation, useDeleteTechniqueMutation,
   useRelationTypesQuery, useCreateRelationTypeMutation,
+  useUpdateRelationTypeMutation, useDeleteRelationTypeMutation,
   useFileTypesQuery, useCreateFileTypeMutation,
+  useUpdateFileTypeMutation, useDeleteFileTypeMutation,
 } from '../hooks/useGenomicQueries';
 import { useConfirmDelete } from '../hooks/useConfirmDelete';
-import { apiFetch } from '../lib/api';
-import { toast } from 'sonner';
 import { Heading, Text, InlineInput, inlineInput, iconAction } from '../ui';
 
 // ── Editable row (table row) ────────────────────────────
@@ -111,61 +112,46 @@ function SectionTable({ title, subtitle, children }: { title: string; subtitle: 
 // ── Settings page ────────────────────────────────────────
 
 export default function SettingsPage() {
-  const { data: relationTypes, refetch: refetchRelations } = useRelationTypesQuery();
-  const { createRelationType } = useCreateRelationTypeMutation(refetchRelations);
+  // Relation types
+  const { data: relationTypes } = useRelationTypesQuery();
+  const { createRelationType } = useCreateRelationTypeMutation();
+  const { updateRelationType } = useUpdateRelationTypeMutation();
+  const { deleteRelationType } = useDeleteRelationTypeMutation();
+  const { confirmDelete: confirmDeleteRelation } = useConfirmDelete(deleteRelationType, 'relation type');
 
   const saveRelation = useCallback(async (id: string, patch: { name?: string; description?: string }) => {
-    const r = await apiFetch(`/api/relation-types/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
-    if (!r.ok) throw new Error('Update failed');
-    toast.success('Updated'); refetchRelations();
-  }, [refetchRelations]);
-
-  const doDeleteRelation = useCallback(async (id: string) => {
-    const r = await apiFetch(`/api/relation-types/${id}`, { method: 'DELETE' });
-    if (!r.ok) throw new Error('Delete failed');
-    toast.success('Deleted'); refetchRelations();
-  }, [refetchRelations]);
-  const { confirmDelete: confirmDeleteRelation } = useConfirmDelete(doDeleteRelation, 'relation type');
+    await updateRelationType({ id, patch });
+  }, [updateRelationType]);
 
   const addRelation = useCallback(async (name: string, description: string) => {
     await createRelationType({ name, description: description || undefined });
   }, [createRelationType]);
 
-  const { data: fileTypes, refetch: refetchTypes } = useFileTypesQuery();
-  const { createFileType } = useCreateFileTypeMutation(refetchTypes);
+  // File types
+  const { data: fileTypes } = useFileTypesQuery();
+  const { createFileType } = useCreateFileTypeMutation();
+  const { updateFileType } = useUpdateFileTypeMutation();
+  const { deleteFileType } = useDeleteFileTypeMutation();
+  const { confirmDelete: confirmDeleteType } = useConfirmDelete(deleteFileType, 'file type');
 
   const saveType = useCallback(async (id: string, patch: { name?: string; description?: string }) => {
-    const r = await apiFetch(`/api/file-types/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
-    if (!r.ok) throw new Error('Update failed');
-    toast.success('Updated'); refetchTypes();
-  }, [refetchTypes]);
-
-  const doDeleteType = useCallback(async (id: string) => {
-    const r = await apiFetch(`/api/file-types/${id}`, { method: 'DELETE' });
-    if (!r.ok) throw new Error('Delete failed');
-    toast.success('Deleted'); refetchTypes();
-  }, [refetchTypes]);
-  const { confirmDelete: confirmDeleteType } = useConfirmDelete(doDeleteType, 'file type');
+    await updateFileType({ id, patch });
+  }, [updateFileType]);
 
   const addType = useCallback(async (name: string, description: string) => {
     await createFileType({ name, description: description || undefined });
   }, [createFileType]);
 
-  const { data: techniques, refetch: refetchTechniques } = useTechniquesQuery();
-  const { createTechnique } = useCreateTechniqueMutation(refetchTechniques);
+  // Techniques
+  const { data: techniques } = useTechniquesQuery();
+  const { createTechnique } = useCreateTechniqueMutation();
+  const { updateTechnique } = useUpdateTechniqueMutation();
+  const { deleteTechnique } = useDeleteTechniqueMutation();
+  const { confirmDelete: confirmDeleteTechnique } = useConfirmDelete(deleteTechnique, 'technique');
 
   const saveTechnique = useCallback(async (id: string, patch: { name?: string; description?: string }) => {
-    const r = await apiFetch(`/api/techniques/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
-    if (!r.ok) throw new Error('Update failed');
-    toast.success('Updated'); refetchTechniques();
-  }, [refetchTechniques]);
-
-  const doDeleteTechnique = useCallback(async (id: string) => {
-    const r = await apiFetch(`/api/techniques/${id}`, { method: 'DELETE' });
-    if (!r.ok) throw new Error('Delete failed');
-    toast.success('Deleted'); refetchTechniques();
-  }, [refetchTechniques]);
-  const { confirmDelete: confirmDeleteTechnique } = useConfirmDelete(doDeleteTechnique, 'technique');
+    await updateTechnique({ id, patch });
+  }, [updateTechnique]);
 
   const addTechnique = useCallback(async (name: string, description: string) => {
     await createTechnique({ name, description: description || undefined });
