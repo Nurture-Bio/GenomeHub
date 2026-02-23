@@ -1,13 +1,13 @@
 import type { GenomicFile } from "../hooks/useGenomicQueries";
 import { useState, useMemo } from 'react';
 import type { CSSProperties } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { cx } from 'class-variance-authority';
 import { Gigbag } from 'concertina';
 import {
   useFilesQuery, useDeleteFileMutation, useUpdateFileMutation,
   usePresignedUrl, useAddFilesToCollection, useRemoveFilesFromCollection,
-  useAddFileOrganism, useRemoveFileOrganism, useOverlayMutation,
+  useAddFileOrganism, useRemoveFileOrganism,
 } from '../hooks/useGenomicQueries';
 import { useConfirm } from '../hooks/useConfirm';
 import { detectFormat, FORMAT_META, formatBytes, formatRelativeTime } from '../lib/formats';
@@ -239,7 +239,6 @@ function SkeletonCard() {
 // ── FilesPage ─────────────────────────────────────────────
 
 export default function FilesPage() {
-  const navigate = useNavigate();
   const [filterCollectionId, setFilterCollectionId] = useState('');
   const [filterType, setFilterType] = useState('');
 
@@ -255,7 +254,6 @@ export default function FilesPage() {
   const { removeFileOrganism } = useRemoveFileOrganism(refetch);
   const { getUrl } = usePresignedUrl();
   const { confirm } = useConfirm();
-  const { overlay, pending: overlayPending } = useOverlayMutation();
 
   // Derive format and type filters from actual data
   const formatFilters = useMemo(() => {
@@ -274,9 +272,6 @@ export default function FilesPage() {
   const [fmtFilter,  setFmtFilter]  = useState<string>('all');
   const [selected,   setSelected]   = useState<Set<string>>(new Set());
   const [addToColId, setAddToColId] = useState<string | null>(null);
-  const [overlayOpen, setOverlayOpen] = useState(false);
-  const [overlayQueryId, setOverlayQueryId] = useState<string | null>(null);
-  const [overlayNameTag, setOverlayNameTag] = useState('feature_type');
 
   const files = useMemo(() => {
     if (!data) return [];
@@ -340,35 +335,6 @@ export default function FilesPage() {
     refetch();
   };
 
-  // Overlay: exactly 2 selected JSON files
-  const selectedFiles = useMemo(() => {
-    if (!data) return [];
-    return data.filter(f => selected.has(f.id));
-  }, [data, selected]);
-
-  const canOverlay = selectedFiles.length === 2
-    && selectedFiles.every(f => f.format === 'json');
-
-  const handleOpenOverlay = () => {
-    setOverlayQueryId(selectedFiles[0].id);
-    setOverlayNameTag('feature_type');
-    setOverlayOpen(true);
-  };
-
-  const handleRunOverlay = async () => {
-    if (!overlayQueryId || selectedFiles.length !== 2) return;
-    const refId = selectedFiles.find(f => f.id !== overlayQueryId)!.id;
-    try {
-      const result = await overlay(overlayQueryId, refId, overlayNameTag || undefined);
-      setOverlayOpen(false);
-      setSelected(new Set());
-      refetch();
-      navigate(`/files/${result.fileId}`);
-    } catch {
-      // toast already shown by mutation
-    }
-  };
-
   return (
     <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 h-full min-h-0">
       {/* Header */}
@@ -399,74 +365,12 @@ export default function FilesPage() {
                 <Button intent="ghost" size="sm" onClick={() => setAddToColId(null)}>Cancel</Button>
               </div>
             )}
-            {canOverlay && (
-              <Button intent="primary" size="sm" onClick={handleOpenOverlay}>
-                Overlay
-              </Button>
-            )}
             <Button intent="danger" size="sm" pending={deletePending} onClick={handleBulkDelete}>
               Delete {selected.size}
             </Button>
           </div>
         )}
       </div>
-
-      {/* Overlay dialog */}
-      {overlayOpen && (
-        <Card className="p-3 flex flex-col gap-2 border-accent/30">
-          <div className="flex items-center justify-between">
-            <Text variant="overline">Overlay</Text>
-            <button onClick={() => setOverlayOpen(false)} className={iconAction({ color: 'dim' })}>
-              × close
-            </button>
-          </div>
-          <Text variant="caption">
-            Pick which file is the query (its regions are kept) and which is the reference
-            (its names/tags are merged onto overlapping query regions).
-          </Text>
-          <div className="flex flex-col gap-1.5">
-            {selectedFiles.map(f => (
-              <label
-                key={f.id}
-                className={`flex items-center gap-2 px-2 py-1.5 rounded-sm cursor-pointer border transition-colors duration-fast ${
-                  overlayQueryId === f.id ? 'border-accent bg-accent/5' : 'border-border hover:bg-surface-2'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="overlay-query"
-                  checked={overlayQueryId === f.id}
-                  onChange={() => setOverlayQueryId(f.id)}
-                  className="accent-accent"
-                />
-                <div className="flex-1 min-w-0">
-                  <Text variant="mono" className="truncate block">{f.filename}</Text>
-                </div>
-                <Badge variant="count" color={overlayQueryId === f.id ? 'accent' : 'dim'}>
-                  {overlayQueryId === f.id ? 'query' : 'reference'}
-                </Badge>
-              </label>
-            ))}
-          </div>
-          <div className="flex items-center gap-2">
-            <Text variant="caption" className="shrink-0">Name tag:</Text>
-            <Input
-              variant="surface"
-              size="sm"
-              value={overlayNameTag}
-              onChange={e => setOverlayNameTag(e.target.value)}
-              placeholder="feature_type"
-              className="w-40"
-            />
-          </div>
-          <div className="flex gap-1.5 justify-end">
-            <Button intent="ghost" size="sm" onClick={() => setOverlayOpen(false)}>Cancel</Button>
-            <Button intent="primary" size="sm" pending={overlayPending} onClick={handleRunOverlay}>
-              Run Overlay
-            </Button>
-          </div>
-        </Card>
-      )}
 
       {/* Controls */}
       <div className="flex items-center gap-2 shrink-0 flex-wrap">

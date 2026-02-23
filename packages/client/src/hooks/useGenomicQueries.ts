@@ -544,59 +544,6 @@ export function usePresignedUrl() {
   return { getUrl, pending };
 }
 
-// ─── Overlay analysis ─────────────────────────────────────
-
-export interface OverlayResult {
-  fileId: string;
-  filename: string;
-}
-
-export function useOverlayMutation(onSuccess?: (fileId: string) => void) {
-  const { mutate, pending } = useApiMutation<[{
-    queryFileId: string;
-    referenceFileId: string;
-    nameTag?: string;
-  }], OverlayResult>(
-    (body) => ({
-      url: '/api/analysis/overlay',
-      init: { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
-    }),
-    {
-      successMessage: 'Overlay complete',
-      errorMessage: 'Overlay failed',
-      onSuccess: () => onSuccess?.(''),
-    },
-  );
-
-  const overlay = useCallback(async (
-    queryFileId: string,
-    referenceFileId: string,
-    nameTag?: string,
-  ) => {
-    const result = await mutate({ queryFileId, referenceFileId, nameTag });
-    onSuccess?.(result.fileId);
-    return result;
-  }, [mutate, onSuccess]);
-
-  return { overlay, pending };
-}
-
-// ─── Track summary ───────────────────────────────────────
-
-export interface TrackSummary {
-  regionCount: number;
-  chromosomes: string[];
-  tagKeys: string[];
-  scoreRange: [number, number];
-}
-
-export function useTrackSummary(fileId: string | undefined) {
-  return useApiQuery<TrackSummary>(
-    fileId ? `/api/files/${fileId}/track-summary` : null,
-    [fileId],
-  );
-}
-
 // ─── Multipart upload ─────────────────────────────────────
 
 import { useAppStore, type UploadProgress } from '../stores/useAppStore';
