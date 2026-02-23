@@ -1,11 +1,12 @@
 import { lazy, Suspense, useEffect, useState, useMemo } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   useFileDetailQuery, useFilesQuery, useUpdateFileMutation,
   useAddFilesToCollection, useRemoveFilesFromCollection,
   useAddProvenance, useRemoveProvenance,
   usePresignedUrl, useDeleteFileMutation,
   useAddFileOrganism, useRemoveFileOrganism,
+  useTrackSummary, useOverlayMutation,
 } from '../hooks/useGenomicQueries';
 import { detectFormat, FORMAT_META, TEXT_PREVIEW_FORMATS, formatBytes, formatRelativeTime } from '../lib/formats';
 import { Heading, Text, Card, Badge, Button, InlineInput, Input, ChipEditor, HashPill, iconAction } from '../ui';
@@ -39,6 +40,7 @@ function FormatPill({ filename }: { filename: string }) {
 
 export default function FileDetailPage() {
   const { fileId } = useParams<{ fileId: string }>();
+  const navigate = useNavigate();
   const { data: file, isLoading, refetch } = useFileDetailQuery(fileId);
   const { updateFile } = useUpdateFileMutation(refetch);
   const setBreadcrumbLabel = useAppStore(s => s.setBreadcrumbLabel);
@@ -57,7 +59,18 @@ export default function FileDetailPage() {
   const { addProvenance, pending: addProvPending } = useAddProvenance();
   const { removeProvenance, pending: removeProvPending } = useRemoveProvenance();
 
-  const { data: allFiles } = useFilesQuery(addingProv ? {} : undefined as any);
+  // Track summary for JSON files
+  const isJsonFile = file?.format === 'json';
+  const { data: trackSummary } = useTrackSummary(isJsonFile ? fileId : undefined);
+
+  // Overlay with another file
+  const [overlayOpen, setOverlayOpen] = useState(false);
+  const [overlaySearch, setOverlaySearch] = useState('');
+  const [overlayTargetId, setOverlayTargetId] = useState<string | null>(null);
+  const [overlayNameTag, setOverlayNameTag] = useState('feature_type');
+  const { overlay, pending: overlayPending } = useOverlayMutation();
+
+  const { data: allFiles } = useFilesQuery((addingProv || overlayOpen) ? {} : undefined as any);
 
   useEffect(() => {
     if (file && fileId) setBreadcrumbLabel(fileId, file.filename);
@@ -94,6 +107,27 @@ export default function FileDetailPage() {
     if (!fileId) return;
     await removeProvenance(fileId, edgeId);
     refetch();
+  };
+
+  const overlayableFiles = useMemo(() => {
+    if (!allFiles || !file) return [];
+    const q = overlaySearch.toLowerCase();
+    return allFiles
+      .filter(f => f.id !== file.id && f.format === 'json')
+      .filter(f => !q || f.filename.toLowerCase().includes(q));
+  }, [allFiles, file, overlaySearch]);
+
+  const handleRunOverlay = async () => {
+    if (!fileId || !overlayTargetId) return;
+    try {
+      const result = await overlay(fileId, overlayTargetId, overlayNameTag || undefined);
+      setOverlayOpen(false);
+      setOverlayTargetId(null);
+      setOverlaySearch('');
+      navigate(`/files/${result.fileId}`);
+    } catch {
+      // toast already shown
+    }
   };
 
   const handleDownload = async () => {
@@ -191,6 +225,102 @@ export default function FileDetailPage() {
         <Suspense fallback={<div className="skeleton h-32 rounded-md" />}>
           <FilePreview fileId={fileId!} filename={file.filename} />
         </Suspense>
+      )}
+
+      {/* Track summary — JSON track files */}
+      {trackSummary && (
+        <Card className="p-2.5 flex flex-col gap-1.5">
+          <div className="flex items-center justify-between">
+            <Text variant="overline">Track Summary</Text>
+            <Badge variant="count" color="dim">{trackSummary.regionCount.toLocaleString()} regions</Badge>
+          </div>
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            <div>
+              <Text variant="caption" className="text-text-dim">Chromosomes</Text>
+              <div className="flex gap-0.5 flex-wrap mt-0.5">
+                {trackSummary.chromosomes.map(c => (
+                  <Badge key={c} variant="count" color="dim">{c}</Badge>
+                ))}
+              </div>
+            </div>
+            {trackSummary.tagKeys.length > 0 && (
+              <div>
+                <Text variant="caption" className="text-text-dim">Tags</Text>
+                <div className="flex gap-0.5 flex-wrap mt-0.5">
+                  {trackSummary.tagKeys.map(k => (
+                    <Badge key={k} variant="count" color="dim">{k}</Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div>
+              <Text variant="caption" className="text-text-dim">Score range</Text>
+              <Text variant="mono" className="text-micro mt-0.5 block">
+                {trackSummary.scoreRange[0]} — {trackSummary.scoreRange[1]}
+              </Text>
+            </div>
+          </div>
+          <div className="flex gap-1.5 mt-1">
+            <Button intent="ghost" size="sm" onClick={() => { setOverlayOpen(!overlayOpen); setOverlayTargetId(null); setOverlaySearch(''); }}>
+              {overlayOpen ? '× close' : 'Overlay with...'}
+            </Button>
+          </div>
+
+          {overlayOpen && (
+            <div className="border border-border rounded-md p-2.5 bg-surface-2">
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                <Input
+                  variant="surface"
+                  size="sm"
+                  placeholder="Search JSON files..."
+                  value={overlaySearch}
+                  onChange={e => { setOverlaySearch(e.target.value); setOverlayTargetId(null); }}
+                  className="flex-1 min-w-32"
+                />
+                <Text variant="caption" className="shrink-0">name_tag:</Text>
+                <Input
+                  variant="surface"
+                  size="sm"
+                  value={overlayNameTag}
+                  onChange={e => setOverlayNameTag(e.target.value)}
+                  placeholder="feature_type"
+                  className="w-36"
+                />
+              </div>
+              {overlaySearch && (
+                <div className="max-h-36 overflow-auto flex flex-col gap-0.5 mb-2">
+                  {overlayableFiles.length === 0 ? (
+                    <Text variant="caption" className="py-2 text-center">No matching JSON files.</Text>
+                  ) : (
+                    overlayableFiles.slice(0, 20).map(f => (
+                      <button
+                        key={f.id}
+                        onClick={() => { setOverlayTargetId(f.id); setOverlaySearch(f.filename); }}
+                        className={`flex items-center gap-2 px-1.5 py-1 rounded-sm cursor-pointer border-none text-left w-full transition-colors duration-fast ${
+                          overlayTargetId === f.id ? 'bg-accent/10' : 'bg-transparent hover:bg-surface'
+                        }`}
+                      >
+                        <FormatPill filename={f.filename} />
+                        <Text variant="mono" className="truncate flex-1 min-w-0">{f.filename}</Text>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+              <div className="flex justify-end">
+                <Button
+                  intent="primary"
+                  size="sm"
+                  pending={overlayPending}
+                  onClick={handleRunOverlay}
+                  disabled={!overlayTargetId}
+                >
+                  Run Overlay
+                </Button>
+              </div>
+            </div>
+          )}
+        </Card>
       )}
 
       {/* Collections */}

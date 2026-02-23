@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { AppDataSource } from '../app_data.js';
 import { User, GenomicFile, EntityEdge, Organism, Collection, type EdgeRelation } from '../entities/index.js';
 import { createGunzip, constants } from 'zlib';
-import { deleteObject, presignDownloadUrl, fetchS3Head } from '../lib/s3.js';
+import { deleteObject, presignDownloadUrl, fetchS3Head, getObjectBody } from '../lib/s3.js';
 import { detectFormat, TEXT_PREVIEW_FORMATS } from '@genome-hub/shared';
 import * as edges from '../lib/edge_service.js';
 import { asyncWrap } from '../lib/async_wrap.js';
@@ -159,6 +159,52 @@ router.get('/:id/preview', asyncWrap(async (req, res) => {
     res.json({ lines, truncated, previewable: true, format: fmt });
   } catch (err) {
     res.json({ lines: [], truncated: false, previewable: false, format: fmt, error: 'Preview unavailable' });
+  }
+}));
+
+// ─── Track summary (JSON track files) ───────────────────────
+
+function isJsonTrack(data: unknown): data is { chrom: string; start: number; end: number }[] {
+  if (!Array.isArray(data) || data.length === 0) return false;
+  const first = data[0];
+  return typeof first === 'object' && first !== null
+    && 'chrom' in first && 'start' in first && 'end' in first;
+}
+
+router.get('/:id/track-summary', asyncWrap(async (req, res) => {
+  const repo = AppDataSource.getRepository(GenomicFile);
+  const file = await repo.findOneBy({ id: req.params.id });
+  if (!file) { res.status(404).json({ error: 'not found' }); return; }
+
+  if (file.format !== 'json') {
+    res.status(400).json({ error: 'not a JSON file' });
+    return;
+  }
+
+  try {
+    const buf = await getObjectBody(file.s3Key);
+    const data = JSON.parse(buf.toString('utf-8'));
+
+    if (!isJsonTrack(data)) {
+      res.status(400).json({ error: 'not a JSON track file' });
+      return;
+    }
+
+    const chromosomes = [...new Set(data.map((r: any) => r.chrom))].sort();
+    const tagKeys = [...new Set(data.flatMap((r: any) => Object.keys(r.tags ?? {})))].sort();
+    const scores = data.map((r: any) => r.score ?? 0).filter((s: any) => typeof s === 'number' && isFinite(s));
+    const scoreRange: [number, number] = scores.length > 0
+      ? [Math.min(...scores), Math.max(...scores)]
+      : [0, 0];
+
+    res.json({
+      regionCount: data.length,
+      chromosomes,
+      tagKeys,
+      scoreRange,
+    });
+  } catch {
+    res.status(500).json({ error: 'Failed to parse track data' });
   }
 }));
 
