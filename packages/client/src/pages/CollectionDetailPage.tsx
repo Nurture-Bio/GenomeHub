@@ -31,7 +31,7 @@ export default function CollectionDetailPage() {
 
   // Only load all files when user is searching to add
   const [showAddPanel, setShowAddPanel] = useState(false);
-  const { data: allFiles } = useFilesQuery(showAddPanel ? {} : undefined as any);
+  const { data: allFiles } = useFilesQuery(showAddPanel ? {} : false);
 
   useEffect(() => {
     if (collection && collectionId) setBreadcrumbLabel(collectionId, collection.name);

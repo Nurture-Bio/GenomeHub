@@ -150,16 +150,18 @@ export interface CollectionDetail {
 
 // ─── Files ────────────────────────────────────────────────
 
-export function useFilesQuery(filters?: { collectionId?: string; type?: string }) {
+export function useFilesQuery(filters?: { collectionId?: string; type?: string } | false) {
+  const enabled = filters !== false;
   const params = new URLSearchParams();
-  if (filters?.collectionId) params.set('collectionId', filters.collectionId);
-  if (filters?.type) params.set('type', filters.type);
+  if (enabled && filters?.collectionId) params.set('collectionId', filters.collectionId);
+  if (enabled && filters?.type) params.set('type', filters.type);
   const qs = params.toString();
   const url = `/api/files${qs ? '?' + qs : ''}`;
 
   return useQuery({
-    queryKey: queryKeys.files.list(filters),
+    queryKey: queryKeys.files.list(enabled ? filters : undefined),
     queryFn: () => fetchApi<GenomicFile[]>(url),
+    enabled,
   });
 }
 
@@ -629,18 +631,17 @@ export function useAddFilesToCollection() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fileIds }),
       }),
-    onSuccess: (_data, { collectionId }) => {
+    onSuccess: (_data, { collectionId, fileIds }) => {
       qc.invalidateQueries({ queryKey: queryKeys.collections.detail(collectionId) });
       qc.invalidateQueries({ queryKey: queryKeys.collections.all });
       qc.invalidateQueries({ queryKey: queryKeys.files.all });
+      toast.success(`Added ${fileIds.length} file${fileIds.length !== 1 ? 's' : ''} to collection`);
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to add files'),
   });
   const addFiles = useCallback(
-    (collectionId: string, fileIds: string[]) => {
-      toast.success(`Added ${fileIds.length} file${fileIds.length !== 1 ? 's' : ''} to collection`);
-      return mutation.mutateAsync({ collectionId, fileIds });
-    },
+    (collectionId: string, fileIds: string[]) =>
+      mutation.mutateAsync({ collectionId, fileIds }),
     [mutation],
   );
   return { addFiles, pending: mutation.isPending };
@@ -655,18 +656,17 @@ export function useRemoveFilesFromCollection() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fileIds }),
       }),
-    onSuccess: (_data, { collectionId }) => {
+    onSuccess: (_data, { collectionId, fileIds }) => {
       qc.invalidateQueries({ queryKey: queryKeys.collections.detail(collectionId) });
       qc.invalidateQueries({ queryKey: queryKeys.collections.all });
       qc.invalidateQueries({ queryKey: queryKeys.files.all });
+      toast.success(`Removed ${fileIds.length} file${fileIds.length !== 1 ? 's' : ''} from collection`);
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to remove files'),
   });
   const removeFiles = useCallback(
-    (collectionId: string, fileIds: string[]) => {
-      toast.success(`Removed ${fileIds.length} file${fileIds.length !== 1 ? 's' : ''} from collection`);
-      return mutation.mutateAsync({ collectionId, fileIds });
-    },
+    (collectionId: string, fileIds: string[]) =>
+      mutation.mutateAsync({ collectionId, fileIds }),
     [mutation],
   );
   return { removeFiles, pending: mutation.isPending };

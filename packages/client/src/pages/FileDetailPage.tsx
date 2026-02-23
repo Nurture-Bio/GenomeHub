@@ -57,7 +57,7 @@ export default function FileDetailPage() {
   const { addProvenance, pending: addProvPending } = useAddProvenance();
   const { removeProvenance, pending: removeProvPending } = useRemoveProvenance();
 
-  const { data: allFiles } = useFilesQuery(addingProv ? {} : undefined as any);
+  const { data: allFiles } = useFilesQuery(addingProv ? {} : false);
 
   useEffect(() => {
     if (file && fileId) setBreadcrumbLabel(fileId, file.filename);
