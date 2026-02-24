@@ -44,13 +44,13 @@ export default function GlobalUploadProgress() {
         open={open}
         onOpenChange={handleOpenChange}
         duration={Infinity}
-        className="bg-surface border border-border rounded-md shadow-lg overflow-hidden animate-fade-in"
+        className="bg-base border border-line rounded-md shadow-lg overflow-hidden animate-fade-in"
         style={{ width: 280, backdropFilter: 'blur(8px)' }}
       >
         {/* Status header */}
         <div className="flex items-center gap-2 px-2.5 py-1.5">
           {active.length > 0 ? (
-            <svg width="14" height="14" viewBox="0 0 14 14" className="shrink-0 animate-spin" style={{ color: 'var(--color-accent)' }}>
+            <svg width="14" height="14" viewBox="0 0 14 14" className="shrink-0 animate-spin" style={{ color: 'var(--color-cyan)' }}>
               <circle cx="7" cy="7" r="5.5" fill="none" stroke="currentColor" strokeWidth="2" opacity="0.25" />
               <path d="M12.5 7a5.5 5.5 0 00-5.5-5.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
@@ -66,7 +66,7 @@ export default function GlobalUploadProgress() {
           )}
 
           <Toast.Title asChild>
-            <Text variant="caption" className="flex-1 min-w-0 truncate text-text">
+            <Text variant="dim" className="flex-1 min-w-0 truncate text-fg">
               {active.length > 0
                 ? `Uploading ${active.length} file${active.length !== 1 ? 's' : ''} · ${overallPct}%`
                 : errored.length > 0
@@ -84,10 +84,10 @@ export default function GlobalUploadProgress() {
 
         {/* Overall progress bar */}
         {active.length > 0 && (
-          <div className="h-0.5" style={{ background: 'var(--color-surface-2)' }}>
+          <div className="h-0.5" style={{ background: 'var(--color-raised)' }}>
             <div
               className="h-full transition-all duration-normal"
-              style={{ width: `${overallPct}%`, background: 'var(--color-accent)' }}
+              style={{ width: `${overallPct}%`, background: 'var(--color-cyan)' }}
             />
           </div>
         )}
@@ -98,9 +98,9 @@ export default function GlobalUploadProgress() {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-2.5 py-1 border-t border-border-subtle">
+        <div className="flex items-center justify-between px-2.5 py-1 border-t border-line">
           <Link to="/upload" className="no-underline">
-            <Text variant="caption" className="hover:text-accent transition-colors duration-fast">
+            <Text variant="dim" className="hover:text-cyan transition-colors duration-fast">
               Open uploads
             </Text>
           </Link>
@@ -116,15 +116,15 @@ function UploadRow({ upload }: { upload: UploadProgress }) {
   const pct = upload.total > 0 ? Math.round((upload.loaded / upload.total) * 100) : 0;
 
   return (
-    <div className="flex items-center gap-2 px-2.5 py-1 border-t border-border-subtle">
+    <div className="flex items-center gap-2 px-2.5 py-1 border-t border-line">
       <Text variant="mono" className="flex-1 min-w-0 truncate">
         {upload.filename}
       </Text>
       <Text variant="mono" className="shrink-0 tabular-nums" style={{
-        fontSize: 'var(--text-micro)',
+        fontSize: 'var(--font-size-body)',
         color: upload.status === 'done'  ? 'var(--color-green)'
              : upload.status === 'error' ? 'var(--color-red)'
-             : 'var(--color-text-dim)',
+             : 'var(--color-fg-3)',
       }}>
         {upload.status === 'done'  ? '\u2713'
           : upload.status === 'error' ? '\u2717'

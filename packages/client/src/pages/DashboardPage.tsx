@@ -7,10 +7,10 @@ import { Heading, Text, Badge, Card } from '../ui';
 
 function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="bg-surface border border-border rounded-md p-2.5 flex flex-col gap-0.5">
-      <Text variant="overline">{label}</Text>
-      <Heading level="display" className="tabular-nums">{value}</Heading>
-      {sub && <Text variant="caption">{sub}</Text>}
+    <div className="bg-base border border-line rounded-md p-2.5 flex flex-col gap-0.5">
+      <Text variant="muted">{label}</Text>
+      <Heading level="heading" className="tabular-nums">{value}</Heading>
+      {sub && <Text variant="dim">{sub}</Text>}
     </div>
   );
 }
@@ -77,8 +77,8 @@ export default function DashboardPage() {
 
       {/* Storage by format */}
       {!statsLoading && stats && stats.byFormat.length > 0 && (
-        <div className="bg-surface border border-border rounded-md p-2.5 flex flex-col gap-2">
-          <Text variant="overline">Storage by Format</Text>
+        <div className="bg-base border border-line rounded-md p-2.5 flex flex-col gap-2">
+          <Text variant="muted">Storage by Format</Text>
           <FormatBar items={stats.byFormat} />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-1 mt-1">
@@ -90,16 +90,16 @@ export default function DashboardPage() {
                 : '0';
               return (
                 <div key={item.format}
-                  className="flex items-center gap-1.5 p-1 bg-surface-2 rounded-sm">
+                  className="flex items-center gap-1.5 p-1 bg-raised rounded-sm">
                   <div className="w-2 h-2 rounded-full shrink-0"
                     style={{ background: meta.color }} />
                   <div className="min-w-0 flex-1">
-                    <Text variant="mono" className="text-micro">{meta.label}</Text>
-                    <Text variant="caption" className="tabular-nums">
+                    <Text variant="mono" className="text-body">{meta.label}</Text>
+                    <Text variant="dim" className="tabular-nums">
                       {formatBytes(item.bytes)} · {item.count} files
                     </Text>
                   </div>
-                  <Text variant="mono" className="text-text-dim text-micro shrink-0">{pct}%</Text>
+                  <Text variant="mono" className="text-fg-3 text-body shrink-0">{pct}%</Text>
                 </div>
               );
             })}

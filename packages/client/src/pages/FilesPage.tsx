@@ -46,7 +46,7 @@ function FileCard({ file, onDownload, selected, onSelect }: FileCardProps) {
   return (
     <Card
       className="p-2.5 flex flex-col gap-1.5"
-      style={{ background: selected ? 'var(--color-surface-2)' : undefined }}
+      style={{ background: selected ? 'var(--color-raised)' : undefined }}
     >
       {/* Top row: checkbox + format + filename */}
       <div className="flex items-center gap-2">
@@ -54,7 +54,7 @@ function FileCard({ file, onDownload, selected, onSelect }: FileCardProps) {
           type="checkbox"
           checked={selected}
           onChange={e => onSelect(file.id, e.target.checked)}
-          className="accent-accent cursor-pointer shrink-0"
+          className="accent-cyan cursor-pointer shrink-0"
         />
         <HashPill label={meta.label} colorKey={fmt} />
         <Text variant="mono" className="truncate flex-1 min-w-0">{file.filename}</Text>
@@ -62,13 +62,13 @@ function FileCard({ file, onDownload, selected, onSelect }: FileCardProps) {
 
       {/* Metadata row */}
       <div className="flex items-center gap-2 flex-wrap pl-5.5">
-        <Text variant="caption">{formatBytes(file.sizeBytes)}</Text>
+        <Text variant="dim">{formatBytes(file.sizeBytes)}</Text>
         {file.types.map(t => <HashPill key={t} label={t} />)}
         {file.organisms.map(o => <HashPill key={o.id} label={o.displayName} />)}
         {file.status === 'ready'   && <Badge variant="status" color="green">ready</Badge>}
         {file.status === 'pending' && <Badge variant="status" color="yellow">uploading</Badge>}
         {file.status === 'error'   && <Badge variant="status" color="red">error</Badge>}
-        <Text variant="caption">{formatRelativeTime(file.uploadedAt)}</Text>
+        <Text variant="dim">{formatRelativeTime(file.uploadedAt)}</Text>
       </div>
 
       {/* Actions */}
@@ -96,8 +96,8 @@ interface FileRowProps {
 function FileRow({ file, onDownload, onUpdateTypes, onAddOrganism, onRemoveOrganism, onAddToCollection, onRemoveFromCollection, selected, onSelect }: FileRowProps) {
   return (
     <tr
-      className="border-b border-border-subtle transition-colors duration-fast hover:bg-surface group"
-      style={{ background: selected ? 'var(--color-surface-2)' : undefined }}
+      className="border-b border-line transition-colors duration-fast hover:bg-base group"
+      style={{ background: selected ? 'var(--color-raised)' : undefined }}
     >
       {/* Checkbox */}
       <td className="pl-3 pr-1 py-1.5 w-6 align-top pt-2.5">
@@ -105,7 +105,7 @@ function FileRow({ file, onDownload, onUpdateTypes, onAddOrganism, onRemoveOrgan
           type="checkbox"
           checked={selected}
           onChange={e => onSelect(file.id, e.target.checked)}
-          className="accent-accent cursor-pointer"
+          className="accent-cyan cursor-pointer"
         />
       </td>
 
@@ -115,18 +115,18 @@ function FileRow({ file, onDownload, onUpdateTypes, onAddOrganism, onRemoveOrgan
           <FormatIcon filename={file.filename} format={file.format} />
           <div className="min-w-0 flex-1">
             <Link to={`/files/${file.id}`} className="no-underline">
-              <Text variant="mono" className="truncate block hover:text-accent transition-colors duration-fast">
+              <Text variant="mono" className="truncate block hover:text-cyan transition-colors duration-fast">
                 {file.filename}
               </Text>
             </Link>
             <div className="flex items-center gap-1.5">
-              <Text variant="mono" className="text-text-dim text-micro">{formatBytes(file.sizeBytes)}</Text>
-              <Text variant="caption">·</Text>
+              <Text variant="mono" className="text-fg-3 text-body">{formatBytes(file.sizeBytes)}</Text>
+              <Text variant="dim">·</Text>
               {file.status === 'ready'   && <Badge variant="status" color="green">ready</Badge>}
               {file.status === 'pending' && <Badge variant="status" color="yellow">uploading</Badge>}
               {file.status === 'error'   && <Badge variant="status" color="red">error</Badge>}
-              <Text variant="caption">·</Text>
-              <Text variant="caption">{formatRelativeTime(file.uploadedAt)}</Text>
+              <Text variant="dim">·</Text>
+              <Text variant="dim">{formatRelativeTime(file.uploadedAt)}</Text>
             </div>
           </div>
         </div>
@@ -190,7 +190,7 @@ function FileRow({ file, onDownload, onUpdateTypes, onAddOrganism, onRemoveOrgan
 
 function SkeletonRow() {
   return (
-    <tr className="border-b border-border-subtle">
+    <tr className="border-b border-line">
       <td className="pl-3 pr-1 py-1.5 w-6 align-top pt-2.5">
         <div className="concertina-warmup-line rounded-sm" style={{ width: 'var(--target-min-icon)', height: 'var(--target-min-icon)' }} />
       </td>
@@ -338,7 +338,7 @@ export default function FilesPage() {
       <div className="flex items-center gap-2 md:gap-3 shrink-0">
         <div className="flex-1 min-w-0">
           <Heading level="heading">Files</Heading>
-          <Text variant="caption">
+          <Text variant="dim">
             {data ? `${data.length.toLocaleString()} files` : 'Loading...'}
           </Text>
         </div>
@@ -427,23 +427,23 @@ export default function FilesPage() {
       </div>
 
       {/* Desktop table — hidden below md */}
-      <div className="hidden md:block flex-1 overflow-auto min-h-0 border border-border rounded-md bg-surface" style={{ scrollbarGutter: 'stable' }}>
+      <div className="hidden md:block flex-1 overflow-auto min-h-0 border border-line rounded-md bg-base" style={{ scrollbarGutter: 'stable' }}>
         <Gigbag className="w-full">
         <table className="w-full border-collapse text-left table-fixed">
-          <thead className="sticky top-0 bg-surface-2 z-10">
-            <tr className="border-b border-border">
+          <thead className="sticky top-0 bg-raised z-10">
+            <tr className="border-b border-line">
               <th className="pl-3 pr-1 py-1.5 w-7">
                 <input
                   type="checkbox"
                   checked={allSelected}
                   onChange={toggleAll}
-                  className="accent-accent cursor-pointer"
+                  className="accent-cyan cursor-pointer"
                 />
               </th>
-              <th className="py-1.5 pr-3"><Text variant="overline">File</Text></th>
-              <th className="py-1.5 pr-3 w-36"><Text variant="overline">Organism</Text></th>
-              <th className="py-1.5 pr-3 w-28"><Text variant="overline">Type</Text></th>
-              <th className="py-1.5 pr-3 w-44"><Text variant="overline">Collections</Text></th>
+              <th className="py-1.5 pr-3"><Text variant="muted">File</Text></th>
+              <th className="py-1.5 pr-3 w-36"><Text variant="muted">Organism</Text></th>
+              <th className="py-1.5 pr-3 w-28"><Text variant="muted">Type</Text></th>
+              <th className="py-1.5 pr-3 w-44"><Text variant="muted">Collections</Text></th>
               <th className="w-8" />
             </tr>
           </thead>
@@ -454,7 +454,7 @@ export default function FilesPage() {
                 ? (
                   <tr>
                     <td colSpan={6} className="py-12 text-center">
-                      <Text variant="body" className="text-text-dim">
+                      <Text variant="body" className="text-fg-3">
                         {search || fmtFilter !== 'all' || filterCollectionId ? 'No files match your filters.' : 'No files yet. Upload some to get started.'}
                       </Text>
                     </td>
@@ -489,9 +489,9 @@ export default function FilesPage() {
               type="checkbox"
               checked={allSelected}
               onChange={toggleAll}
-              className="accent-accent cursor-pointer"
+              className="accent-cyan cursor-pointer"
             />
-            <Text variant="caption">Select all</Text>
+            <Text variant="dim">Select all</Text>
           </label>
         )}
 
@@ -499,7 +499,7 @@ export default function FilesPage() {
           ? [...Array(4)].map((_, i) => <SkeletonCard key={i} />)
           : files.length === 0
             ? (
-              <Text variant="body" className="py-8 text-center text-text-dim">
+              <Text variant="body" className="py-8 text-center text-fg-3">
                 {search || fmtFilter !== 'all' || filterCollectionId ? 'No files match your filters.' : 'No files yet. Upload some to get started.'}
               </Text>
             )

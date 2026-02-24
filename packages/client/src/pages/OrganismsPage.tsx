@@ -11,7 +11,7 @@ import { formatRelativeTime } from '../lib/formats';
 
 function SkeletonRow() {
   return (
-    <tr className="border-b border-border-subtle">
+    <tr className="border-b border-line">
       <td className="py-1.5 pl-2.5 pr-3">
         <div className="flex flex-col gap-1">
           <div className="concertina-warmup-line concertina-warmup-line-long" />
@@ -63,21 +63,21 @@ export default function OrganismsPage() {
     <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 h-full min-h-0">
       <div className="shrink-0">
         <Heading level="heading">Organisms</Heading>
-        <Text variant="caption">
+        <Text variant="dim">
           {data ? `${data.length} organism${data.length !== 1 ? 's' : ''}` : 'Loading...'}
         </Text>
       </div>
 
       {/* Desktop table */}
-      <div className="hidden md:block flex-1 overflow-auto min-h-0 border border-border rounded-md bg-surface">
+      <div className="hidden md:block flex-1 overflow-auto min-h-0 border border-line rounded-md bg-base">
         <Gigbag className="w-full">
         <table className="w-full border-collapse text-left table-fixed">
-          <thead className="sticky top-0 bg-surface-2 z-10">
-            <tr className="border-b border-border">
-              <th className="py-1.5 pr-3 pl-2.5"><Text variant="overline">Organism</Text></th>
-              <th className="py-1.5 pr-3 pl-2.5"><Text variant="overline">Details</Text></th>
-              <th className="py-1.5 pr-3 pl-2.5 text-right w-14"><Text variant="overline">Coll.</Text></th>
-              <th className="py-1.5 pr-3 pl-2.5 text-right w-14"><Text variant="overline">Files</Text></th>
+          <thead className="sticky top-0 bg-raised z-10">
+            <tr className="border-b border-line">
+              <th className="py-1.5 pr-3 pl-2.5"><Text variant="muted">Organism</Text></th>
+              <th className="py-1.5 pr-3 pl-2.5"><Text variant="muted">Details</Text></th>
+              <th className="py-1.5 pr-3 pl-2.5 text-right w-14"><Text variant="muted">Coll.</Text></th>
+              <th className="py-1.5 pr-3 pl-2.5 text-right w-14"><Text variant="muted">Files</Text></th>
               <th className="w-7" />
             </tr>
           </thead>
@@ -87,7 +87,7 @@ export default function OrganismsPage() {
               : (
                 <>
                   {data?.map(o => (
-                    <tr key={o.id} className="border-b border-border-subtle hover:bg-surface transition-colors duration-fast group">
+                    <tr key={o.id} className="border-b border-line hover:bg-base transition-colors duration-fast group">
                       <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
                         <div className="flex items-baseline gap-1 min-w-0">
                           <InlineInput value={o.genus} mono className="italic" onCommit={v => handleUpdate(o.id, { genus: v })} />
@@ -105,10 +105,10 @@ export default function OrganismsPage() {
                         </div>
                       </td>
                       <td className="py-1.5 pl-2.5 pr-3 text-right align-top pt-2">
-                        <Text variant="mono" className="text-text-secondary">{o.collectionCount}</Text>
+                        <Text variant="mono" className="text-fg-2">{o.collectionCount}</Text>
                       </td>
                       <td className="py-1.5 pl-2.5 pr-3 text-right align-top pt-2">
-                        <Text variant="mono" className="text-text-secondary">{o.fileCount}</Text>
+                        <Text variant="mono" className="text-fg-2">{o.fileCount}</Text>
                       </td>
                       <td className="py-1.5 pr-2.5 w-6 align-top pt-2">
                         <button onClick={() => confirmDelete(o.id, `${o.genus} ${o.species}`)}
@@ -119,7 +119,7 @@ export default function OrganismsPage() {
                   ))}
 
                   {/* Inline add row */}
-                  <tr className="text-text-dim">
+                  <tr className="text-fg-3">
                     <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
                       <div className="flex items-baseline gap-1 min-w-0">
                         <input ref={genusRef} value={newGenus} onChange={e => setNewGenus(e.target.value)}
@@ -159,21 +159,21 @@ export default function OrganismsPage() {
             </Card>
           ))
           : !data?.length
-            ? <Text variant="body" className="py-8 text-center text-text-dim">No organisms yet.</Text>
+            ? <Text variant="body" className="py-8 text-center text-fg-3">No organisms yet.</Text>
             : data.map(o => (
               <Card key={o.id} className="p-2.5 flex flex-col gap-1">
                 <Text variant="mono">
-                  <span className="text-text-dim italic">{o.genus.charAt(0)}.</span>{' '}
+                  <span className="text-fg-3 italic">{o.genus.charAt(0)}.</span>{' '}
                   <span className="font-semibold">{o.species}</span>
-                  {o.strain && <span className="text-text-secondary ml-1">{o.strain}</span>}
+                  {o.strain && <span className="text-fg-2 ml-1">{o.strain}</span>}
                 </Text>
-                {o.commonName && <Text variant="caption">{o.commonName}</Text>}
+                {o.commonName && <Text variant="dim">{o.commonName}</Text>}
                 <div className="flex items-center gap-2 flex-wrap">
                   {o.referenceGenome && <Badge variant="count" color="dim">{o.referenceGenome}</Badge>}
-                  {o.ncbiTaxId && <Text variant="caption">NCBI: {o.ncbiTaxId}</Text>}
-                  <Text variant="caption">{o.collectionCount} coll</Text>
-                  <Text variant="caption">{o.fileCount} files</Text>
-                  <Text variant="caption">{formatRelativeTime(o.createdAt)}</Text>
+                  {o.ncbiTaxId && <Text variant="dim">NCBI: {o.ncbiTaxId}</Text>}
+                  <Text variant="dim">{o.collectionCount} coll</Text>
+                  <Text variant="dim">{o.fileCount} files</Text>
+                  <Text variant="dim">{formatRelativeTime(o.createdAt)}</Text>
                 </div>
               </Card>
             ))

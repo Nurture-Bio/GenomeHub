@@ -15,21 +15,21 @@ import { cva, type VariantProps } from 'class-variance-authority';
 // ── BUTTON ──────────────────────────────────────────────
 
 export const button = cva(
-  'cursor-pointer font-body transition-colors duration-fast inline-flex items-center justify-center shrink-0',
+  'cursor-pointer font-sans transition-colors duration-fast inline-flex items-center justify-center shrink-0',
   {
     variants: {
       intent: {
-        primary: 'bg-accent text-bg font-bold border-none hover:bg-accent-hover',
-        ghost: 'bg-transparent border border-border text-text-dim hover:text-text hover:border-text-dim',
-        danger: 'bg-surface-2 border border-red text-red hover:bg-border',
-        success: 'bg-surface-2 border border-green text-green hover:bg-border',
-        component: 'bg-surface-2 border border-border text-text hover:bg-border',
+        primary: 'bg-cyan text-void font-bold border-none hover:bg-cyan-hover',
+        ghost: 'bg-transparent border border-line text-fg-3 hover:text-fg hover:border-fg-3',
+        danger: 'bg-raised border border-red text-red hover:bg-line',
+        success: 'bg-raised border border-green text-green hover:bg-line',
+        component: 'bg-raised border border-line text-fg hover:bg-line',
         bare: 'bg-transparent border-none text-inherit',
       },
       size: {
-        xs: 'text-micro py-0.5 px-1 rounded-sm',
-        sm: 'text-caption py-0.5 px-1.5 rounded-sm min-h-6',
-        md: 'text-caption py-1 px-2 rounded-sm min-h-5.5',
+        xs: 'text-body py-0.5 px-1 rounded-sm',
+        sm: 'text-body py-0.5 px-1.5 rounded-sm min-h-6',
+        md: 'text-body py-1 px-2 rounded-sm min-h-5.5',
         lg: 'text-body py-1 px-3 rounded-sm min-h-5.5',
         xl: 'text-body py-1.5 px-4 rounded-md font-bold min-h-5.5',
       },
@@ -51,18 +51,18 @@ export type ButtonVariants = VariantProps<typeof button>;
 // ── INPUT ───────────────────────────────────────────────
 
 export const input = cva(
-  'border border-border text-text rounded-sm focus:outline-none focus:border-accent',
+  'border border-line text-fg rounded-sm focus:outline-none focus:border-cyan',
   {
     variants: {
       variant: {
-        default: 'bg-bg font-body placeholder:text-text-dim',
-        surface: 'bg-surface-2 font-body placeholder:text-text-dim',
-        transparent: 'bg-transparent font-body placeholder:text-text-dim',
-        mono: 'bg-bg font-mono',
+        default: 'bg-void font-sans placeholder:text-fg-3',
+        surface: 'bg-raised font-sans placeholder:text-fg-3',
+        transparent: 'bg-transparent font-sans placeholder:text-fg-3',
+        mono: 'bg-void font-mono',
       },
       size: {
-        sm: 'text-caption py-0.5 px-1.5 min-h-6',
-        md: 'text-caption py-1 px-1.5 min-h-5.5',
+        sm: 'text-body py-0.5 px-1.5 min-h-6',
+        md: 'text-body py-1 px-1.5 min-h-5.5',
         lg: 'text-body py-1 px-2 min-h-5.5',
       },
     },
@@ -78,7 +78,7 @@ export type InputVariants = VariantProps<typeof input>;
 // ── CARD ────────────────────────────────────────────────
 
 export const card = cva(
-  'bg-surface border border-border rounded-md overflow-hidden',
+  'bg-base border border-line rounded-md overflow-hidden',
   {
     variants: {
       elevated: {
@@ -97,7 +97,7 @@ export type CardVariants = VariantProps<typeof card>;
 // ── DROPDOWN ────────────────────────────────────────────
 
 export const dropdown = cva(
-  'absolute bg-surface border border-border shadow-lg animate-fade-in overflow-y-auto z-dropdown',
+  'absolute bg-base border border-line shadow-lg animate-fade-in overflow-y-auto z-dropdown',
   {
     variants: {
       position: {
@@ -117,12 +117,12 @@ export type DropdownVariants = VariantProps<typeof dropdown>;
 // ── DROPDOWN ITEM ───────────────────────────────────────
 
 export const dropdownItem = cva(
-  'cursor-pointer font-body text-caption px-2 py-1 border-b border-border-subtle last:border-b-0 transition-colors duration-fast',
+  'cursor-pointer font-sans text-body px-2 py-1 border-b border-line last:border-b-0 transition-colors duration-fast',
   {
     variants: {
       selected: {
-        true: 'bg-surface-2',
-        false: 'hover:bg-surface-2',
+        true: 'bg-raised',
+        false: 'hover:bg-raised',
       },
     },
     defaultVariants: {
@@ -133,20 +133,16 @@ export const dropdownItem = cva(
 
 export type DropdownItemVariants = VariantProps<typeof dropdownItem>;
 
-// ── TEXT ─────────────────────────────────────────────────
+// ── TEXT — 5 variants ───────────────────────────────────
 
 export const text = cva('', {
   variants: {
     variant: {
-      body: 'text-text font-body text-body',
-      caption: 'text-text-dim font-body text-caption',
-      secondary: 'text-text-secondary font-body text-body',
-      overline: 'text-text-dim font-body text-micro font-bold uppercase tracking-overline',
-      mono: 'text-text font-mono text-caption tabular-nums',
-      label: 'text-text-dim font-body text-caption',
-      error: 'text-red font-body text-caption',
-      system: 'text-text-dim font-body text-caption italic',
-      command: 'text-text-secondary font-mono text-caption message-command',
+      body: 'text-fg font-sans text-body',
+      dim: 'text-fg-2 font-sans text-body',
+      muted: 'text-fg-3 font-sans text-body font-bold uppercase tracking-overline',
+      mono: 'text-fg font-mono text-body tabular-nums',
+      error: 'text-red font-sans text-body',
     },
   },
   defaultVariants: {
@@ -156,16 +152,13 @@ export const text = cva('', {
 
 export type TextVariants = VariantProps<typeof text>;
 
-// ── HEADING ─────────────────────────────────────────────
+// ── HEADING — 2 levels ──────────────────────────────────
 
-export const heading = cva('font-bold', {
+export const heading = cva('font-semibold font-sans', {
   variants: {
     level: {
-      hero: 'font-display text-hero text-accent',
-      display: 'font-display text-display text-accent',
-      heading: 'font-display text-heading text-accent',
-      subheading: 'font-display text-subheading text-accent',
-      section: 'font-body text-body text-text',
+      heading: 'text-heading text-cyan',
+      subheading: 'text-body text-fg',
     },
   },
   defaultVariants: {
@@ -177,21 +170,20 @@ export type HeadingVariants = VariantProps<typeof heading>;
 
 // ── BADGE ───────────────────────────────────────────────
 
-export const badge = cva('font-body font-bold', {
+export const badge = cva('font-sans font-bold', {
   variants: {
     variant: {
-      status: 'text-micro uppercase tracking-overline px-1 py-px rounded-sm bg-surface-2',
-      count: 'inline-flex items-center bg-surface-2 text-micro leading-none py-px px-1 font-semibold rounded-sm normal-case',
-      filter: 'bg-surface border border-border rounded-sm px-1 py-0.5 text-caption font-semibold normal-case',
+      status: 'text-body uppercase tracking-overline px-1 py-px rounded-sm bg-raised',
+      count: 'inline-flex items-center bg-raised text-body leading-none py-px px-1 font-semibold rounded-sm normal-case',
+      filter: 'bg-base border border-line rounded-sm px-1 py-0.5 text-body font-semibold normal-case',
     },
     color: {
-      accent: 'text-accent',
+      accent: 'text-cyan',
       green: 'text-green',
       yellow: 'text-yellow',
       red: 'text-red',
-      blue: 'text-blue',
-      dim: 'text-text-dim',
-      default: 'text-text-dim',
+      dim: 'text-fg-3',
+      default: 'text-fg-3',
     },
   },
   defaultVariants: {
@@ -205,12 +197,12 @@ export type BadgeVariants = VariantProps<typeof badge>;
 // ── NAV LINK ────────────────────────────────────────────
 
 export const navLink = cva(
-  'no-underline font-body text-caption font-semibold px-2.5 py-1.5 flex items-center tracking-wide transition-colors duration-fast',
+  'no-underline font-sans text-body font-semibold px-2.5 py-1.5 flex items-center tracking-wide transition-colors duration-fast',
   {
     variants: {
       active: {
-        true: 'text-accent',
-        false: 'text-text-secondary hover:text-text',
+        true: 'text-cyan',
+        false: 'text-fg-2 hover:text-fg',
       },
     },
     defaultVariants: {
@@ -245,7 +237,7 @@ export type StatusDotVariants = VariantProps<typeof statusDot>;
 // ── PROGRESS TRACK ──────────────────────────────────────
 
 export const progressTrack = cva(
-  'flex bg-surface-2 gap-px overflow-hidden rounded-full h-1'
+  'flex bg-raised gap-px overflow-hidden rounded-full h-1'
 );
 
 // ── MODAL OVERLAY ───────────────────────────────────────
@@ -257,24 +249,23 @@ export const modalOverlay = cva(
 // ── MODAL CARD ──────────────────────────────────────────
 
 export const modalCard = cva(
-  'bg-surface-3 border border-border rounded-lg shadow-lg p-3 w-full max-w-embed'
+  'bg-elevated border border-line rounded-lg shadow-lg p-3 w-full max-w-embed'
 );
 
 // ── RECONNECT BANNER ────────────────────────────────────
 
 export const reconnectBanner = cva(
-  'bg-red text-white text-center py-1 text-caption font-bold uppercase tracking-wide animate-pulse-slow'
+  'bg-red text-white text-center py-1 text-body font-bold uppercase tracking-wide animate-pulse-slow'
 );
 
 // ── EMBED CARD ──────────────────────────────────────────
 
 export const embedCard = cva(
-  'bg-surface border-l-2 rounded-md py-1.5 px-2 max-w-embed',
+  'bg-base border-l-2 rounded-md py-1.5 px-2 max-w-embed',
   {
     variants: {
       color: {
         red: 'border-l-red',
-        blue: 'border-l-blue',
         yellow: 'border-l-yellow',
         green: 'border-l-green',
       },
@@ -288,16 +279,14 @@ export const embedCard = cva(
 export type EmbedCardVariants = VariantProps<typeof embedCard>;
 
 // ── INLINE INPUT ───────────────────────────────────────
-// Borderless text input that looks like plain text until focused.
-// Used by InlineInput component and inline add-row inputs.
 
 export const inlineInput = cva(
-  'bg-transparent border-b border-transparent outline-none p-0 transition-colors duration-fast placeholder:text-text-dim hover:border-border-subtle focus:border-accent focus:cursor-text cursor-pointer',
+  'bg-transparent border-b border-transparent outline-none p-0 transition-colors duration-fast placeholder:text-fg-3 hover:border-line focus:border-cyan focus:cursor-text cursor-pointer',
   {
     variants: {
       font: {
-        mono: 'font-mono text-caption text-text',
-        body: 'font-body text-caption text-text-secondary',
+        mono: 'font-mono text-body text-fg',
+        body: 'font-sans text-body text-fg-2',
       },
     },
     defaultVariants: {
@@ -309,15 +298,14 @@ export const inlineInput = cva(
 export type InlineInputVariants = VariantProps<typeof inlineInput>;
 
 // ── CHIP ───────────────────────────────────────────────
-// Small inline pills for tags, collections, metadata.
 
 export const chip = cva(
-  'inline-flex items-center gap-px font-body text-micro px-1 py-px rounded-sm',
+  'inline-flex items-center gap-px font-sans text-body px-1 py-px rounded-sm',
   {
     variants: {
       variant: {
-        default: 'bg-surface-2 text-text-secondary',
-        subtle: 'text-text-dim',
+        default: 'bg-raised text-fg-2',
+        subtle: 'text-fg-3',
       },
     },
     defaultVariants: {
@@ -329,16 +317,15 @@ export const chip = cva(
 export type ChipVariants = VariantProps<typeof chip>;
 
 // ── ICON ACTION ────────────────────────────────────────
-// Tiny action buttons (×, ↓, +, ✓) that appear on hover.
 
 export const iconAction = cva(
-  'cursor-pointer bg-transparent border-none p-0 text-caption transition-colors duration-fast',
+  'cursor-pointer bg-transparent border-none p-0 text-body transition-colors duration-fast',
   {
     variants: {
       color: {
-        dim: 'text-text-dim hover:text-text',
-        accent: 'text-accent hover:text-text',
-        danger: 'text-text-dim hover:text-red',
+        dim: 'text-fg-3 hover:text-fg',
+        accent: 'text-cyan hover:text-fg',
+        danger: 'text-fg-3 hover:text-red',
       },
       reveal: {
         true: 'opacity-0 group-hover:opacity-100 transition-opacity',

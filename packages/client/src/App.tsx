@@ -25,7 +25,7 @@ import ConfirmDialog        from './components/ConfirmDialog';
 // ── Hub icon ─────────────────────────────────────────────
 const GenomicIcon = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-    style={{ color: 'var(--color-accent)' }}>
+    style={{ color: 'var(--color-cyan)' }}>
     {/* Center node */}
     <circle cx="12" cy="12" r="3.5" fill="currentColor" />
     {/* Spokes */}
@@ -105,7 +105,7 @@ const NAV_ITEMS: { to: string; label: string; icon: string; end?: boolean }[] = 
 
 function SidebarBrand() {
   return (
-    <div className="flex items-center gap-2 px-3 py-3 border-b border-border-subtle shrink-0">
+    <div className="flex items-center gap-2 px-3 py-3 border-b border-line shrink-0">
       <GenomicIcon />
       <Heading as="span" level="subheading" className="font-bold">GenomeHub</Heading>
     </div>
@@ -125,7 +125,7 @@ function SidebarNav({ onNavClick }: { onNavClick?: () => void }) {
             cx(
               navLink({ active: isActive }),
               'rounded-sm gap-2 w-full text-left border-none cursor-pointer bg-transparent no-underline min-h-5.5',
-              isActive && 'bg-surface'
+              isActive && 'bg-base'
             )
           }
         >
@@ -142,12 +142,12 @@ function EngineList() {
   const running = engines?.filter(e => e.status === 'ok');
   if (!running?.length) return null;
   return (
-    <div className="flex flex-col gap-0.5 px-3 py-1.5 border-t border-border-subtle">
-      <Text variant="overline">Engines</Text>
+    <div className="flex flex-col gap-0.5 px-3 py-1.5 border-t border-line">
+      <Text variant="muted">Engines</Text>
       {running.map(e => (
         <div key={e.name} className="flex items-center gap-1.5">
           <div className={statusDot({ status: 'connected', size: 'sm' })} />
-          <Text variant="caption" className="text-text-dim">{e.name}</Text>
+          <Text variant="dim">{e.name}</Text>
         </div>
       ))}
     </div>
@@ -156,7 +156,7 @@ function EngineList() {
 
 function SidebarFooter({ user, logout }: { user: { name: string; email: string; picture?: string | null }; logout: () => void }) {
   return (
-    <div className="px-3 py-2 border-t border-border-subtle flex items-center gap-2">
+    <div className="px-3 py-2 border-t border-line flex items-center gap-2">
       {user.picture ? (
         <img
           src={user.picture}
@@ -165,14 +165,14 @@ function SidebarFooter({ user, logout }: { user: { name: string; email: string; 
           className="w-6 h-6 rounded-full shrink-0"
         />
       ) : (
-        <div className="w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-micro font-bold"
-          style={{ background: 'var(--color-accent)', color: 'var(--color-bg)' }}>
+        <div className="w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-body font-bold"
+          style={{ background: 'var(--color-cyan)', color: 'var(--color-void)' }}>
           {user.name.charAt(0).toUpperCase()}
         </div>
       )}
       <div className="flex-1 min-w-0">
-        <Text as="div" variant="caption" className="text-text truncate">{user.name}</Text>
-        <Text as="div" variant="mono" className="text-text-dim truncate">{user.email}</Text>
+        <Text as="div" variant="dim" className="text-fg truncate">{user.name}</Text>
+        <Text as="div" variant="mono" className="text-fg-3 truncate">{user.email}</Text>
       </div>
       <button
         onClick={logout}
@@ -206,8 +206,8 @@ export default function App() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full"
-        style={{ background: 'var(--color-bg)' }}>
-        <Text variant="body" className="text-text-dim">Loading...</Text>
+        style={{ background: 'var(--color-void)' }}>
+        <Text variant="body" className="text-fg-3">Loading...</Text>
       </div>
     );
   }
@@ -215,12 +215,12 @@ export default function App() {
   if (!user) return <LoginPage />;
 
   return (
-    <div className="flex flex-col md:flex-row h-full" style={{ background: 'var(--color-bg)' }}>
+    <div className="flex flex-col md:flex-row h-full" style={{ background: 'var(--color-void)' }}>
 
       {/* Mobile top bar */}
       <header
-        className="flex md:hidden items-center gap-2 px-3 py-2 border-b border-border shrink-0"
-        style={{ background: 'var(--color-bg-deep)' }}
+        className="flex md:hidden items-center gap-2 px-3 py-2 border-b border-line shrink-0"
+        style={{ background: 'var(--color-void)' }}
       >
         <GenomicIcon />
         <Heading as="span" level="subheading" className="font-bold flex-1">GenomeHub</Heading>
@@ -243,8 +243,8 @@ export default function App() {
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 bg-black/50 z-20 animate-fade-in" />
           <Dialog.Content
-            className="fixed inset-y-0 left-0 z-30 flex flex-col border-r border-border animate-slide-in-left"
-            style={{ width: 200, background: 'var(--color-bg-deep)' }}
+            className="fixed inset-y-0 left-0 z-30 flex flex-col border-r border-line animate-slide-in-left"
+            style={{ width: 200, background: 'var(--color-void)' }}
             aria-label="Navigation"
           >
             <SidebarBrand />
@@ -257,8 +257,8 @@ export default function App() {
 
       {/* Desktop sidebar — static, in normal flex flow */}
       <aside
-        className="hidden md:flex flex-col shrink-0 border-r border-border"
-        style={{ width: 200, background: 'var(--color-bg-deep)' }}
+        className="hidden md:flex flex-col shrink-0 border-r border-line"
+        style={{ width: 200, background: 'var(--color-void)' }}
       >
         <SidebarBrand />
         <SidebarNav />

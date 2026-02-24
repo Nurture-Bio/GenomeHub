@@ -26,7 +26,7 @@ interface EditableRowProps {
 
 function EditableRow({ id, name, description, onSave, onDelete }: EditableRowProps) {
   return (
-    <tr className="border-b border-border-subtle group hover:bg-surface transition-colors duration-fast">
+    <tr className="border-b border-line group hover:bg-base transition-colors duration-fast">
       <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
         <InlineInput value={name} mono fullWidth className="font-semibold" onCommit={val => onSave(id, { name: val })} />
       </td>
@@ -62,7 +62,7 @@ function AddRow({ placeholder, onAdd }: { placeholder: string; onAdd: (name: str
   const hasInput = name.trim().length > 0;
 
   return (
-    <tr className="text-text-dim">
+    <tr className="text-fg-3">
       <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
         <input ref={nameRef} value={name} onChange={e => setName(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') commit(); }}
@@ -94,14 +94,14 @@ function SectionTable({ title, subtitle, children }: { title: string; subtitle: 
     <div className="flex flex-col gap-1.5">
       <div>
         <Heading level="subheading">{title}</Heading>
-        <Text variant="caption">{subtitle}</Text>
+        <Text variant="dim">{subtitle}</Text>
       </div>
-      <div className="border border-border rounded-md bg-surface overflow-hidden">
+      <div className="border border-line rounded-md bg-base overflow-hidden">
         <table className="w-full border-collapse text-left table-fixed">
           <thead>
-            <tr className="border-b border-border bg-surface-2">
-              <th className="py-1.5 pr-3 pl-2.5 w-44"><Text variant="overline">Name</Text></th>
-              <th className="py-1.5 pr-3 pl-2.5"><Text variant="overline">Description</Text></th>
+            <tr className="border-b border-line bg-raised">
+              <th className="py-1.5 pr-3 pl-2.5 w-44"><Text variant="muted">Name</Text></th>
+              <th className="py-1.5 pr-3 pl-2.5"><Text variant="muted">Description</Text></th>
               <th className="w-8" />
             </tr>
           </thead>
@@ -125,7 +125,7 @@ interface EngineRowProps {
 
 function EngineRow({ id, name, url, status, onSave, onDelete }: EngineRowProps) {
   return (
-    <tr className="border-b border-border-subtle group hover:bg-surface transition-colors duration-fast">
+    <tr className="border-b border-line group hover:bg-base transition-colors duration-fast">
       <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
         <div className="flex items-center gap-1.5">
           <div className={statusDot({ status: status === 'ok' ? 'connected' : 'disconnected', size: 'sm' })} />
@@ -162,7 +162,7 @@ function EngineAddRow({ onAdd }: { onAdd: (name: string, url: string) => Promise
   const hasInput = name.trim().length > 0 && url.trim().length > 0;
 
   return (
-    <tr className="text-text-dim">
+    <tr className="text-fg-3">
       <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
         <input ref={nameRef} value={name} onChange={e => setName(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') commit(); }}
@@ -192,14 +192,14 @@ function EngineTable({ children }: { children: React.ReactNode }) {
     <div className="flex flex-col gap-1.5">
       <div>
         <Heading level="subheading">Engines</Heading>
-        <Text variant="caption">External analysis services. Must respond to GET /api/health.</Text>
+        <Text variant="dim">External analysis services. Must respond to GET /api/health.</Text>
       </div>
-      <div className="border border-border rounded-md bg-surface overflow-hidden">
+      <div className="border border-line rounded-md bg-base overflow-hidden">
         <table className="w-full border-collapse text-left table-fixed">
           <thead>
-            <tr className="border-b border-border bg-surface-2">
-              <th className="py-1.5 pr-3 pl-2.5 w-44"><Text variant="overline">Name</Text></th>
-              <th className="py-1.5 pr-3 pl-2.5"><Text variant="overline">URL</Text></th>
+            <tr className="border-b border-line bg-raised">
+              <th className="py-1.5 pr-3 pl-2.5 w-44"><Text variant="muted">Name</Text></th>
+              <th className="py-1.5 pr-3 pl-2.5"><Text variant="muted">URL</Text></th>
               <th className="w-8" />
             </tr>
           </thead>
@@ -277,7 +277,7 @@ export default function SettingsPage() {
     <div className="flex flex-col gap-4 md:gap-5 p-2 md:p-3 max-w-2xl mx-auto w-full">
       <div>
         <Heading level="heading">Settings</Heading>
-        <Text variant="caption">Manage reference data used across GenomeHub</Text>
+        <Text variant="dim">Manage reference data used across GenomeHub</Text>
       </div>
 
       <EngineTable>

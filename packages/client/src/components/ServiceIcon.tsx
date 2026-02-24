@@ -48,7 +48,7 @@ const ICONS: Record<string, { color: string; path: string }> = {
     path: 'M12 2a10 10 0 100 20 10 10 0 000-20zm0 5v5l3.5 3.5',
   },
   link: {
-    color: 'var(--color-text-dim)',
+    color: 'var(--color-fg-3)',
     path: 'M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71',
   },
 };

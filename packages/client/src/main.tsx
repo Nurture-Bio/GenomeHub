@@ -29,11 +29,11 @@ createRoot(document.getElementById('root')!).render(
             position="bottom-right"
             toastOptions={{
               style: {
-                background: 'var(--color-surface-3)',
-                color: 'var(--color-text)',
-                border: '1px solid var(--color-border)',
-                fontFamily: 'var(--font-body)',
-                fontSize: 'var(--font-size-caption)',
+                background: 'var(--color-elevated)',
+                color: 'var(--color-fg)',
+                border: '1px solid var(--color-line)',
+                fontFamily: 'var(--font-sans)',
+                fontSize: 'var(--font-size-body)',
               },
             }}
           />

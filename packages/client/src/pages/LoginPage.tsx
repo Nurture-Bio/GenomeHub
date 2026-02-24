@@ -6,7 +6,7 @@ const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
 const GenomicIcon = () => (
   <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
-    style={{ color: 'var(--color-accent)' }}>
+    style={{ color: 'var(--color-cyan)' }}>
     <path d="M7 3c0 0 1 2 5 2s5 2 5 2" stroke="currentColor" strokeWidth="2"
       strokeLinecap="round" />
     <path d="M17 3c0 0-1 2-5 2S7 7 7 7" stroke="currentColor" strokeWidth="2"
@@ -81,22 +81,22 @@ export default function LoginPage() {
 
   return (
     <div className="flex items-center justify-center h-full"
-      style={{ background: 'var(--color-bg)' }}>
-      <div className="flex flex-col items-center gap-4 p-6 rounded-lg border border-border"
-        style={{ background: 'var(--color-surface)', width: 340 }}>
+      style={{ background: 'var(--color-void)' }}>
+      <div className="flex flex-col items-center gap-4 p-6 rounded-lg border border-line"
+        style={{ background: 'var(--color-base)', width: 340 }}>
         <GenomicIcon />
         <div className="text-center">
           <Heading as="div" level="subheading" className="font-bold">
             GenomeHub
           </Heading>
-          <Text variant="caption">Genomic data management for nurture.bio</Text>
+          <Text variant="dim">Genomic data management for nurture.bio</Text>
         </div>
 
         <button
           onClick={handleSignIn}
           disabled={pending}
-          className="flex items-center gap-3 px-4 py-2.5 rounded-md border border-border cursor-pointer transition-colors duration-fast"
-          style={{ background: 'var(--color-surface-2)' }}
+          className="flex items-center gap-3 px-4 py-2.5 rounded-md border border-line cursor-pointer transition-colors duration-fast"
+          style={{ background: 'var(--color-raised)' }}
         >
           <GoogleIcon />
           <Text variant="body">
@@ -108,7 +108,7 @@ export default function LoginPage() {
           <Text variant="error">{error}</Text>
         )}
 
-        <Text variant="caption">Restricted to nurture.bio accounts</Text>
+        <Text variant="dim">Restricted to nurture.bio accounts</Text>
       </div>
     </div>
   );

@@ -22,16 +22,16 @@ export default function FilePreview({ fileId, filename }: FilePreviewProps) {
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-2">
-        <Text variant="overline">Preview</Text>
+        <Text variant="muted">Preview</Text>
         {data.truncated && (
           <Badge variant="count" color="dim">first {data.lines.length} lines</Badge>
         )}
       </div>
       <div
-        className="overflow-auto rounded-md border border-border"
-        style={{ background: 'var(--color-bg-deep)', maxHeight: 400 }}
+        className="overflow-auto rounded-md border border-line"
+        style={{ background: 'var(--color-void)', maxHeight: 400 }}
       >
-        <pre className="font-mono text-micro text-text-secondary p-2 m-0 leading-relaxed">
+        <pre className="font-mono text-body text-fg-2 p-2 m-0 leading-relaxed">
           <code>{data.lines.join('\n')}</code>
         </pre>
       </div>

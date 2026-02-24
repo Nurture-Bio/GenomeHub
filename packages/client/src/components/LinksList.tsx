@@ -25,7 +25,7 @@ export default function LinksList({ parentType, parentId }: LinksListProps) {
 
   return (
     <div className="flex flex-col gap-1.5">
-      <Text variant="overline">Links</Text>
+      <Text variant="muted">Links</Text>
       <div className="flex items-center gap-1.5 flex-wrap">
         {links?.map(link => (
           <LinkChip

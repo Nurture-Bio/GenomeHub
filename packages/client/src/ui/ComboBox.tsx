@@ -83,7 +83,7 @@ export default function ComboBox({
             className={cx(
               input({ variant, size }),
               'flex items-center gap-1.5 text-left cursor-pointer',
-              !selected && 'text-text-dim',
+              !selected && 'text-fg-3',
               disabled && 'opacity-50 cursor-not-allowed',
               className,
             )}
@@ -91,7 +91,7 @@ export default function ComboBox({
             <span className="flex-1 min-w-0 truncate">
               {loading ? 'Loading...' : selected ? selected.label : placeholder}
             </span>
-            <svg width="12" height="12" viewBox="0 0 12 12" className="shrink-0 text-text-dim">
+            <svg width="12" height="12" viewBox="0 0 12 12" className="shrink-0 text-fg-3">
               <path d="M3 5l3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
@@ -102,21 +102,21 @@ export default function ComboBox({
         <Popover.Content
           sideOffset={4}
           align="start"
-          className="bg-surface border border-border shadow-lg rounded-md overflow-hidden z-50 animate-fade-in"
+          className="bg-base border border-line shadow-lg rounded-md overflow-hidden z-50 animate-fade-in"
           style={{ width: 'var(--radix-popover-trigger-width)', minWidth: 200, maxHeight: 300 }}
         >
           <Command shouldFilter={true}>
-            <div className="border-b border-border-subtle px-2 py-1.5">
+            <div className="border-b border-line px-2 py-1.5">
               <Command.Input
                 value={search}
                 onValueChange={setSearch}
                 placeholder="Filter..."
-                className={cx(text({ variant: 'body' }), 'w-full bg-transparent border-none outline-none text-caption placeholder:text-text-dim')}
+                className={cx(text({ variant: 'body' }), 'w-full bg-transparent border-none outline-none text-body placeholder:text-fg-3')}
               />
             </div>
 
             <Command.List className="overflow-y-auto max-h-56">
-              <Command.Empty className={cx(text({ variant: 'caption' }), 'px-2 py-3 text-center')}>
+              <Command.Empty className={cx(text({ variant: 'dim' }), 'px-2 py-3 text-center')}>
                 {emptyMessage}
               </Command.Empty>
 
@@ -125,7 +125,7 @@ export default function ComboBox({
                 <Command.Item
                   value="__clear__"
                   onSelect={() => { onValueChange(''); setOpen(false); }}
-                  className={cx(text({ variant: 'caption' }), 'px-2 py-1.5 cursor-pointer hover:bg-surface-2 transition-colors duration-fast min-h-5.5 flex items-center')}
+                  className={cx(text({ variant: 'dim' }), 'px-2 py-1.5 cursor-pointer hover:bg-raised transition-colors duration-fast min-h-5.5 flex items-center')}
                 >
                   {placeholder}
                 </Command.Item>
@@ -133,7 +133,7 @@ export default function ComboBox({
 
               {/* Recent selections */}
               {recentItems.length > 0 && (
-                <Command.Group heading="Recent" className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1 [&_[cmdk-group-heading]]:text-micro [&_[cmdk-group-heading]]:font-bold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-overline [&_[cmdk-group-heading]]:text-text-dim">
+                <Command.Group heading="Recent" className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1 [&_[cmdk-group-heading]]:text-body [&_[cmdk-group-heading]]:font-bold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-overline [&_[cmdk-group-heading]]:text-fg-3">
                   {recentItems.map(item => (
                     <ComboBoxOption key={'recent-' + item.id} item={item} selected={false} onSelect={() => { onValueChange(item.id); setOpen(false); }} />
                   ))}
@@ -147,7 +147,7 @@ export default function ComboBox({
                 ))
               ) : (
                 Array.from(groups.entries()).map(([group, groupItems]) => (
-                  <Command.Group key={group} heading={group || undefined} className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1 [&_[cmdk-group-heading]]:text-micro [&_[cmdk-group-heading]]:font-bold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-overline [&_[cmdk-group-heading]]:text-text-dim">
+                  <Command.Group key={group} heading={group || undefined} className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1 [&_[cmdk-group-heading]]:text-body [&_[cmdk-group-heading]]:font-bold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-overline [&_[cmdk-group-heading]]:text-fg-3">
                     {groupItems.map(item => (
                       <ComboBoxOption key={item.id} item={item} selected={item.id === value} onSelect={() => { onValueChange(item.id); setOpen(false); }} />
                     ))}
@@ -160,8 +160,8 @@ export default function ComboBox({
                 <Command.Item
                   value={`__create__${search}`}
                   onSelect={() => { onCreate(search.trim()); setOpen(false); setSearch(''); }}
-                  className={cx(text({ variant: 'caption' }), 'px-2 py-1.5 cursor-pointer hover:bg-surface-2 transition-colors duration-fast min-h-5.5 flex items-center gap-1 border-t border-border-subtle')}
-                  style={{ color: 'var(--color-accent)' }}
+                  className={cx(text({ variant: 'dim' }), 'px-2 py-1.5 cursor-pointer hover:bg-raised transition-colors duration-fast min-h-5.5 flex items-center gap-1 border-t border-line')}
+                  style={{ color: 'var(--color-cyan)' }}
                 >
                   + Create &ldquo;{search.trim()}&rdquo;
                 </Command.Item>
@@ -192,16 +192,16 @@ function ComboBoxOption({ item, selected, onSelect }: { item: ComboBoxItem; sele
       onClick={handle}
       className={cx(
         'px-2 py-1.5 cursor-pointer transition-colors duration-fast min-h-5.5 flex items-center gap-2',
-        selected ? 'bg-surface-2' : 'hover:bg-surface-2',
+        selected ? 'bg-raised' : 'hover:bg-raised',
       )}
     >
       {item.icon}
       <div className="flex-1 min-w-0">
-        <div className={cx(text({ variant: 'body' }), 'text-caption truncate')}>{item.label}</div>
-        {item.description && <div className={cx(text({ variant: 'caption' }), 'text-micro truncate')}>{item.description}</div>}
+        <div className={cx(text({ variant: 'body' }), 'text-body truncate')}>{item.label}</div>
+        {item.description && <div className={cx(text({ variant: 'dim' }), 'text-body truncate')}>{item.description}</div>}
       </div>
       {selected && (
-        <svg width="14" height="14" viewBox="0 0 14 14" className="shrink-0 text-accent">
+        <svg width="14" height="14" viewBox="0 0 14 14" className="shrink-0 text-cyan">
           <path d="M3 7l3 3 5-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       )}

@@ -16,7 +16,7 @@ import { TechniquePicker, OrganismPicker, FileTypePicker } from '../ui';
 
 function SkeletonRow() {
   return (
-    <tr className="border-b border-border-subtle">
+    <tr className="border-b border-line">
       <td className="py-1.5 pl-2.5 pr-3">
         <div className="flex flex-col gap-1">
           <div className="concertina-warmup-line concertina-warmup-line-long" />
@@ -101,7 +101,7 @@ export default function CollectionsPage() {
     <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 h-full min-h-0">
       <div className="shrink-0">
         <Heading level="heading">Collections</Heading>
-        <Text variant="caption">
+        <Text variant="dim">
           {data ? `${data.length} collection${data.length !== 1 ? 's' : ''}` : 'Loading...'}
         </Text>
       </div>
@@ -124,16 +124,16 @@ export default function CollectionsPage() {
       </div>
 
       {/* Desktop table */}
-      <div className="hidden md:block flex-1 overflow-auto min-h-0 border border-border rounded-md bg-surface" style={{ scrollbarGutter: 'stable' }}>
+      <div className="hidden md:block flex-1 overflow-auto min-h-0 border border-line rounded-md bg-base" style={{ scrollbarGutter: 'stable' }}>
         <Gigbag className="w-full">
         <table className="w-full border-collapse text-left table-fixed">
-          <thead className="sticky top-0 bg-surface-2 z-10">
-            <tr className="border-b border-border">
-              <th className="py-1.5 pr-3 pl-2.5"><Text variant="overline">Name</Text></th>
-              <th className="py-1.5 pr-3 pl-2.5 w-36"><Text variant="overline">Technique</Text></th>
-              <th className="py-1.5 pr-3 pl-2.5 w-40"><Text variant="overline">Organism</Text></th>
-              <th className="py-1.5 pr-3 pl-2.5 w-32"><Text variant="overline">Type</Text></th>
-              <th className="py-1.5 pr-3 pl-2.5 w-16 text-right"><Text variant="overline">Files</Text></th>
+          <thead className="sticky top-0 bg-raised z-10">
+            <tr className="border-b border-line">
+              <th className="py-1.5 pr-3 pl-2.5"><Text variant="muted">Name</Text></th>
+              <th className="py-1.5 pr-3 pl-2.5 w-36"><Text variant="muted">Technique</Text></th>
+              <th className="py-1.5 pr-3 pl-2.5 w-40"><Text variant="muted">Organism</Text></th>
+              <th className="py-1.5 pr-3 pl-2.5 w-32"><Text variant="muted">Type</Text></th>
+              <th className="py-1.5 pr-3 pl-2.5 w-16 text-right"><Text variant="muted">Files</Text></th>
               <th className="w-8" />
             </tr>
           </thead>
@@ -145,18 +145,18 @@ export default function CollectionsPage() {
                   {!filtered.length && (
                     <tr>
                       <td colSpan={6} className="py-12 text-center">
-                        <Text variant="body" className="text-text-dim">
+                        <Text variant="body" className="text-fg-3">
                           {techFilter !== 'all' ? 'No collections match this technique.' : 'No collections yet.'}
                         </Text>
                       </td>
                     </tr>
                   )}
                   {filtered.map(c => (
-                    <tr key={c.id} className="border-b border-border-subtle hover:bg-surface transition-colors duration-fast group">
+                    <tr key={c.id} className="border-b border-line hover:bg-base transition-colors duration-fast group">
                       <td className="py-1.5 pl-2.5 pr-3">
                         <Link to={`/collections/${c.id}`} className="no-underline">
-                          <Text variant="mono" className="hover:text-accent transition-colors duration-fast">{c.name}</Text>
-                          {c.description && <Text variant="caption" className="truncate max-w-xs block">{c.description}</Text>}
+                          <Text variant="mono" className="hover:text-cyan transition-colors duration-fast">{c.name}</Text>
+                          {c.description && <Text variant="dim" className="truncate max-w-xs block">{c.description}</Text>}
                         </Link>
                       </td>
                       <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
@@ -190,7 +190,7 @@ export default function CollectionsPage() {
                         />
                       </td>
                       <td className="py-1.5 pl-2.5 pr-3 text-right">
-                        <Text variant="mono" className="text-text-secondary">{c.fileCount}</Text>
+                        <Text variant="mono" className="text-fg-2">{c.fileCount}</Text>
                       </td>
                       <td className="py-1.5 pr-2.5 w-6">
                         <button onClick={() => confirmDelete(c.id, c.name)}
@@ -201,7 +201,7 @@ export default function CollectionsPage() {
                   ))}
 
                   {/* Inline add row */}
-                  <tr className="text-text-dim">
+                  <tr className="text-fg-3">
                     <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
                       <input ref={nameRef} value={newName} onChange={e => setNewName(e.target.value)}
                         onKeyDown={e => { if (e.key === 'Enter') handleCreate(); }}
@@ -255,19 +255,19 @@ export default function CollectionsPage() {
             </Card>
           ))
           : !filtered.length
-            ? <Text variant="body" className="py-8 text-center text-text-dim">{techFilter !== 'all' ? 'No collections match this technique.' : 'No collections yet.'}</Text>
+            ? <Text variant="body" className="py-8 text-center text-fg-3">{techFilter !== 'all' ? 'No collections match this technique.' : 'No collections yet.'}</Text>
             : filtered.map(c => (
               <Link key={c.id} to={`/collections/${c.id}`} className="no-underline">
-                <Card className="p-2.5 flex flex-col gap-1 hover:border-accent transition-colors duration-fast cursor-pointer">
+                <Card className="p-2.5 flex flex-col gap-1 hover:border-cyan transition-colors duration-fast cursor-pointer">
                   <div className="flex items-center gap-2 flex-wrap">
                     {c.techniques.map(t => <HashPill key={t.id} label={t.name} />)}
                     <Text variant="mono" className="truncate flex-1 min-w-0">{c.name}</Text>
                     {c.types.map(t => <HashPill key={t} label={t} />)}
                   </div>
-                  {c.description && <Text variant="caption" className="truncate">{c.description}</Text>}
+                  {c.description && <Text variant="dim" className="truncate">{c.description}</Text>}
                   <div className="flex items-center gap-2 flex-wrap">
                     {c.organisms.map(o => <HashPill key={o.id} label={o.displayName} />)}
-                    <Text variant="caption">{c.fileCount} files</Text>
+                    <Text variant="dim">{c.fileCount} files</Text>
                   </div>
                 </Card>
               </Link>

@@ -61,12 +61,12 @@ export default function Breadcrumbs() {
             key={crumb.to}
             className={`flex items-center gap-1 min-w-0 ${mobileHidden ? 'hidden md:flex' : 'flex'}`}
           >
-            {i > 0 && <Text variant="caption" className={mobileHidden ? 'hidden md:inline' : ''}>&gt;</Text>}
+            {i > 0 && <Text variant="dim" className={mobileHidden ? 'hidden md:inline' : ''}>&gt;</Text>}
             {isLast ? (
-              <Text variant="caption" className="text-text truncate">{crumb.label}</Text>
+              <Text variant="dim" className="text-fg truncate">{crumb.label}</Text>
             ) : (
               <Link to={crumb.to} className="no-underline">
-                <Text variant="caption" className="hover:text-text transition-colors duration-fast whitespace-nowrap">
+                <Text variant="dim" className="hover:text-fg transition-colors duration-fast whitespace-nowrap">
                   {crumb.label}
                 </Text>
               </Link>
@@ -77,7 +77,7 @@ export default function Breadcrumbs() {
 
       {needsTruncation && !expanded && (
         <span className="flex items-center gap-1 md:hidden">
-          <Text variant="caption">&gt;</Text>
+          <Text variant="dim">&gt;</Text>
           <button
             onClick={() => setExpanded(true)}
             className={iconAction({ color: 'dim' }) + ' px-0.5 min-h-5.5'}

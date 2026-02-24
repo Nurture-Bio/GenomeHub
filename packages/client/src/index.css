@@ -1,238 +1,170 @@
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Nunito+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;700&display=swap');
 @import "tailwindcss";
 @import "concertina/styles.css";
 
 @theme {
   /* ═══════════════════════════════════════════════════════
-     AXIOMS — the entire design system derives from these.
-     Change an axiom, everything downstream recalculates.
+     DESIGN TOKENS — Midnight Navy + Electric Cyan
      ═══════════════════════════════════════════════════════ */
 
-  --base-size: 1rem;           /* 16px. Browser default, WCAG SC 1.4.4 */
-  --type-ratio: 1.25;          /* Major third (Tim Brown) */
-  --space-unit: 0.5rem;        /* 8px. Universal grid constant */
-  --phi: 1.618034;             /* Golden ratio */
-  --timing-base: 200ms;        /* Nielsen/Miller perceptual threshold */
-  --lum-bg: 0.14;              /* OKLCH base lightness */
-  --lum-step: 0.035;           /* OKLCH elevation increment (Weber) */
-  --surface-chroma: 0.010;     /* TUNABLE warm tint */
-  --surface-hue: 220;           /* TUNABLE amber direction */
-  --accent-hue: 168;            /* TUNABLE warm gold in OKLCH */
-  --accent-lightness: 0.72;    /* TUNABLE accent base lightness */
-  --accent-chroma: 0.18;       /* TUNABLE accent saturation */
-  --plastic: 1.324718;         /* Van der Laan plastic constant */
+  --spacing: 0.5rem;
 
-  /* ═══════════════════════════════════════════════════════
-     SPACING BASE — all numeric utilities are N × 8px
-     ═══════════════════════════════════════════════════════ */
+  /* ── Typography — DM Sans only, 2 sizes ──────────────── */
 
-  --spacing: var(--space-unit);
+  --font-size-*: initial;
+  --font-size-body: 0.875rem;     /* 14px */
+  --font-size-heading: 1.125rem;  /* 18px */
 
-  /* ═══════════════════════════════════════════════════════
-     TYPE SCALE — base × ratio^n
-     ═══════════════════════════════════════════════════════ */
+  --font-sans: 'DM Sans', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
 
-  --font-size-*: initial;      /* Clear Tailwind defaults — forces derived scale */
+  /* ── Surfaces — Midnight Navy (hue 250) ──────────────── */
 
-  --font-size-nano: calc(var(--base-size) / var(--type-ratio) / var(--type-ratio) / var(--type-ratio));
-  /* 0.512rem ≈ 8.2px. Decorative only */
+  --color-void:     oklch(0.120 0.020 250);
+  --color-base:     oklch(0.160 0.024 250);
+  --color-raised:   oklch(0.200 0.028 250);
+  --color-elevated: oklch(0.240 0.032 250);
 
-  --font-size-micro: calc(var(--base-size) / var(--type-ratio) / var(--type-ratio));
-  /* 0.64rem ≈ 10.2px. Badges, overlines */
+  /* ── Accent — Electric Cyan (hue 195) ────────────────── */
 
-  --font-size-caption: calc(var(--base-size) / var(--type-ratio));
-  /* 0.8rem ≈ 12.8px. Labels, metadata */
+  --color-cyan:       oklch(0.750 0.180 195);
+  --color-cyan-hover: oklch(0.800 0.180 195);
+  --color-cyan-dim:   oklch(0.540 0.120 195);
+  --color-cyan-wash:  oklch(0.220 0.040 195);
 
-  --font-size-body: var(--base-size);
-  /* 1rem = 16px. Default body, inputs, chat */
+  /* ── Secondary — Soft Violet (hue 280) ───────────────── */
 
-  --font-size-subheading: calc(var(--base-size) * var(--type-ratio));
-  /* 1.25rem = 20px. Card titles, nav brand */
+  --color-violet:      oklch(0.620 0.150 280);
+  --color-violet-dim:  oklch(0.440 0.100 280);
+  --color-violet-wash: oklch(0.200 0.040 280);
 
-  --font-size-heading: calc(var(--base-size) * var(--type-ratio) * var(--type-ratio));
-  /* 1.5625rem ≈ 25px. Section headers, modal titles */
+  /* ── Text ────────────────────────────────────────────── */
 
-  --font-size-display: calc(var(--base-size) * var(--type-ratio) * var(--type-ratio) * var(--type-ratio));
-  /* 1.953rem ≈ 31px. Page titles, stat callouts */
+  --color-fg:   oklch(0.930 0.008 250);
+  --color-fg-2: oklch(0.650 0.015 250);
+  --color-fg-3: oklch(0.440 0.012 250);
 
-  --font-size-hero: calc(var(--base-size) * var(--type-ratio) * var(--type-ratio) * var(--type-ratio) * var(--type-ratio));
-  /* 2.441rem ≈ 39px. Login title, treemap big numbers */
+  /* ── Borders ─────────────────────────────────────────── */
 
-  /* ═══════════════════════════════════════════════════════
-     COLORS — OKLCH with perceptually uniform elevation
-     ═══════════════════════════════════════════════════════ */
+  --color-line:   oklch(0.260 0.020 250);
+  --color-line-2: oklch(0.340 0.024 250);
 
-  --color-bg-deep:   oklch(calc(var(--lum-bg) - 2 * var(--lum-step)) var(--surface-chroma) var(--surface-hue));
-  --color-bg:        oklch(var(--lum-bg) var(--surface-chroma) var(--surface-hue));
-  --color-surface:   oklch(calc(var(--lum-bg) + var(--lum-step)) var(--surface-chroma) var(--surface-hue));
-  --color-surface-2: oklch(calc(var(--lum-bg) + 2 * var(--lum-step)) var(--surface-chroma) var(--surface-hue));
-  --color-surface-3: oklch(calc(var(--lum-bg) + 3 * var(--lum-step)) var(--surface-chroma) var(--surface-hue));
+  /* ── Glows ───────────────────────────────────────────── */
 
-  --color-border:        oklch(calc(var(--lum-bg) + 1.5 * var(--lum-step)) var(--surface-chroma) var(--surface-hue));
-  --color-border-subtle: oklch(calc(var(--lum-bg) + 0.75 * var(--lum-step)) var(--surface-chroma) var(--surface-hue));
+  --glow-cyan:   0 0 24px oklch(0.750 0.180 195 / 0.25);
+  --glow-violet: 0 0 24px oklch(0.620 0.150 280 / 0.20);
 
-  --color-text:           oklch(0.88 0.01 var(--surface-hue));
-  --color-text-secondary: oklch(0.65 0.02 var(--surface-hue));
-  --color-text-dim:       oklch(0.55 0.02 var(--surface-hue));
+  /* ── Semantic ────────────────────────────────────────── */
 
-  /* Accent — derived from OKLCH axioms */
-  --color-accent:       oklch(var(--accent-lightness) var(--accent-chroma) var(--accent-hue));
-  --color-accent-hover: oklch(calc(var(--accent-lightness) + var(--lum-step)) var(--accent-chroma) var(--accent-hue));
-  --color-accent-dim:   oklch(calc(var(--accent-lightness) - 2 * var(--lum-step)) var(--accent-chroma) var(--accent-hue));
+  --color-green:  oklch(0.640 0.170 145);
+  --color-red:    oklch(0.600 0.180 25);
+  --color-yellow: oklch(0.750 0.160 85);
 
-  /* Semantic */
-  --color-green: #5aad72;
-  --color-red: #d4685a;
-  --color-yellow: #e0b840;
-  --color-blue: #6d9fd8;
+  /* ── Border radius ───────────────────────────────────── */
 
-  /* ═══════════════════════════════════════════════════════
-     FONTS
-     ═══════════════════════════════════════════════════════ */
-
-  --font-display: 'Syne', system-ui, sans-serif;
-  --font-body: 'Nunito Sans', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Courier New', monospace;
-
-  /* ═══════════════════════════════════════════════════════
-     BORDER RADIUS — derived from space-unit
-     ═══════════════════════════════════════════════════════ */
-
-  --radius-sm: calc(var(--space-unit) / 2);   /* 4px */
-  --radius-md: var(--space-unit);             /* 8px */
-  --radius-lg: calc(var(--space-unit) * 1.5); /* 12px */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
   --radius-full: 9999px;
 
-  /* ═══════════════════════════════════════════════════════
-     OPACITY — Weber-Fechner geometric scale
-     ═══════════════════════════════════════════════════════ */
+  /* ── Opacity ─────────────────────────────────────────── */
 
-  --opacity-1: 0.03;   /* grain, scanlines */
-  --opacity-2: 0.055;  /* subtle hover */
-  --opacity-3: 0.10;   /* disabled overlays */
-  --opacity-4: 0.18;   /* treemap color-mix */
-  --opacity-5: 0.33;   /* dimmed elements */
-  --opacity-6: 0.60;   /* de-emphasized */
+  --opacity-1: 0.03;
+  --opacity-2: 0.055;
+  --opacity-3: 0.10;
+  --opacity-4: 0.18;
+  --opacity-5: 0.33;
+  --opacity-6: 0.60;
   --opacity-7: 1.0;
 
-  /* ═══════════════════════════════════════════════════════
-     TIMING — phi-derived duration scale
-     ═══════════════════════════════════════════════════════ */
+  /* ── Timing — φ × 160ms ──────────────────────────────── */
 
-  --duration-instant: calc(var(--timing-base) / var(--phi) / var(--phi));  /* ~76ms */
-  --duration-fast: calc(var(--timing-base) / var(--phi));                  /* ~124ms */
-  --duration-normal: var(--timing-base);                                    /* 200ms */
-  --duration-slow: calc(var(--timing-base) * var(--phi));                  /* ~324ms */
-  --duration-slower: calc(var(--timing-base) * var(--phi) * var(--phi));   /* ~524ms */
+  --t-instant: 61ms;
+  --t-fast:    99ms;
+  --t-base:    160ms;
+  --t-ease:    259ms;
+  --t-slow:    419ms;
+  --t-drift:   678ms;
 
-  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
-  --ease-decelerate: cubic-bezier(0, 0, 0, 1);
-  --ease-accelerate: cubic-bezier(0.3, 0, 1, 1);
+  /* Tailwind compat aliases */
+  --duration-instant: var(--t-instant);
+  --duration-fast:    var(--t-fast);
+  --duration-normal:  var(--t-base);
+  --duration-slow:    var(--t-slow);
+  --duration-slower:  var(--t-drift);
 
-  /* ═══════════════════════════════════════════════════════
-     SHADOWS — OKLCH, derived from surface-hue
-     ═══════════════════════════════════════════════════════ */
+  --ease-out:  cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in:   cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-move: cubic-bezier(0.22, 1, 0.36, 1);
 
-  --shadow-sm: 0 1px 3px oklch(0.05 0.01 var(--surface-hue) / 0.3), 0 1px 2px oklch(0.05 0.01 var(--surface-hue) / 0.2);
-  --shadow-md: 0 4px 12px oklch(0.05 0.01 var(--surface-hue) / 0.4), 0 2px 4px oklch(0.05 0.01 var(--surface-hue) / 0.2);
-  --shadow-lg: 0 12px 40px oklch(0.05 0.01 var(--surface-hue) / 0.5), 0 4px 12px oklch(0.05 0.01 var(--surface-hue) / 0.3);
-  --shadow-glow: 0 0 20px oklch(0.65 0.15 85 / var(--opacity-2));
+  /* Legacy aliases for transition utilities */
+  --ease-standard:   var(--ease-move);
+  --ease-decelerate: var(--ease-out);
+  --ease-accelerate: var(--ease-in);
 
-  /* ═══════════════════════════════════════════════════════
-     TOUCH TARGETS — Fitts' law
-     ═══════════════════════════════════════════════════════ */
+  /* ── Shadows ─────────────────────────────────────────── */
+
+  --shadow-sm: 0 1px 3px oklch(0.05 0.01 250 / 0.3), 0 1px 2px oklch(0.05 0.01 250 / 0.2);
+  --shadow-md: 0 4px 12px oklch(0.05 0.01 250 / 0.4), 0 2px 4px oklch(0.05 0.01 250 / 0.2);
+  --shadow-lg: 0 12px 40px oklch(0.05 0.01 250 / 0.5), 0 4px 12px oklch(0.05 0.01 250 / 0.3);
+
+  /* ── Touch targets ───────────────────────────────────── */
 
   --target-min: 48px;
 
-  /* ═══════════════════════════════════════════════════════
-     LETTER SPACING — creates tracking-* utilities
-     TUNABLE: Bringhurst recommends 5-12% for all-caps text
-     at small sizes, 2-5% for display/brand text.
-     ═══════════════════════════════════════════════════════ */
+  /* ── Letter spacing ──────────────────────────────────── */
 
-  --letter-spacing-overline: 0.1em;  /* TUNABLE — 10% em, mid-range for all-caps at nano/micro sizes */
-  --letter-spacing-wide: 0.04em;     /* TUNABLE — 4% em, subtle enhancement for nav/brand at body size */
+  --letter-spacing-overline: 0.1em;
+  --letter-spacing-wide: 0.04em;
 
-  /* ═══════════════════════════════════════════════════════
-     CONTAINER MAX-WIDTHS — derived from space-unit.
-     Each is N × 8px. Creates max-w-* utilities.
-     ═══════════════════════════════════════════════════════ */
+  /* ── Container max-widths ────────────────────────────── */
 
-  --container-content: calc(var(--space-unit) * 150);
-  /* 1200px = 150 × 8px. TUNABLE — roster page: fits 12-column data grid */
+  --container-content:  1200px;
+  --container-terminal: 680px;
+  --container-embed:    600px;
+  --container-message:  704px;
+  --container-sidebar:  224px;
 
-  --container-terminal: calc(var(--space-unit) * 85);
-  /* 680px = 85 × 8px. TUNABLE — ~65ch at body size, optimal reading measure (Bringhurst) */
+  /* ── Z-index ─────────────────────────────────────────── */
 
-  --container-embed: calc(var(--space-unit) * 75);
-  /* 600px = 75 × 8px. TUNABLE — embeds + modals: ~55ch comfortable minimum measure */
+  --z-index-dropdown: 2;
+  --z-index-modal: 3;
+  --z-index-tooltip: 4;
 
-  --container-message: calc(var(--space-unit) * 88);
-  /* 704px = 88 × 8px. TUNABLE — chat messages: wider than embeds for conversation flow */
+  /* ── Animations ──────────────────────────────────────── */
 
-  --container-sidebar: calc(var(--space-unit) * 28);
-  /* 224px = 28 × 8px. TUNABLE — presence sidebar: fits name + class color + status dot */
+  --animate-fade-in: fadeIn var(--t-fast) var(--ease-out);
+  --animate-slide-in-left: slideInLeft var(--t-fast) var(--ease-out);
+  --animate-alt-row-enter: fadeIn var(--t-fast) var(--ease-out) both;
+  --animate-pulse-slow: pulse calc(var(--t-drift) * 2) var(--ease-move) infinite;
 
-  /* ═══════════════════════════════════════════════════════
-     Z-INDEX — simplest integers for correct stacking.
-     Grain overlay ::after = 1 (within its isolation context).
-     ═══════════════════════════════════════════════════════ */
-
-  --z-index-dropdown: 2;  /* Above grain (1) */
-  --z-index-modal: 3;     /* Above dropdowns (2) */
-  --z-index-tooltip: 4;   /* Above modals (3) */
-
-  /* ═══════════════════════════════════════════════════════
-     ANIMATIONS — durations from φ scale, easing from --ease-*.
-     Creates animate-* utilities.
-     ═══════════════════════════════════════════════════════ */
-
-  --animate-fade-in: fadeIn var(--duration-fast) var(--ease-decelerate);
-  /* Enter animation: φ⁻¹ × timing-base ≈ 124ms, decelerate for landing */
-
-  --animate-slide-in-left: slideInLeft var(--duration-fast) var(--ease-decelerate);
-  /* Drawer enter: slides in from the left edge */
-
-  --animate-alt-row-enter: fadeIn var(--duration-fast) var(--ease-decelerate) both;
-  /* Alt-row stagger: reuses fadeIn, fill-mode:both holds opacity:0 during delay */
-
-  --animate-pulse-slow: pulse calc(var(--timing-base) * var(--phi) * var(--phi) * var(--phi) * var(--phi)) var(--ease-standard) infinite;
-  /* Reconnection pulse: φ⁴ × timing-base ≈ 1371ms, standard ease */
-
-  /* ═══════════════════════════════════════════════════════
-     ASPECT RATIOS — creates aspect-* utilities.
-     ═══════════════════════════════════════════════════════ */
+  /* ── Aspect ratios ───────────────────────────────────── */
 
   --aspect-treemap: 2/1;
-  /* TUNABLE — landscape gives treemap cells room for labels + counts
-     without excessive vertical scroll */
-
   --aspect-treemap-mobile: 3/2;
-  /* TUNABLE — taller on narrow screens to prevent cells from
-     becoming too wide and flat */
 }
 
 /* ── Concertina warmup — linked to design tokens ──────── */
 :root {
-  --concertina-warmup-line-short:     var(--font-size-micro);       /* 0.64rem — badges, chips */
-  --concertina-warmup-line-long:      var(--font-size-caption);     /* 0.8rem  — labels, filenames */
-  --concertina-warmup-line-color:     var(--color-surface-2);
-  --concertina-warmup-line-highlight: var(--color-surface-3);
+  --concertina-warmup-line-short:     0.875rem;
+  --concertina-warmup-line-long:      0.875rem;
+  --concertina-warmup-line-color:     var(--color-raised);
+  --concertina-warmup-line-highlight: var(--color-elevated);
   --concertina-warmup-line-radius:    var(--radius-sm);
-  --concertina-glide-duration:        var(--duration-fast);
+  --concertina-glide-duration:        var(--t-fast);
 
-  /* Shared layout constants — real components & skeletons reference the same vars */
-  --format-icon-size: calc(var(--space-unit) * 3.5);  /* 28px = 3.5 × 8px grid */
-  --target-min-icon:  calc(var(--space-unit) * 1.75);  /* 14px = checkbox intrinsic */
+  /* Shared layout constants */
+  --format-icon-size: 28px;
+  --target-min-icon:  14px;
 }
 
-/* ── Base styles (in Tailwind's base layer) ────────────── */
+/* ── Base styles ──────────────────────────────────────── */
 
 @layer base {
   body {
-    font-family: var(--font-body);
-    background: var(--color-bg);
-    color: var(--color-text);
+    font-family: var(--font-sans);
+    background: var(--color-void);
+    color: var(--color-fg);
     height: 100vh;
     height: 100dvh;
     display: flex;
@@ -247,35 +179,33 @@
     height: 100dvh;
   }
 
-  /* ── Scrollbar — thin, token-driven ──────────────────── */
+  /* ── Scrollbar ───────────────────────────────────────── */
 
-  /* Firefox / standards */
   * {
     scrollbar-width: thin;
-    scrollbar-color: var(--color-surface-3) transparent;
+    scrollbar-color: var(--color-elevated) transparent;
   }
 
-  /* WebKit (Chrome, Safari, Edge) */
   ::-webkit-scrollbar {
-    width: var(--space-unit);  /* 8px */
-    height: var(--space-unit);
+    width: 8px;
+    height: 8px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: var(--color-surface-3);
+    background: var(--color-elevated);
     border-radius: var(--radius-full);
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: var(--color-text-dim);
+    background: var(--color-fg-3);
   }
   ::-webkit-scrollbar-corner {
     background: transparent;
   }
 }
 
-/* ── Range slider (layered so Tailwind utilities still win) ─ */
+/* ── Components layer ────────────────────────────────── */
 
 @layer components {
   .pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
@@ -287,31 +217,31 @@
     width: 14px;
     height: 14px;
     border-radius: 9999px;
-    background: var(--color-accent);
-    border: 2px solid var(--color-bg);
+    background: var(--color-cyan);
+    border: 2px solid var(--color-void);
     cursor: pointer;
     pointer-events: auto;
-    transition: transform var(--duration-fast) var(--ease-standard),
-                box-shadow var(--duration-fast) var(--ease-standard);
+    transition: transform var(--t-fast) var(--ease-move),
+                box-shadow var(--t-fast) var(--ease-move);
   }
   .range-thumb::-webkit-slider-thumb:hover {
     transform: scale(1.2);
-    box-shadow: 0 0 0 3px oklch(var(--accent-lightness) var(--accent-chroma) var(--accent-hue) / 0.25);
+    box-shadow: 0 0 0 3px oklch(0.750 0.180 195 / 0.25);
   }
   .range-thumb::-moz-range-thumb {
     width: 14px;
     height: 14px;
     border-radius: 9999px;
-    background: var(--color-accent);
-    border: 2px solid var(--color-bg);
+    background: var(--color-cyan);
+    border: 2px solid var(--color-void);
     cursor: pointer;
     pointer-events: auto;
-    transition: transform var(--duration-fast) var(--ease-standard),
-                box-shadow var(--duration-fast) var(--ease-standard);
+    transition: transform var(--t-fast) var(--ease-move),
+                box-shadow var(--t-fast) var(--ease-move);
   }
   .range-thumb::-moz-range-thumb:hover {
     transform: scale(1.2);
-    box-shadow: 0 0 0 3px oklch(var(--accent-lightness) var(--accent-chroma) var(--accent-hue) / 0.25);
+    box-shadow: 0 0 0 3px oklch(0.750 0.180 195 / 0.25);
   }
   .range-thumb::-webkit-slider-runnable-track {
     background: transparent;
@@ -323,7 +253,7 @@
   }
 }
 
-/* ── Pip color classes (data-driven, keep as unlayered CSS) */
+/* ── Pip color classes ────────────────────────────────── */
 
 .pip-cleric { background: #f0c040; }
 .pip-warrior { background: #d4ad80; }
@@ -340,7 +270,7 @@
 .pip-paladin { background: #f58cba; }
 .pip-shaman { background: #2890f0; }
 
-/* ── Treemap (custom CSS: color-mix, absolute positioning) */
+/* ── Treemap ─────────────────────────────────────────── */
 
 .treemap-cell {
   position: absolute;
@@ -348,31 +278,31 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: calc(var(--space-unit) / 2);
-  padding: var(--space-unit) calc(var(--space-unit) * 1.5);
-  background: color-mix(in srgb, var(--cell-color) calc(var(--opacity-4) * 100%), var(--color-surface));
+  gap: 4px;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--cell-color) calc(var(--opacity-4) * 100%), var(--color-base));
   border: 1px solid color-mix(in srgb, var(--cell-color) 10%, transparent);
   cursor: pointer;
   overflow: hidden;
-  transition: background var(--duration-fast) var(--ease-standard),
-              border-color var(--duration-fast) var(--ease-standard),
-              box-shadow var(--duration-fast) var(--ease-standard),
-              opacity var(--duration-normal) var(--ease-standard),
-              left var(--duration-slow) var(--ease-decelerate),
-              top var(--duration-slow) var(--ease-decelerate),
-              width var(--duration-slow) var(--ease-decelerate),
-              height var(--duration-slow) var(--ease-decelerate);
+  transition: background var(--t-fast) var(--ease-move),
+              border-color var(--t-fast) var(--ease-move),
+              box-shadow var(--t-fast) var(--ease-move),
+              opacity var(--t-base) var(--ease-move),
+              left var(--t-slow) var(--ease-out),
+              top var(--t-slow) var(--ease-out),
+              width var(--t-slow) var(--ease-out),
+              height var(--t-slow) var(--ease-out);
 }
 
 .treemap-cell:hover {
-  background: color-mix(in srgb, var(--cell-color) 28%, var(--color-surface));
+  background: color-mix(in srgb, var(--cell-color) 28%, var(--color-base));
   border-color: var(--cell-color);
   box-shadow: var(--shadow-md);
   z-index: 1;
 }
 
 .treemap-cell.active {
-  background: color-mix(in srgb, var(--cell-color) 32%, var(--color-surface));
+  background: color-mix(in srgb, var(--cell-color) 32%, var(--color-base));
   border-color: var(--cell-color);
   box-shadow: var(--shadow-lg);
   z-index: 2;
@@ -386,8 +316,8 @@
 }
 
 .treemap-label {
-  font-family: var(--font-body);
-  font-size: var(--font-size-caption);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-body);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: var(--letter-spacing-overline);
@@ -409,7 +339,7 @@
   line-height: 1;
 }
 
-/* ── Treemap texture (horizontal lines) ───────────────── */
+/* ── Treemap texture ─────────────────────────────────── */
 
 .treemap-texture::before {
   content: '';
@@ -421,14 +351,13 @@
     to bottom,
     transparent,
     transparent 3px,
-    oklch(var(--lum-bg) 0 0 / 0.5) 3px,
-    oklch(var(--lum-bg) 0 0 / 0.5) 4px
+    oklch(0.120 0 0 / 0.5) 3px,
+    oklch(0.120 0 0 / 0.5) 4px
   );
   z-index: 2;
 }
 
-
-/* ── Grain overlay ────────────────────────────────────── */
+/* ── Grain overlay ───────────────────────────────────── */
 
 .grain-overlay {
   isolation: isolate;
@@ -446,43 +375,41 @@
 }
 
 /* ── Hash-colored chips and filter buttons ────────────── */
-/*    CSS vars --hc-bg / --hc-fg are set inline by React.  */
-/*    Hover/active states are pure CSS — no JS needed.     */
 
 .hash-chip {
   @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full transition-[filter];
-  font-family:         var(--font-body);
-  font-size:           var(--font-size-caption);
-  transition-duration: var(--duration-fast);
-  background: var(--hc-bg, var(--color-surface-2));
-  color:      var(--hc-fg, var(--color-text-secondary));
+  font-family:         var(--font-sans);
+  font-size:           var(--font-size-body);
+  transition-duration: var(--t-fast);
+  background: var(--hc-bg, var(--color-raised));
+  color:      var(--hc-fg, var(--color-fg-2));
 }
 .hash-chip:hover  { filter: brightness(1.12); }
 .hash-chip:active { filter: brightness(0.88); }
 
 .hash-filter-btn {
   @apply px-1.5 py-1 md:py-0.5 rounded-sm border transition-[filter,background,color,border-color] cursor-pointer min-h-5.5 md:min-h-0;
-  font-family:         var(--font-body);
-  font-size:           var(--font-size-micro);
-  transition-duration: var(--duration-fast);
-  background:   var(--color-surface-2);
-  color:        var(--color-text-secondary);
-  border-color: var(--color-border);
+  font-family:         var(--font-sans);
+  font-size:           var(--font-size-body);
+  transition-duration: var(--t-fast);
+  background:   var(--color-raised);
+  color:        var(--color-fg-2);
+  border-color: var(--color-line);
 }
 .hash-filter-btn[data-active="true"] {
-  background:   var(--hc-bg, var(--color-accent));
-  color:        var(--hc-fg, var(--color-bg));
+  background:   var(--hc-bg, var(--color-cyan));
+  color:        var(--hc-fg, var(--color-void));
   border-color: var(--hc-fg, transparent);
 }
 .hash-filter-btn:hover  { filter: brightness(1.12); }
 .hash-filter-btn:active { filter: brightness(0.88); }
 
-/* ── Collapse pattern (generic) ───────────────────────── */
+/* ── Collapse pattern ────────────────────────────────── */
 
 .collapse-container {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows var(--duration-slow) var(--ease-decelerate);
+  transition: grid-template-rows var(--t-slow) var(--ease-out);
 }
 .collapse-container[data-expanded="true"] {
   grid-template-rows: 1fr;
@@ -491,43 +418,43 @@
   overflow: hidden;
 }
 .collapse-chevron {
-  transition: transform var(--duration-fast) var(--ease-standard);
+  transition: transform var(--t-fast) var(--ease-move);
 }
 .collapse-chevron[data-expanded="true"] {
   transform: rotate(90deg);
 }
 
-/* ── Readout status segments (data-driven colors) ─────── */
+/* ── Readout status segments ─────────────────────────── */
 
-.readout-seg { transition: flex var(--duration-slow) var(--ease-standard); }
-.readout-seg.status-main { background: var(--color-accent); }
+.readout-seg { transition: flex var(--t-slow) var(--ease-move); }
+.readout-seg.status-main { background: var(--color-cyan); }
 .readout-seg.status-alt { background: var(--color-green); }
-.readout-seg.status-bot { background: var(--color-blue); }
-.readout-seg.status-probationary { background: var(--color-text-dim); }
+.readout-seg.status-bot { background: var(--color-violet); }
+.readout-seg.status-probationary { background: var(--color-fg-3); }
 
-.readout-dot.status-main { background: var(--color-accent); }
+.readout-dot.status-main { background: var(--color-cyan); }
 .readout-dot.status-alt { background: var(--color-green); }
-.readout-dot.status-bot { background: var(--color-blue); }
-.readout-dot.status-probationary { background: var(--color-text-dim); }
+.readout-dot.status-bot { background: var(--color-violet); }
+.readout-dot.status-probationary { background: var(--color-fg-3); }
 
 /* ── Chat background ─────────────────────────────────── */
 
 .chat-bg {
-  background: var(--color-surface);
+  background: var(--color-base);
 }
 
 /* ── Chat bubbles ────────────────────────────────────── */
 
 .bubble-self {
-  background: color-mix(in srgb, var(--color-accent) 14%, var(--color-surface));
-  border: 1px solid color-mix(in srgb, var(--color-accent) 10%, var(--color-border-subtle));
+  background: color-mix(in srgb, var(--color-cyan) 14%, var(--color-base));
+  border: 1px solid color-mix(in srgb, var(--color-cyan) 10%, var(--color-line));
 }
 .bubble-other {
-  background: var(--color-surface-2);
-  border: 1px solid var(--color-border-subtle);
+  background: var(--color-raised);
+  border: 1px solid var(--color-line);
 }
 
-/* ── Keyframes ────────────────────────────────────────── */
+/* ── Keyframes ───────────────────────────────────────── */
 
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }
@@ -542,19 +469,19 @@
   50% { opacity: 0.4; }
 }
 
-/* ── Pseudo-elements that can't be Tailwind utilities ── */
+/* ── Pseudo-elements ─────────────────────────────────── */
 
 .message-command::before {
   content: '> ';
-  color: var(--color-accent);
+  color: var(--color-cyan);
 }
 
 .loading::after {
   content: ' ';
-  animation: pulse var(--duration-slower) var(--ease-standard) infinite;
+  animation: pulse var(--t-drift) var(--ease-move) infinite;
 }
 
-/* ── Field tooltip (CSS-only, design-token driven) ───── */
+/* ── Field tooltip ───────────────────────────────────── */
 
 .field-tooltip {
   position: relative;
@@ -565,37 +492,37 @@
   position: absolute;
   bottom: calc(100% + 4px);
   left: 0;
-  padding: calc(var(--space-unit) / 2) var(--space-unit);
-  background: var(--color-surface-3);
-  border: 1px solid var(--color-border);
+  padding: 4px 8px;
+  background: var(--color-elevated);
+  border: 1px solid var(--color-line);
   border-radius: var(--radius-sm);
-  font-family: var(--font-body);
-  font-size: var(--font-size-caption);
-  color: var(--color-text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-body);
+  color: var(--color-fg-2);
   white-space: nowrap;
   box-shadow: var(--shadow-sm);
   z-index: var(--z-index-dropdown);
   opacity: 0;
   pointer-events: none;
-  transition: opacity var(--duration-fast) var(--ease-decelerate);
-  transition-delay: var(--duration-normal);
+  transition: opacity var(--t-fast) var(--ease-out);
+  transition-delay: var(--t-base);
 }
 .field-tooltip:hover::after {
   opacity: 1;
 }
 
-/* ── Mobile overrides for treemap ─────────────────────── */
+/* ── Mobile overrides for treemap ────────────────────── */
 
 @media (width < 48rem) {
-  .treemap-count { font-size: var(--font-size-caption); }
-  .treemap-label { font-size: var(--font-size-micro); }
+  .treemap-count { font-size: var(--font-size-body); }
+  .treemap-label { font-size: var(--font-size-body); }
 }
 
-/* ── Equipment grid (EQ-style slot layout) ───────────── */
+/* ── Equipment grid ──────────────────────────────────── */
 
 .equipment-grid {
   display: grid;
-  gap: calc(var(--space-unit) / 2);
+  gap: 4px;
   grid-template-columns: repeat(5, 1fr);
   grid-template-areas:
     "ear1      head       face       .          ear2"
@@ -632,33 +559,32 @@
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  padding: calc(var(--space-unit) / 2);
-  border: 1px solid var(--color-border-subtle);
+  padding: 4px;
+  border: 1px solid var(--color-line);
   border-radius: var(--radius-sm);
-  transition: border-color var(--duration-fast) var(--ease-standard),
-              background var(--duration-fast) var(--ease-standard);
+  transition: border-color var(--t-fast) var(--ease-move),
+              background var(--t-fast) var(--ease-move);
 }
 
 .equipment-slot.filled {
-  border-color: var(--color-border);
-  background: var(--color-surface);
+  border-color: var(--color-line);
+  background: var(--color-base);
 }
 
 .equipment-slot.filled:hover {
-  border-color: var(--color-accent-dim);
-  background: var(--color-surface-2);
+  border-color: var(--color-cyan-dim);
+  background: var(--color-raised);
 }
 
 .equipment-slot-label {
-  font-family: var(--font-body);
-  font-size: var(--font-size-nano);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-body);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: var(--letter-spacing-overline);
-  color: var(--color-text-dim);
+  color: var(--color-fg-3);
   line-height: 1;
 }
-
 
 @keyframes progress-stripe {
   from { background-position: 40px 0; }

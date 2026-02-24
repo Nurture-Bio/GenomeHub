@@ -53,8 +53,8 @@ export default function ChipEditor({
       className="size-5 shrink-0 flex items-center justify-center rounded-full
                  opacity-0 group-hover/editor:opacity-100
                  transition-opacity duration-fast
-                 bg-surface-2 text-text-dim hover:text-text hover:bg-surface-3
-                 cursor-pointer border-0 font-body text-caption leading-none"
+                 bg-raised text-fg-3 hover:text-fg hover:bg-elevated
+                 cursor-pointer border-0 font-sans text-body leading-none"
     >
       +
     </button>
@@ -90,7 +90,7 @@ export default function ChipEditor({
       ))}
 
       {overflow > 0 && (
-        <span className="font-body text-caption text-text-dim px-1 leading-none">
+        <span className="font-sans text-body text-fg-3 px-1 leading-none">
           +{overflow} more
         </span>
       )}

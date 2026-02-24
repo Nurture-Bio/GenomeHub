@@ -34,7 +34,7 @@ function knuthHue(s: string): number {
 export function hashColor(label: string): HashColor {
   const hue = knuthHue(label);
   return {
-    bg:    `oklch(0.22 0.05 ${hue})`,
-    color: `oklch(0.72 0.18 ${hue})`,
+    bg:    `oklch(0.20 0.05 ${hue})`,
+    color: `oklch(0.75 0.18 ${hue})`,
   };
 }

@@ -69,7 +69,7 @@ export default function CollectionDetailPage() {
         <div className="concertina-warmup-line concertina-warmup-line-short" />
         <div className="flex flex-col gap-1">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="py-1.5 border-b border-border-subtle">
+            <div key={i} className="py-1.5 border-b border-line">
               <div className="concertina-warmup-line concertina-warmup-line-long" />
             </div>
           ))}
@@ -82,7 +82,7 @@ export default function CollectionDetailPage() {
     return (
       <div className="flex flex-col gap-3 p-2 md:p-3">
         <Heading level="heading">Collection not found</Heading>
-        <Text variant="caption">The collection may have been deleted.</Text>
+        <Text variant="dim">The collection may have been deleted.</Text>
       </div>
     );
   }
@@ -138,7 +138,7 @@ export default function CollectionDetailPage() {
       {/* Files (playlist contents) */}
       <div>
         <div className="flex items-center gap-2 mb-1.5">
-          <Text variant="overline" className="flex-1">Files</Text>
+          <Text variant="muted" className="flex-1">Files</Text>
           <button
             onClick={() => { setShowAddPanel(!showAddPanel); setAddSelected(new Set()); setAddSearch(''); }}
             className={iconAction({ color: 'dim' })}
@@ -149,7 +149,7 @@ export default function CollectionDetailPage() {
 
         {/* Add files panel */}
         <Glide show={showAddPanel}>
-          <div className="border border-border rounded-md p-2.5 mb-2 bg-surface-2">
+          <div className="border border-line rounded-md p-2.5 mb-2 bg-raised">
             <div className="flex items-center gap-2 mb-2">
               <Input
                 variant="surface"
@@ -172,7 +172,7 @@ export default function CollectionDetailPage() {
             </div>
             <div className="max-h-48 overflow-auto flex flex-col gap-0.5">
               {availableFiles.length === 0 ? (
-                <Text variant="caption" className="py-2 text-center">
+                <Text variant="dim" className="py-2 text-center">
                   {addSearch ? 'No matching files.' : 'No files available to add.'}
                 </Text>
               ) : (
@@ -181,7 +181,7 @@ export default function CollectionDetailPage() {
                   const meta = FORMAT_META[fmt];
                   const checked = addSelected.has(file.id);
                   return (
-                    <label key={file.id} className="flex items-center gap-2 px-1.5 py-1 rounded-sm cursor-pointer hover:bg-surface transition-colors duration-fast">
+                    <label key={file.id} className="flex items-center gap-2 px-1.5 py-1 rounded-sm cursor-pointer hover:bg-base transition-colors duration-fast">
                       <input
                         type="checkbox"
                         checked={checked}
@@ -192,12 +192,12 @@ export default function CollectionDetailPage() {
                             return next;
                           });
                         }}
-                        className="accent-accent shrink-0"
+                        className="accent-cyan shrink-0"
                       />
                       <HashPill label={meta.label} colorKey={fmt} />
                       <Text variant="mono" className="truncate flex-1 min-w-0">{file.filename}</Text>
                       {file.types.map(t => <HashPill key={t} label={t} />)}
-                      <Text variant="caption" className="shrink-0">{formatBytes(file.sizeBytes)}</Text>
+                      <Text variant="dim" className="shrink-0">{formatBytes(file.sizeBytes)}</Text>
                     </label>
                   );
                 })
@@ -208,16 +208,16 @@ export default function CollectionDetailPage() {
 
         {/* Existing files */}
         {collection.files.length === 0 && !showAddPanel ? (
-          <Text variant="caption">No files yet. Click "+ add files" above.</Text>
+          <Text variant="dim">No files yet. Click "+ add files" above.</Text>
         ) : (
-          <div className="border border-border rounded-md bg-surface overflow-hidden">
+          <div className="border border-line rounded-md bg-base overflow-hidden">
             <table className="w-full border-collapse text-left">
               <thead>
-                <tr className="border-b border-border bg-surface-2">
-                  <th className="py-1.5 pl-2.5 pr-3"><Text variant="overline">File</Text></th>
-                  <th className="py-1.5 pr-3 w-24"><Text variant="overline">Type</Text></th>
-                  <th className="py-1.5 pr-3 text-right w-20"><Text variant="overline">Size</Text></th>
-                  <th className="py-1.5 pr-3 w-20"><Text variant="overline">Status</Text></th>
+                <tr className="border-b border-line bg-raised">
+                  <th className="py-1.5 pl-2.5 pr-3"><Text variant="muted">File</Text></th>
+                  <th className="py-1.5 pr-3 w-24"><Text variant="muted">Type</Text></th>
+                  <th className="py-1.5 pr-3 text-right w-20"><Text variant="muted">Size</Text></th>
+                  <th className="py-1.5 pr-3 w-20"><Text variant="muted">Status</Text></th>
                   <th className="w-6" />
                 </tr>
               </thead>
@@ -226,12 +226,12 @@ export default function CollectionDetailPage() {
                   const fmt = detectFormat(file.filename);
                   const meta = FORMAT_META[fmt];
                   return (
-                    <tr key={file.id} className="border-b border-border-subtle hover:bg-surface transition-colors duration-fast group">
+                    <tr key={file.id} className="border-b border-line hover:bg-base transition-colors duration-fast group">
                       <td className="py-1.5 pl-2.5 pr-3">
                         <div className="flex items-center gap-2">
                           <HashPill label={meta.label} colorKey={fmt} />
                           <Link to={`/files/${file.id}`} className="no-underline">
-                            <Text variant="mono" className="truncate hover:text-accent transition-colors duration-fast">
+                            <Text variant="mono" className="truncate hover:text-cyan transition-colors duration-fast">
                               {file.filename}
                             </Text>
                           </Link>
@@ -243,7 +243,7 @@ export default function CollectionDetailPage() {
                         </div>
                       </td>
                       <td className="py-1.5 pr-3 text-right">
-                        <Text variant="mono" className="text-text-secondary">{formatBytes(file.sizeBytes)}</Text>
+                        <Text variant="mono" className="text-fg-2">{formatBytes(file.sizeBytes)}</Text>
                       </td>
                       <td className="py-1.5 pr-3">
                         {file.status === 'ready' && <Badge variant="status" color="green">ready</Badge>}

@@ -30,19 +30,19 @@ function DropZone({ onFiles }: DropZoneProps) {
       onClick={() => inputRef.current?.click()}
       className="relative border-2 border-dashed rounded-lg p-4 md:p-8 flex flex-col items-center gap-2 md:gap-3 cursor-pointer transition-colors duration-fast"
       style={{
-        borderColor: dragging ? 'var(--color-accent)' : 'var(--color-border)',
-        background:  dragging ? 'oklch(0.70 0.18 168 / 0.06)' : 'var(--color-surface)',
+        borderColor: dragging ? 'var(--color-cyan)' : 'var(--color-line)',
+        background:  dragging ? 'oklch(0.750 0.180 195 / 0.06)' : 'var(--color-base)',
       }}
     >
       {dragging && (
         <div className="absolute inset-0 rounded-lg pointer-events-none"
-          style={{ boxShadow: '0 0 0 2px var(--color-accent) inset' }} />
+          style={{ boxShadow: '0 0 0 2px var(--color-cyan) inset' }} />
       )}
 
       <div className="flex items-center justify-center w-12 h-12 rounded-full"
-        style={{ background: 'oklch(0.70 0.18 168 / 0.12)' }}>
+        style={{ background: 'oklch(0.750 0.180 195 / 0.12)' }}>
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
-          style={{ color: 'var(--color-accent)' }}>
+          style={{ color: 'var(--color-cyan)' }}>
           <path d="M12 4v12m0-12L8 8m4-4l4 4" stroke="currentColor" strokeWidth="2"
             strokeLinecap="round" strokeLinejoin="round" />
           <path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="currentColor"
@@ -51,13 +51,13 @@ function DropZone({ onFiles }: DropZoneProps) {
       </div>
 
       <div className="text-center">
-        <Text variant="secondary">
-          Drop genomic files here, or <span style={{ color: 'var(--color-accent)' }}>browse</span>
+        <Text variant="body">
+          Drop genomic files here, or <span style={{ color: 'var(--color-cyan)' }}>browse</span>
         </Text>
-        <Text variant="caption" as="div" className="hidden sm:block">
+        <Text variant="dim" as="div" className="hidden sm:block">
           FASTQ, BAM, CRAM, VCF, BED, GFF, FASTA, H5AD, Cool, Parquet &amp; more · No file size limit
         </Text>
-        <Text variant="caption" as="div" className="sm:hidden">
+        <Text variant="dim" as="div" className="sm:hidden">
           Any genomic file format · No limit
         </Text>
       </div>
@@ -94,12 +94,12 @@ function QueueItem({ file, organismId, collectionId, type, description, tags, on
   const meta = FORMAT_META[fmt];
 
   return (
-    <div className="flex flex-col gap-2 p-2.5 bg-surface border border-border rounded-md">
+    <div className="flex flex-col gap-2 p-2.5 bg-base border border-line rounded-md">
       <div className="flex items-center gap-2">
         <HashPill label={meta.label} colorKey={fmt} />
         <div className="flex-1 min-w-0">
           <Text variant="mono" className="truncate block">{file.name}</Text>
-          <Text variant="caption">{formatBytes(file.size)} · {meta.label}</Text>
+          <Text variant="dim">{formatBytes(file.size)} · {meta.label}</Text>
         </div>
         <Button intent="ghost" size="sm" onClick={onRemove}>×</Button>
       </div>
@@ -161,23 +161,23 @@ function ProgressBar({ filename, loaded, total, status, error }: ProgressBarProp
   const meta = FORMAT_META[fmt];
 
   return (
-    <div className="flex flex-col gap-1 p-2 bg-surface border border-border rounded-md">
+    <div className="flex flex-col gap-1 p-2 bg-base border border-line rounded-md">
       <div className="flex items-center gap-2">
         <HashPill label={meta.label} colorKey={fmt} />
         <Text variant="mono" className="flex-1 truncate min-w-0">{filename}</Text>
-        <Text variant="mono" className="text-text-dim text-micro shrink-0 tabular-nums">
+        <Text variant="mono" className="text-fg-3 text-body shrink-0 tabular-nums">
           {status === 'done' ? '✓' : status === 'error' ? '✗' : `${pct}%`}
         </Text>
       </div>
 
-      <div className="h-1 rounded-full overflow-hidden" style={{ background: 'var(--color-surface-2)' }}>
+      <div className="h-1 rounded-full overflow-hidden" style={{ background: 'var(--color-raised)' }}>
         <div
           className="h-full rounded-full transition-all duration-normal"
           style={{
             width: `${pct}%`,
             background: status === 'done'  ? 'var(--color-green)'
                       : status === 'error' ? 'var(--color-red)'
-                      : 'var(--color-accent)',
+                      : 'var(--color-cyan)',
           }}
         >
           {status === 'uploading' && <div className="h-full progress-stripe" />}
@@ -185,7 +185,7 @@ function ProgressBar({ filename, loaded, total, status, error }: ProgressBarProp
       </div>
 
       {status === 'uploading' && (
-        <Text variant="caption">{formatBytes(loaded)} / {formatBytes(total)}</Text>
+        <Text variant="dim">{formatBytes(loaded)} / {formatBytes(total)}</Text>
       )}
       {status === 'error' && (
         <Text variant="error">{error}</Text>
@@ -291,7 +291,7 @@ export default function UploadPage() {
     <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 max-w-3xl mx-auto w-full">
       <div>
         <Heading level="heading">Upload Files</Heading>
-        <Text variant="caption">Files are uploaded directly to S3 via multipart presigned URLs</Text>
+        <Text variant="dim">Files are uploaded directly to S3 via multipart presigned URLs</Text>
       </div>
 
       <DropZone onFiles={addFiles} />
@@ -299,9 +299,9 @@ export default function UploadPage() {
       {queue.length > 0 && (
         <div className="flex flex-col gap-2">
           <div className="flex flex-col gap-2">
-            <Text variant="overline">Queued ({queue.length})</Text>
+            <Text variant="muted">Queued ({queue.length})</Text>
             <div className="flex flex-col sm:flex-row gap-2">
-              <Text variant="caption" className="shrink-0 self-center">Defaults:</Text>
+              <Text variant="dim" className="shrink-0 self-center">Defaults:</Text>
               <OrganismPicker
                 value={defaultOrg} onValueChange={handleDefaultOrg}
                 placeholder="Organism" variant="surface" size="sm" className="w-full sm:w-40"
@@ -347,14 +347,14 @@ export default function UploadPage() {
 
       {activeUploads.length > 0 && (
         <div className="flex flex-col gap-1.5">
-          <Text variant="overline">Uploading</Text>
+          <Text variant="muted">Uploading</Text>
           {activeUploads.map(u => <ProgressBar key={u.fileId} {...u} />)}
         </div>
       )}
 
       {errorUploads.length > 0 && (
         <div className="flex flex-col gap-1.5">
-          <Text variant="overline">Failed</Text>
+          <Text variant="muted">Failed</Text>
           {errorUploads.map(u => <ProgressBar key={u.fileId} {...u} />)}
         </div>
       )}
@@ -362,8 +362,8 @@ export default function UploadPage() {
       {doneUploads.length > 0 && (
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-2">
-            <Text variant="overline">Completed ({doneUploads.length})</Text>
-            <Button intent="bare" size="xs" onClick={clearDone} className="text-text-dim hover:text-text">
+            <Text variant="muted">Completed ({doneUploads.length})</Text>
+            <Button intent="bare" size="xs" onClick={clearDone} className="text-fg-3 hover:text-fg">
               clear
             </Button>
           </div>

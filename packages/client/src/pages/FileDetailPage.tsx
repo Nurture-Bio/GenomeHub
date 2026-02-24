@@ -112,7 +112,7 @@ export default function FileDetailPage() {
     return (
       <div className="flex flex-col gap-3 p-2 md:p-3">
         <Heading level="heading">File not found</Heading>
-        <Text variant="caption">The file may have been deleted.</Text>
+        <Text variant="dim">The file may have been deleted.</Text>
       </div>
     );
   }
@@ -142,15 +142,15 @@ export default function FileDetailPage() {
         </div>
 
         <div className="flex items-center gap-2 mt-1 flex-wrap">
-          <Text variant="caption">{formatBytes(file.sizeBytes)}</Text>
-          {file.md5 && <Text variant="mono" className="text-text-dim text-micro">MD5: {file.md5.slice(0, 12)}...</Text>}
-          <Text variant="caption">Uploaded {formatRelativeTime(file.uploadedAt)}</Text>
-          {file.uploadedBy && <Text variant="caption">by {file.uploadedBy}</Text>}
+          <Text variant="dim">{formatBytes(file.sizeBytes)}</Text>
+          {file.md5 && <Text variant="mono" className="text-fg-3 text-body">MD5: {file.md5.slice(0, 12)}...</Text>}
+          <Text variant="dim">Uploaded {formatRelativeTime(file.uploadedAt)}</Text>
+          {file.uploadedBy && <Text variant="dim">by {file.uploadedBy}</Text>}
         </div>
 
         {/* Organisms */}
         <div className="flex items-center gap-2 mt-1">
-          <Text variant="caption" className="shrink-0">Organisms:</Text>
+          <Text variant="dim" className="shrink-0">Organisms:</Text>
           <ChipEditor
             colored
             items={file.organisms.map(o => ({ id: o.id, label: o.displayName }))}
@@ -162,7 +162,7 @@ export default function FileDetailPage() {
 
         {/* Types */}
         <div className="flex items-center gap-2 mt-1">
-          <Text variant="caption" className="shrink-0">Types:</Text>
+          <Text variant="dim" className="shrink-0">Types:</Text>
           <ChipEditor
             colored
             items={file.types.map(t => ({ id: t, label: t }))}
@@ -191,14 +191,14 @@ export default function FileDetailPage() {
 
       {/* Collections */}
       <div>
-        <Text variant="overline" className="mb-1.5 block">Collections</Text>
+        <Text variant="muted" className="mb-1.5 block">Collections</Text>
         <ChipEditor
           items={file.collections.map(c => ({ id: c.id, label: c.name }))}
           onAdd={id => handleAddToCollection(id, [fileId!])}
           onRemove={id => handleRemoveFromCollection(id, [fileId!])}
           renderPicker={p => <CollectionPicker {...p} variant="surface" size="sm" className="w-44" />}
           renderLabel={item => (
-            <Link to={`/collections/${item.id}`} className="no-underline text-text-secondary hover:text-accent">
+            <Link to={`/collections/${item.id}`} className="no-underline text-fg-2 hover:text-cyan">
               {item.label}
             </Link>
           )}
@@ -208,7 +208,7 @@ export default function FileDetailPage() {
       {/* Data Links */}
       <div>
         <div className="flex items-center gap-2 mb-1.5">
-          <Text variant="overline" className="flex-1">Data Links</Text>
+          <Text variant="muted" className="flex-1">Data Links</Text>
           <button
             onClick={() => { setAddingProv(!addingProv); setProvTargetId(null); setProvSearch(''); }}
             className={iconAction({ color: 'dim' })}
@@ -218,9 +218,9 @@ export default function FileDetailPage() {
         </div>
 
         {addingProv && (
-          <div className="border border-border rounded-md p-2.5 mb-2 bg-surface-2">
+          <div className="border border-line rounded-md p-2.5 mb-2 bg-raised">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <Text variant="caption" className="shrink-0">This file</Text>
+              <Text variant="dim" className="shrink-0">This file</Text>
               <RelationPicker
                 value={provRelation}
                 onValueChange={setProvRelation}
@@ -229,7 +229,7 @@ export default function FileDetailPage() {
                 size="sm"
                 className="w-40"
               />
-              <Text variant="caption" className="shrink-0">→</Text>
+              <Text variant="dim" className="shrink-0">→</Text>
               <Input
                 variant="surface"
                 size="sm"
@@ -252,14 +252,14 @@ export default function FileDetailPage() {
             {provSearch && (
               <div className="max-h-36 overflow-auto flex flex-col gap-0.5">
                 {searchableFiles.length === 0 ? (
-                  <Text variant="caption" className="py-2 text-center">No matching files.</Text>
+                  <Text variant="dim" className="py-2 text-center">No matching files.</Text>
                 ) : (
                   searchableFiles.slice(0, 30).map(f => (
                     <button
                       key={f.id}
                       onClick={() => { setProvTargetId(f.id); setProvSearch(f.filename); }}
                       className={`flex items-center gap-2 px-1.5 py-1 rounded-sm cursor-pointer border-none text-left w-full transition-colors duration-fast ${
-                        provTargetId === f.id ? 'bg-accent/10' : 'bg-transparent hover:bg-surface'
+                        provTargetId === f.id ? 'bg-cyan/10' : 'bg-transparent hover:bg-base'
                       }`}
                     >
                       <FormatPill filename={f.filename} />
@@ -275,14 +275,14 @@ export default function FileDetailPage() {
 
         {file.provenance.upstream.length > 0 && (
           <div className="mb-2">
-            <Text variant="caption" className="mb-1 block text-text-dim">This file was created from:</Text>
+            <Text variant="dim" className="mb-1 block text-fg-3">This file was created from:</Text>
             <div className="flex flex-col gap-1">
               {file.provenance.upstream.map(p => p.file && (
                 <Card key={p.edgeId} className="p-2 flex items-center gap-2 group">
                   <RelationLabel relation={p.relation} />
                   <FormatPill filename={p.file.filename} />
                   <Link to={`/files/${p.file.id}`} className="no-underline flex-1 min-w-0">
-                    <Text variant="mono" className="truncate hover:text-accent transition-colors duration-fast">{p.file.filename}</Text>
+                    <Text variant="mono" className="truncate hover:text-cyan transition-colors duration-fast">{p.file.filename}</Text>
                   </Link>
                   {p.file.types.map(t => <Badge key={t} variant="count" color="dim">{t}</Badge>)}
                   <button
@@ -301,14 +301,14 @@ export default function FileDetailPage() {
 
         {file.provenance.downstream.length > 0 && (
           <div className="mb-2">
-            <Text variant="caption" className="mb-1 block text-text-dim">Files created from this:</Text>
+            <Text variant="dim" className="mb-1 block text-fg-3">Files created from this:</Text>
             <div className="flex flex-col gap-1">
               {file.provenance.downstream.map(p => p.file && (
                 <Card key={p.edgeId} className="p-2 flex items-center gap-2 group">
                   <RelationLabel relation={p.relation} />
                   <FormatPill filename={p.file.filename} />
                   <Link to={`/files/${p.file.id}`} className="no-underline flex-1 min-w-0">
-                    <Text variant="mono" className="truncate hover:text-accent transition-colors duration-fast">{p.file.filename}</Text>
+                    <Text variant="mono" className="truncate hover:text-cyan transition-colors duration-fast">{p.file.filename}</Text>
                   </Link>
                   {p.file.types.map(t => <Badge key={t} variant="count" color="dim">{t}</Badge>)}
                   <button
@@ -326,7 +326,7 @@ export default function FileDetailPage() {
         )}
 
         {file.provenance.upstream.length === 0 && file.provenance.downstream.length === 0 && !addingProv && (
-          <Text variant="caption">No data links.</Text>
+          <Text variant="dim">No data links.</Text>
         )}
       </div>
 
