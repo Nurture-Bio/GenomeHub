@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { AppDataSource } from '../app_data.js';
 import { User, GenomicFile, EntityEdge, Organism, Collection, type EdgeRelation } from '../entities/index.js';
 import { createGunzip, constants } from 'zlib';
-import { deleteObject, presignDownloadUrl, fetchS3Head } from '../lib/s3.js';
+import { deleteObject, presignDownloadUrl, fetchS3Head, fetchS3Range } from '../lib/s3.js';
 import { detectFormat, TEXT_PREVIEW_FORMATS } from '@genome-hub/shared';
 import * as edges from '../lib/edge_service.js';
 import { asyncWrap } from '../lib/async_wrap.js';
@@ -139,26 +139,45 @@ router.get('/:id/preview', asyncWrap(async (req, res) => {
 
   const fmt = detectFormat(file.filename);
   if (!TEXT_PREVIEW_FORMATS.has(fmt)) {
-    res.json({ lines: [], truncated: false, previewable: false, format: fmt });
+    res.json({ lines: [], truncated: false, previewable: false, format: fmt, nextStartByte: null });
     return;
   }
 
-  const isGz = file.filename.toLowerCase().endsWith('.gz');
-  const RANGE_BYTES = 128 * 1024; // 128 KB
-  const MAX_LINES = 50;
+  const isGz     = file.filename.toLowerCase().endsWith('.gz');
+  const CHUNK     = 128 * 1024; // 128 KB per page
+  const PAGE_SIZE = 50;
+  const startByte = isGz ? 0 : Math.max(0, parseInt((req.query.startByte as string) || '0', 10));
 
   try {
-    let buf = await fetchS3Head(file.s3Key, RANGE_BYTES);
-    if (isGz) buf = await decompressPartial(buf);
+    let buf: Buffer;
+    if (isGz) {
+      const compressed = await fetchS3Head(file.s3Key, CHUNK);
+      buf = await decompressPartial(compressed);
+    } else {
+      buf = await fetchS3Range(file.s3Key, startByte, CHUNK);
+    }
 
+    const isLastChunk = buf.length < CHUNK;
     const text = buf.toString('utf-8');
-    const allLines = text.split('\n');
-    const lines = allLines.slice(0, MAX_LINES);
-    const truncated = allLines.length > MAX_LINES || buf.length >= RANGE_BYTES;
 
-    res.json({ lines, truncated, previewable: true, format: fmt });
+    // Drop the potentially partial last line unless we're at EOF
+    const safeText = (!isLastChunk && text.includes('\n'))
+      ? text.slice(0, text.lastIndexOf('\n') + 1)
+      : text;
+
+    const allLines = safeText.split('\n').filter((l, i, arr) => i < arr.length - 1 || l.length > 0);
+    const lines    = allLines.slice(0, PAGE_SIZE);
+    const hasMore  = !isLastChunk || allLines.length > PAGE_SIZE;
+
+    // Compute cursor for the next page (byte position after the last line we're returning)
+    let nextStartByte: number | null = null;
+    if (hasMore && !isGz) {
+      nextStartByte = startByte + Buffer.byteLength(lines.join('\n') + '\n', 'utf-8');
+    }
+
+    res.json({ lines, truncated: hasMore, previewable: true, format: fmt, nextStartByte });
   } catch (err) {
-    res.json({ lines: [], truncated: false, previewable: false, format: fmt, error: 'Preview unavailable' });
+    res.json({ lines: [], truncated: false, previewable: false, format: fmt, nextStartByte: null, error: 'Preview unavailable' });
   }
 }));
 

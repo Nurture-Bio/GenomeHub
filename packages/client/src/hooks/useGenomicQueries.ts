@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { apiFetch } from '../lib/api';
 import { queryKeys } from '../lib/queryKeys';
@@ -845,20 +845,24 @@ export function useRemoveProvenance() {
 
 // ─── File preview ────────────────────────────────────────
 
-export interface FilePreviewResult {
-  lines:       string[];
-  truncated:   boolean;
-  previewable: boolean;
-  format:      string;
-  error?:      string;
+export interface FilePreviewPage {
+  lines:         string[];
+  truncated:     boolean;
+  previewable:   boolean;
+  format:        string;
+  nextStartByte: number | null;
+  error?:        string;
 }
 
-export function useFilePreview(fileId: string | undefined) {
-  return useQuery({
-    queryKey: queryKeys.files.preview(fileId!),
-    queryFn: () => fetchApi<FilePreviewResult>(`/api/files/${fileId}/preview`),
-    enabled: !!fileId,
-    staleTime: Infinity,
+export function useInfiniteFilePreview(fileId: string | undefined) {
+  return useInfiniteQuery({
+    queryKey:        queryKeys.files.preview(fileId!),
+    queryFn:         ({ pageParam }) =>
+      fetchApi<FilePreviewPage>(`/api/files/${fileId}/preview?startByte=${pageParam}`),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => lastPage.nextStartByte ?? undefined,
+    enabled:          !!fileId,
+    staleTime:        Infinity,
   });
 }
 

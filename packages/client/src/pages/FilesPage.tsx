@@ -2,7 +2,7 @@ import type { GenomicFile } from "../hooks/useGenomicQueries";
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { cx } from 'class-variance-authority';
-import { Gigbag } from 'concertina';
+import { Gigbag, Vamp, Hum } from 'concertina';
 import {
   useFilesQuery, useDeleteFileMutation, useUpdateFileMutation,
   usePresignedUrl, useAddFilesToCollection, useRemoveFilesFromCollection,
@@ -98,7 +98,7 @@ function FileRow({ file, onDownload, onUpdateTypes, onAddOrganism, onRemoveOrgan
       style={{ background: selected ? 'var(--color-raised)' : undefined }}
     >
       {/* Checkbox */}
-      <td className="pl-3 pr-1 py-1.5 w-6 align-top pt-2.5">
+      <td className="pl-3 pr-1 py-2 w-6 align-top">
         <input
           type="checkbox"
           checked={selected}
@@ -107,31 +107,35 @@ function FileRow({ file, onDownload, onUpdateTypes, onAddOrganism, onRemoveOrgan
         />
       </td>
 
-      {/* File: icon + name (line 1), size · status · date (line 2) */}
-      <td className="py-1.5 pr-3">
-        <div className="flex items-center gap-2">
+      {/* File: icon + name + size */}
+      <td className="py-2 pr-3 align-top min-w-0">
+        <div className="flex items-start gap-2">
           <FormatIcon filename={file.filename} format={file.format} />
           <div className="min-w-0 flex-1">
             <Link to={`/files/${file.id}`} className="no-underline">
-              <Text variant="mono" className="truncate block hover:text-cyan transition-colors duration-fast">
+              <Text variant="mono" className="truncate block hover:text-cyan transition-colors duration-fast" style={{ fontSize: '0.75rem' }}>
                 {file.filename}
               </Text>
             </Link>
-            <div className="flex items-center gap-1.5">
-              <Text variant="dim">{formatBytes(file.sizeBytes)}</Text>
-              <Text variant="dim">·</Text>
-              {file.status === 'ready'   && <Badge variant="status" color="green">ready</Badge>}
-              {file.status === 'pending' && <Badge variant="status" color="yellow">uploading</Badge>}
-              {file.status === 'error'   && <Badge variant="status" color="red">error</Badge>}
-              <Text variant="dim">·</Text>
-              <Text variant="dim">{formatRelativeTime(file.uploadedAt)}</Text>
-            </div>
+            <Text variant="dim" style={{ fontSize: '0.75rem' }}>{formatBytes(file.sizeBytes)}</Text>
           </div>
         </div>
       </td>
 
+      {/* Status — own column so badges align across all rows */}
+      <td className="py-2 pr-2 align-top">
+        {file.status === 'ready'   && <Badge variant="status" color="green">ready</Badge>}
+        {file.status === 'pending' && <Badge variant="status" color="yellow">uploading</Badge>}
+        {file.status === 'error'   && <Badge variant="status" color="red">error</Badge>}
+      </td>
+
+      {/* Time — own column so timestamps align across all rows */}
+      <td className="py-2 pr-3 align-top whitespace-nowrap">
+        <Text variant="dim">{formatRelativeTime(file.uploadedAt)}</Text>
+      </td>
+
       {/* Organism — ChipEditor */}
-      <td className="py-1.5 pr-3 align-top pt-2 overflow-hidden">
+      <td className="py-1.5 pr-3 align-top overflow-hidden">
         <ChipEditor
           colored
           items={file.organisms.map(o => ({ id: o.id, label: o.displayName }))}
@@ -143,7 +147,7 @@ function FileRow({ file, onDownload, onUpdateTypes, onAddOrganism, onRemoveOrgan
       </td>
 
       {/* Type — ChipEditor */}
-      <td className="py-1.5 pr-3 align-top pt-2 overflow-hidden">
+      <td className="py-1.5 pr-3 align-top overflow-hidden">
         <ChipEditor
           colored
           items={file.types.map(t => ({ id: t, label: t }))}
@@ -155,7 +159,7 @@ function FileRow({ file, onDownload, onUpdateTypes, onAddOrganism, onRemoveOrgan
       </td>
 
       {/* Collections */}
-      <td className="py-1.5 pr-3 overflow-hidden">
+      <td className="py-1.5 pr-3 align-top overflow-hidden">
         <ChipEditor
           colored
           items={file.collections.map(c => ({ id: c.id, label: c.name ?? '' }))}
@@ -171,7 +175,7 @@ function FileRow({ file, onDownload, onUpdateTypes, onAddOrganism, onRemoveOrgan
       </td>
 
       {/* Download */}
-      <td className="py-1.5 pr-3 align-top pt-2">
+      <td className="py-2 pr-3 align-top">
         <button
           onClick={() => onDownload(file.id)}
           className={iconAction({ color: 'dim', reveal: true })}
@@ -188,30 +192,48 @@ function FileRow({ file, onDownload, onUpdateTypes, onAddOrganism, onRemoveOrgan
 
 function SkeletonRow() {
   return (
-    <tr className="border-b border-line">
-      <td className="pl-3 pr-1 py-1.5 w-6 align-top pt-2.5">
-        <div className="concertina-warmup-line rounded-sm" style={{ width: 'var(--target-min-icon)', height: 'var(--target-min-icon)' }} />
-      </td>
-      <td className="py-1.5 pr-3">
-        <div className="flex items-center gap-2">
-          <div className="concertina-warmup-line rounded-sm shrink-0" style={{ width: 'var(--format-icon-size)', height: 'var(--format-icon-size)' }} />
-          <div className="flex flex-col gap-1 flex-1 min-w-0">
-            <div className="concertina-warmup-line concertina-warmup-line-long" />
-            <div className="concertina-warmup-line concertina-warmup-line-short" />
+    <Vamp loading>
+      <tr className="border-b border-line">
+        {/* Checkbox placeholder */}
+        <td className="pl-3 pr-1 py-2 w-6 align-top">
+          <div className="concertina-warmup-line rounded-sm" style={{ width: 'var(--target-min-icon)', height: 'var(--target-min-icon)' }} />
+        </td>
+
+        {/* File: icon shimmer + Hum filename + Hum size */}
+        <td className="py-2 pr-3 align-top">
+          <div className="flex items-start gap-2">
+            <div className="concertina-warmup-line rounded-sm shrink-0" style={{ width: 'var(--format-icon-size)', height: 'var(--format-icon-size)' }} />
+            <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+              <Hum className="font-mono block" style={{ fontSize: '0.75rem' }}>sequence_data_001.fastq.gz</Hum>
+              <Hum className="block" style={{ fontSize: '0.75rem' }}>8.2 MB</Hum>
+            </div>
           </div>
-        </div>
-      </td>
-      <td className="py-1.5 pr-3 align-top pt-2">
-        <div className="concertina-warmup-line concertina-warmup-line-short rounded-full" />
-      </td>
-      <td className="py-1.5 pr-3 align-top pt-2">
-        <div className="concertina-warmup-line concertina-warmup-line-short rounded-full" />
-      </td>
-      <td className="py-1.5 pr-3 align-top pt-2">
-        <div className="concertina-warmup-line concertina-warmup-line-short rounded-full" />
-      </td>
-      <td />
-    </tr>
+        </td>
+
+        {/* Status */}
+        <td className="py-2 pr-2 align-top">
+          <Hum className="text-body">ready</Hum>
+        </td>
+
+        {/* Time */}
+        <td className="py-2 pr-3 align-top">
+          <Hum className="text-body">2 hours ago</Hum>
+        </td>
+
+        {/* Organism / Type / Collections — pill shimmers */}
+        <td className="py-1.5 pr-3 align-top">
+          <div className="concertina-warmup-line concertina-warmup-line-short rounded-full" />
+        </td>
+        <td className="py-1.5 pr-3 align-top">
+          <div className="concertina-warmup-line concertina-warmup-line-short rounded-full" />
+        </td>
+        <td className="py-1.5 pr-3 align-top">
+          <div className="concertina-warmup-line concertina-warmup-line-short rounded-full" />
+        </td>
+
+        <td />
+      </tr>
+    </Vamp>
   );
 }
 
@@ -415,6 +437,8 @@ export default function FilesPage() {
                 />
               </th>
               <th className="py-1.5 pr-3"><Text variant="muted">File</Text></th>
+              <th className="py-1.5 pr-2 w-20"><Text variant="muted">Status</Text></th>
+              <th className="py-1.5 pr-3 w-28"><Text variant="muted">Uploaded</Text></th>
               <th className="py-1.5 pr-3 w-36"><Text variant="muted">Organism</Text></th>
               <th className="py-1.5 pr-3 w-28"><Text variant="muted">Type</Text></th>
               <th className="py-1.5 pr-3 w-44"><Text variant="muted">Collections</Text></th>
@@ -427,7 +451,7 @@ export default function FilesPage() {
               : files.length === 0
                 ? (
                   <tr>
-                    <td colSpan={6} className="py-12 text-center">
+                    <td colSpan={8} className="py-12 text-center">
                       <Text variant="body" className="text-fg-3">
                         {search || fmtFilter || filterType || orgFilter || filterCollectionId ? 'No files match your filters.' : 'No files yet. Upload some to get started.'}
                       </Text>

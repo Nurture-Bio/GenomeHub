@@ -145,6 +145,26 @@ export async function fetchS3Head(
   return Buffer.concat(chunks);
 }
 
+// ─── Fetch arbitrary byte range (for paginated preview) ─────
+
+export async function fetchS3Range(
+  s3Key: string,
+  startByte: number,
+  bytes: number,
+): Promise<Buffer> {
+  const cmd = new GetObjectCommand({
+    Bucket: BUCKET,
+    Key:    s3Key,
+    Range:  `bytes=${startByte}-${startByte + bytes - 1}`,
+  });
+  const res = await s3.send(cmd);
+  const chunks: Buffer[] = [];
+  for await (const chunk of res.Body as AsyncIterable<Buffer>) {
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
 // ─── Get full object ────────────────────────────────────────
 
 export async function getObject(s3Key: string): Promise<Buffer> {
