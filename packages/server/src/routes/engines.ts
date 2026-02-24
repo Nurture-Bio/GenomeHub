@@ -156,30 +156,31 @@ router.post('/:id/methods/:methodId', asyncWrap(async (req, res) => {
   }
   const { track_id: resultTrackId } = await methodRes.json() as { track_id: string };
 
-  // 4. Export result as BED
-  const exportRes = await fetch(
-    `${engine.url}/api/tracks/${resultTrackId}/export/bed`,
+  // 4. Fetch result as JSON
+  const dataRes = await fetch(
+    `${engine.url}/api/tracks/${resultTrackId}/data`,
     { signal: AbortSignal.timeout(30000) },
   );
-  if (!exportRes.ok) {
-    res.status(502).json({ error: `Result export failed: ${exportRes.status}` });
+  if (!dataRes.ok) {
+    res.status(502).json({ error: `Result fetch failed: ${dataRes.status}` });
     return;
   }
-  const resultBytes = Buffer.from(await exportRes.arrayBuffer());
+  const resultData = await dataRes.json();
+  const resultBytes = Buffer.from(JSON.stringify(resultData, null, 2));
 
   // 5. Create GenomicFile record, upload to S3, create provenance edges
   const resultFileId = randomUUID();
-  const filename = `${methodId}_result.bed`;
+  const filename = `${methodId}_result.json`;
   const s3Key = buildS3Key(resultFileId, filename);
 
-  await putObject(s3Key, resultBytes, 'text/tab-separated-values');
+  await putObject(s3Key, resultBytes, 'application/json');
 
   const resultFile = fileRepo.create({
     id:         resultFileId,
     filename,
     s3Key,
     sizeBytes:  resultBytes.length,
-    format:     'bed',
+    format:     'json',
     type:       ['derived'],
     status:     'ready',
     description: `${engine.name} ${methodId} result`,
