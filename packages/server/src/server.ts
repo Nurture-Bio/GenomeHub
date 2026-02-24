@@ -18,7 +18,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import rateLimit from 'express-rate-limit';
 import { AppDataSource } from './app_data.js';
-import { Technique } from './entities/index.js';
+import { Technique, Engine } from './entities/index.js';
 import { resolveUser } from './routes/auth.js';
 // Route modules
 import authRoutes from './routes/auth.js';
@@ -171,10 +171,21 @@ async function seedTechniques() {
   console.log(`Seeded ${defaults.length} techniques`);
 }
 
+async function seedEngines() {
+  const SEQCHAIN_URL = process.env.SEQCHAIN_URL;
+  if (!SEQCHAIN_URL) return;
+  const repo = AppDataSource.getRepository(Engine);
+  const existing = await repo.findOneBy({ name: 'SeqChain' });
+  if (existing) return;
+  await repo.save(repo.create({ name: 'SeqChain', url: SEQCHAIN_URL }));
+  console.log(`Seeded engine: SeqChain at ${SEQCHAIN_URL}`);
+}
+
 async function main() {
   await AppDataSource.initialize();
   await runSqlMigrations();
   await seedTechniques();
+  await seedEngines();
   console.log('Database connected');
 
   server.listen(PORT, () => {

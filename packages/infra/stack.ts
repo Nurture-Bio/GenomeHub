@@ -183,7 +183,7 @@ export class GenomeHubStack extends cdk.Stack {
     taskDef.addContainer('seqchain', {
       // To use a pre-built image from ECR instead:
       //   image: ecs.ContainerImage.fromEcrRepository(repo, 'latest'),
-      image: ecs.ContainerImage.fromAsset('../../SeqChain', {
+      image: ecs.ContainerImage.fromAsset('../../../SeqChain', {
         file: 'Dockerfile.api',
       }),
       portMappings: [{ containerPort: 8001 }],
