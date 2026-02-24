@@ -9,8 +9,6 @@ import {
   useCreateRelationTypeMutation,
   useCreateFileTypeMutation,
 } from '../hooks/useGenomicQueries';
-import { useAppStore } from '../stores/useAppStore';
-
 // ── Shared helpers ───────────────────────────────────────
 
 interface PickerBaseProps {
@@ -25,17 +23,6 @@ interface PickerBaseProps {
   trigger?: ReactNode;
 }
 
-function useRecent(kind: 'collections') {
-  return useAppStore(s => s.recentSelections[kind]);
-}
-
-function useTrackSelection(kind: 'collections') {
-  const add = useAppStore(s => s.addRecentSelection);
-  return (id: string) => {
-    if (id) add(kind, id);
-  };
-}
-
 // ── CollectionPicker ────────────────────────────────────
 
 interface CollectionPickerProps extends PickerBaseProps {
@@ -47,8 +34,6 @@ export function CollectionPicker({ value, onValueChange, type, placeholder = 'Co
     type ? { type } : undefined,
   );
   const { createCollection } = useCreateCollectionMutation();
-  const recentIds = useRecent('collections');
-  const track = useTrackSelection('collections');
 
   const items = useMemo(() => {
     if (overrideItems) return overrideItems;
@@ -62,7 +47,6 @@ export function CollectionPicker({ value, onValueChange, type, placeholder = 'Co
   const handleCreate = async (name: string) => {
     try {
       const created = await createCollection({ name });
-      track(created.id);
       onValueChange(created.id);
     } catch { /* toast already shown */ }
   };
@@ -71,9 +55,8 @@ export function CollectionPicker({ value, onValueChange, type, placeholder = 'Co
     <ComboBox
       items={items}
       value={value}
-      onValueChange={id => { track(id); onValueChange(id); }}
+      onValueChange={onValueChange}
       placeholder={placeholder}
-      recentIds={recentIds}
       loading={!overrideItems && isLoading}
       onCreate={handleCreate}
       {...rest}
