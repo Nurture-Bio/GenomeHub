@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto';
 import { AppDataSource } from '../app_data.js';
 import { Engine, GenomicFile, User } from '../entities/index.js';
 import { asyncWrap } from '../lib/async_wrap.js';
-import { presignReadUrl, presignUploadUrl, headObject, buildS3Key } from '../lib/s3.js';
+import { getObject, putObject, buildS3Key } from '../lib/s3.js';
 import * as edges from '../lib/edge_service.js';
 
 const router = Router();
@@ -100,7 +100,7 @@ router.post('/:id/methods/:methodId', asyncWrap(async (req, res) => {
     parameters: { name: string; type: string; required: boolean }[];
   };
 
-  // 2. For each file param: generate a presigned download URL
+  // 2. For each file param: download from S3, upload to engine
   const dispatchBody: Record<string, string> = {};
   const inputFileIds: string[] = [];
 
@@ -113,48 +113,73 @@ router.post('/:id/methods/:methodId', asyncWrap(async (req, res) => {
     if (value === undefined) continue;
 
     if (param.type === 'file') {
+      // value is a GenomicFile ID — download bytes, forward to engine
       const file = await fileRepo.findOneBy({ id: value });
       if (!file) {
         res.status(404).json({ error: `File ${value} not found` });
         return;
       }
       inputFileIds.push(file.id);
-      // Engine gets a presigned URL to download directly from S3
-      dispatchBody[param.name] = await presignReadUrl(file.s3Key);
+
+      const bytes = await getObject(file.s3Key);
+      const form = new FormData();
+      form.append('file', new Blob([new Uint8Array(bytes)]), file.filename);
+
+      const uploadRes = await fetch(`${engine.url}/api/files/upload`, {
+        method: 'POST',
+        body: form,
+        signal: AbortSignal.timeout(30000),
+      });
+      if (!uploadRes.ok) {
+        const errBody = await uploadRes.text();
+        res.status(502).json({ error: `Engine upload failed: ${errBody}` });
+        return;
+      }
+      const { id: engineFileId } = await uploadRes.json() as { id: string };
+      dispatchBody[param.name] = engineFileId;
     } else {
       dispatchBody[param.name] = value;
     }
   }
 
-  // 3. Create result record + presigned upload URL for the engine
-  const resultFileId = randomUUID();
-  const filename = `${methodId}_result.json`;
-  const s3Key = buildS3Key(resultFileId, filename);
-  const resultUploadUrl = await presignUploadUrl(s3Key, 'application/json');
-
-  // 4. Dispatch — engine downloads inputs from S3, uploads result to S3
+  // 3. Call the method on the engine
   const methodRes = await fetch(`${engine.url}/api/methods/${methodId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      ...dispatchBody,
-      _result_upload_url: resultUploadUrl,
-    }),
-    signal: AbortSignal.timeout(120000),
+    body: JSON.stringify(dispatchBody),
+    signal: AbortSignal.timeout(60000),
   });
   if (!methodRes.ok) {
     const errBody = await methodRes.text();
     res.status(502).json({ error: `Method execution failed: ${errBody}` });
     return;
   }
+  const { id: engineResultId } = await methodRes.json() as { id: string };
 
-  // 5. Verify the engine wrote the result, create GenomicFile record
-  const head = await headObject(s3Key);
+  // 4. Fetch result as JSON
+  const dataRes = await fetch(
+    `${engine.url}/api/tracks/${engineResultId}/data`,
+    { signal: AbortSignal.timeout(30000) },
+  );
+  if (!dataRes.ok) {
+    res.status(502).json({ error: `Result fetch failed: ${dataRes.status}` });
+    return;
+  }
+  const resultData = await dataRes.json();
+  const resultBytes = Buffer.from(JSON.stringify(resultData, null, 2));
+
+  // 5. Create GenomicFile record, upload to S3, create provenance edges
+  const resultFileId = randomUUID();
+  const filename = `${methodId}_result.json`;
+  const s3Key = buildS3Key(resultFileId, filename);
+
+  await putObject(s3Key, resultBytes, 'application/json');
+
   const resultFile = fileRepo.create({
     id:         resultFileId,
     filename,
     s3Key,
-    sizeBytes:  Number(head.ContentLength ?? 0),
+    sizeBytes:  resultBytes.length,
     format:     'json',
     type:       ['derived'],
     status:     'ready',

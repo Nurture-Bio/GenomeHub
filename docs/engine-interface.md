@@ -1,6 +1,6 @@
 # Engine ↔ GenomeHub Interface
 
-How GenomeHub talks to engines. This is the full contract — engines implement these endpoints, GenomeHub orchestrates the data flow. Engines deploy independently and never touch S3 or AWS. GenomeHub proxies all file data.
+How GenomeHub talks to engines. This is the full contract — engines implement these endpoints, GenomeHub orchestrates the data flow.
 
 ## Engine endpoints (what the engine exposes)
 
@@ -44,37 +44,42 @@ Returns an array of method schemas. GenomeHub builds UI from this.
 
 Only two:
 
-| Type     | What GenomeHub sends                                   |
+| Type     | What GenomeHub does                                    |
 | -------- | ------------------------------------------------------ |
-| `file`   | A presigned S3 download URL. The engine fetches the file directly from S3 — no proxy, no double transfer. |
-| `string` | Plain value passed through as-is.                      |
+| `file`   | Downloads the file from S3, uploads it to the engine via `POST /api/files/upload`. Sends the engine's returned `id` in the dispatch body. |
+| `string` | Passes the value through as-is.                        |
 
 The `accept` array on file params filters the file picker by format (e.g. `["json", "bed"]`). Omit to accept any file.
 
 GenomeHub doesn't know or care what the engine does with the file — track, genome, annotation, whatever. That's the engine's problem.
 
+### `POST /api/files/upload`
+Multipart form upload. Single field: `file`.
+
+Returns:
+```json
+{"id": "uuid"}
+```
+
 ### `GET /api/methods/:id`
 Returns the schema for a single method (same shape as an element of the array above). Used by the server to discover parameter types before dispatch.
 
 ### `POST /api/methods/:id`
-Execute a method. Body keys match parameter names. File params are presigned S3 download URLs. String params are plain values. An additional `_result_upload_url` field contains a presigned S3 upload URL where the engine must PUT the result.
+Execute a method. Body keys match parameter names, values are engine file IDs (from upload) or strings.
 
 ```json
-{
-  "query": "https://s3.amazonaws.com/bucket/key?X-Amz-...",
-  "reference": "https://s3.amazonaws.com/bucket/key?X-Amz-...",
-  "name_tag": "feature_type",
-  "_result_upload_url": "https://s3.amazonaws.com/bucket/key?X-Amz-..."
-}
+{"query": "engine-file-id", "reference": "engine-file-id", "name_tag": "feature_type"}
 ```
 
-The engine:
-1. Downloads input files from the presigned URLs
-2. Runs the analysis
-3. PUTs the result to `_result_upload_url`
-4. Returns `200 OK`
+Returns:
+```json
+{"id": "uuid"}
+```
 
-No data flows through GenomeHub. Bytes go directly between S3 and the engine.
+The returned `id` is an engine-side file ID for the result.
+
+### `GET /api/tracks/:id/data`
+Returns the result data as JSON. GenomeHub downloads this, stores it as a new file in S3.
 
 ## GenomeHub dispatch flow
 
@@ -83,23 +88,21 @@ User clicks "Run" in EnginePanel
         │
         ▼
   For each file param:
-    Generate presigned S3 download URL
-        │
-        ▼
-  Create result record + presigned S3 upload URL
+    1. Download file bytes from S3
+    2. POST to engine /api/files/upload
+    3. Get back {id}
         │
         ▼
   POST /api/methods/:methodId
-    body: {paramName: presignedDownloadUrl, ..., _result_upload_url: presignedUploadUrl}
+    body: {paramName: engineFileId, ...}
+    response: {id}
         │
         ▼
-  Engine downloads inputs directly from S3
-  Engine runs analysis
-  Engine PUTs result directly to S3
-  Engine returns 200 OK
+  GET /api/tracks/:id/data
+    Download result JSON
         │
         ▼
-  Verify result in S3 (HEAD)
+  Store result as new GenomicFile in S3
   Create provenance edges (result → inputs)
   Return {fileId, filename} to client
 ```

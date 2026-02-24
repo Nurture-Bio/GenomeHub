@@ -121,7 +121,6 @@ export class GenomeHubStack extends cdk.Stack {
     const cluster = new ecs.Cluster(this, 'Cluster', {
       vpc,
       containerInsights: true,
-      defaultCloudMapNamespace: { name: 'genomehub.local' },
     });
 
     // ── Task IAM role ──────────────────────────────────────
@@ -139,7 +138,7 @@ export class GenomeHubStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
-    // ── Task definition ────────────────────────────────────
+    // ── Task definition (two containers: GenomeHub + SeqChain) ─
 
     const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
       cpu:            1024,
@@ -163,11 +162,37 @@ export class GenomeHubStack extends cdk.Stack {
         AWS_REGION:       this.region,
         S3_BUCKET:        bucket.bucketName,
         GOOGLE_CLIENT_ID: '631098657995-b6gm7u609caa7si5h8ep3tj1cf8m9in2.apps.googleusercontent.com',
+        SEQCHAIN_URL:     'http://localhost:8001',
       },
       secrets: {
         DATABASE_URL: ecs.Secret.fromSecretsManager(db.secret!),
       },
       essential: true,
+    });
+
+    // SeqChain container — Python analysis engine (sidecar)
+    // Shares the task's network namespace, so GenomeHub reaches it
+    // at localhost:8001. Shares the task IAM role, so it gets S3
+    // access automatically. No ALB routing — internal only.
+    const seqchainLogGroup = new logs.LogGroup(this, 'SeqChainLogs', {
+      logGroupName:  '/genome-hub/seqchain',
+      retention:     logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    taskDef.addContainer('seqchain', {
+      // To use a pre-built image from ECR instead:
+      //   image: ecs.ContainerImage.fromEcrRepository(repo, 'latest'),
+      image: ecs.ContainerImage.fromAsset('../../../SeqChain', {
+        file: 'Dockerfile.api',
+      }),
+      portMappings: [{ containerPort: 8001 }],
+      logging: ecs.LogDrivers.awsLogs({ logGroup: seqchainLogGroup, streamPrefix: 'seqchain' }),
+      environment: {
+        AWS_REGION: this.region,
+        S3_BUCKET:  bucket.bucketName,
+      },
+      essential: false,  // GenomeHub runs fine without analysis engine
     });
 
     // ── Fargate service ────────────────────────────────────
@@ -243,25 +268,6 @@ export class GenomeHubStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'LoadBalancerDns', {
       value: service.loadBalancer.loadBalancerDnsName,
       description: 'ALB DNS (for health checks / direct access)',
-    });
-
-    // Exports for engine stacks to import
-    new cdk.CfnOutput(this, 'VpcId', {
-      value: vpc.vpcId,
-      exportName: 'GenomeHub-VpcId',
-      description: 'VPC ID — engines deploy into this VPC for free S3 transfer',
-    });
-
-    new cdk.CfnOutput(this, 'ClusterArn', {
-      value: cluster.clusterArn,
-      exportName: 'GenomeHub-ClusterArn',
-      description: 'ECS cluster ARN — engines can join this cluster',
-    });
-
-    new cdk.CfnOutput(this, 'CloudMapNamespaceId', {
-      value: cluster.defaultCloudMapNamespace!.namespaceId,
-      exportName: 'GenomeHub-CloudMapNamespaceId',
-      description: 'Cloud Map namespace — engines register here for DNS discovery',
     });
   }
 }

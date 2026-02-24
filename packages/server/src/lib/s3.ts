@@ -119,32 +119,6 @@ export async function presignDownloadUrl(
   return getSignedUrl(s3, cmd, { expiresIn });
 }
 
-// ─── Presigned upload URL (for engines to write results) ──
-
-export async function presignUploadUrl(
-  s3Key:       string,
-  contentType: string,
-  expiresIn = 3600,
-): Promise<string> {
-  const cmd = new PutObjectCommand({
-    Bucket:              BUCKET,
-    Key:                 s3Key,
-    ContentType:         contentType,
-    ServerSideEncryption: 'AES256',
-  });
-  return getSignedUrl(s3, cmd, { expiresIn });
-}
-
-// ─── Presigned read URL (no content-disposition, for engines) ──
-
-export async function presignReadUrl(
-  s3Key:    string,
-  expiresIn = 3600,
-): Promise<string> {
-  const cmd = new GetObjectCommand({ Bucket: BUCKET, Key: s3Key });
-  return getSignedUrl(s3, cmd, { expiresIn });
-}
-
 // ─── Head object (verify after upload) ────────────────────
 
 export async function headObject(s3Key: string) {
