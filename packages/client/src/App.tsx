@@ -215,33 +215,70 @@ function EngineMethodDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const { data: methods, isLoading } = useEngineMethodsQuery(open ? engine.id : undefined);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = methods?.find(m => m.id === selectedId) ?? null;
+
+  const handleClose = (o: boolean) => {
+    if (!o) setSelectedId(null);
+    onOpenChange(o);
+  };
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    <Dialog.Root open={open} onOpenChange={handleClose}>
       <Dialog.Portal>
         <Dialog.Overlay className={modalOverlay()} />
         <Dialog.Content
           className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-modal
                      bg-elevated border border-line rounded-lg shadow-lg
                      p-3 w-full max-w-embed mx-2 max-h-[80vh] overflow-y-auto animate-fade-in"
-          onPointerDownOutside={() => onOpenChange(false)}
+          onPointerDownOutside={() => handleClose(false)}
         >
           <Dialog.Title asChild>
             <Heading level="subheading" className="mb-1">{engine.name}</Heading>
           </Dialog.Title>
-          <Dialog.Description asChild>
-            <Text variant="dim">Available methods from this engine</Text>
-          </Dialog.Description>
 
           {isLoading && <Text variant="dim" className="py-3">Loading methods...</Text>}
 
-          {methods?.length === 0 && (
+          {!isLoading && methods?.length === 0 && (
             <Text variant="dim" className="py-3">No methods available</Text>
           )}
 
-          {methods?.map(m => (
-            <MethodForm key={m.id} engineId={engine.id} method={m} />
-          ))}
+          {selected ? (
+            <>
+              <button
+                onClick={() => setSelectedId(null)}
+                className="flex items-center gap-1 bg-transparent border-none cursor-pointer p-0 mb-2 text-fg-3 hover:text-cyan transition-colors duration-fast font-sans text-body"
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" className="shrink-0">
+                  <path d="M8 2L4 6l4 4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                All methods
+              </button>
+              <MethodForm engineId={engine.id} method={selected} />
+            </>
+          ) : (
+            methods && methods.length > 0 && (
+              <>
+                <Dialog.Description asChild>
+                  <Text variant="dim" className="mb-2">Select a method to run</Text>
+                </Dialog.Description>
+                <div className="flex flex-col gap-0.5">
+                  {methods.map(m => (
+                    <button
+                      key={m.id}
+                      onClick={() => setSelectedId(m.id)}
+                      className="flex flex-col gap-0.5 p-2 rounded-sm bg-transparent border border-line cursor-pointer
+                                 hover:border-cyan hover:bg-base transition-colors duration-fast text-left"
+                    >
+                      <Text variant="body" className="font-semibold">{m.name}</Text>
+                      <Text variant="dim" as="div">{m.description}</Text>
+                      <Text variant="dim" className="text-fg-3">{m.parameters.length} parameter{m.parameters.length !== 1 ? 's' : ''}</Text>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )
+          )}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
