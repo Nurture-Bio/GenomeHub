@@ -12,6 +12,7 @@
   /* ── Typography — DM Sans only, 2 sizes ──────────────── */
 
   --font-size-*: initial;
+  --font-size-sm:   0.75rem;      /* 12px */
   --font-size-body: 0.875rem;     /* 14px */
   --font-size-heading: 1.125rem;  /* 18px */
 

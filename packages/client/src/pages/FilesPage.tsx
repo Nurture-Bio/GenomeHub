@@ -113,11 +113,11 @@ function FileRow({ file, onDownload, onUpdateTypes, onAddOrganism, onRemoveOrgan
           <FormatIcon filename={file.filename} format={file.format} />
           <div className="min-w-0 flex-1">
             <Link to={`/files/${file.id}`} className="no-underline">
-              <Text variant="mono" className="truncate block hover:text-cyan transition-colors duration-fast" style={{ fontSize: '0.75rem' }}>
+              <span className="font-mono text-sm text-fg tabular-nums truncate block hover:text-cyan transition-colors duration-fast">
                 {file.filename}
-              </Text>
+              </span>
             </Link>
-            <Text variant="dim" style={{ fontSize: '0.75rem' }}>{formatBytes(file.sizeBytes)}</Text>
+            <span className="text-sm text-fg-2">{formatBytes(file.sizeBytes)}</span>
           </div>
         </div>
       </td>
@@ -204,8 +204,8 @@ function SkeletonRow() {
           <div className="flex items-start gap-2">
             <div className="concertina-warmup-line rounded-sm shrink-0" style={{ width: 'var(--format-icon-size)', height: 'var(--format-icon-size)' }} />
             <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-              <Hum className="font-mono block" style={{ fontSize: '0.75rem' }}>sequence_data_001.fastq.gz</Hum>
-              <Hum className="block" style={{ fontSize: '0.75rem' }}>8.2 MB</Hum>
+              <Hum className="font-mono text-sm block">sequence_data_001.fastq.gz</Hum>
+              <Hum className="text-sm block">8.2 MB</Hum>
             </div>
           </div>
         </td>
