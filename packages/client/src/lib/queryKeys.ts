@@ -34,5 +34,6 @@ export const queryKeys = {
   },
   engines: {
     all: ['engines'] as const,
+    methods: (engineId: string) => ['engines', 'methods', engineId] as const,
   },
 };

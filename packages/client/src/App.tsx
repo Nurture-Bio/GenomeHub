@@ -3,10 +3,17 @@ import { useState } from 'react';
 import { Routes, Route, NavLink, Navigate, useParams } from 'react-router-dom';
 import * as Dialog from '@radix-ui/react-dialog';
 import { cx } from 'class-variance-authority';
-import { navLink, statusDot } from './ui/recipes';
-import { Text, Heading, iconAction } from './ui';
+import { navLink, statusDot, button, input, modalOverlay, modalCard } from './ui/recipes';
+import { Text, Heading, iconAction, ComboBox } from './ui';
+import type { ComboBoxItem } from './ui';
 import { useAuth } from './hooks/useAuth';
-import { useEnginesQuery } from './hooks/useGenomicQueries';
+import {
+  useEnginesQuery,
+  useEngineMethodsQuery,
+  useRunMethodMutation,
+  useFilesQuery,
+} from './hooks/useGenomicQueries';
+import type { EngineMethod, EngineStatus } from './hooks/useGenomicQueries';
 import LoginPage            from './pages/LoginPage';
 import DashboardPage        from './pages/DashboardPage';
 import FilesPage            from './pages/FilesPage';
@@ -137,20 +144,140 @@ function SidebarNav({ onNavClick }: { onNavClick?: () => void }) {
   );
 }
 
+// ── Schema-driven method form ─────────────────────────────
+
+function MethodForm({ engineId, method }: { engineId: string; method: EngineMethod }) {
+  const { data: files } = useFilesQuery();
+  const { runMethod, pending } = useRunMethodMutation();
+  const [params, setParams] = useState<Record<string, string>>({});
+
+  const fileItems: ComboBoxItem[] = (files ?? [])
+    .filter(f => f.status === 'ready')
+    .map(f => ({ id: f.id, label: f.filename, description: f.format }));
+
+  const allRequiredFilled = method.parameters
+    .filter(p => p.required)
+    .every(p => params[p.name]);
+
+  const handleRun = () => {
+    runMethod({ engineId, methodId: method.id, params });
+  };
+
+  return (
+    <div className="flex flex-col gap-2 py-2 border-t border-line">
+      <div>
+        <Text variant="body" className="font-semibold">{method.name}</Text>
+        <Text variant="dim" as="div" className="mt-0.5">{method.description}</Text>
+      </div>
+
+      {method.parameters.map(p => (
+        <div key={p.name} className="flex flex-col gap-0.5">
+          <Text variant="muted">{p.name.replace(/_/g, ' ')}{p.required ? '' : ' (optional)'}</Text>
+          {p.type === 'track' ? (
+            <ComboBox
+              items={fileItems}
+              value={params[p.name] ?? ''}
+              onValueChange={v => setParams(prev => ({ ...prev, [p.name]: v }))}
+              placeholder={p.description}
+              size="sm"
+            />
+          ) : (
+            <input
+              className={input({ variant: 'default', size: 'sm' })}
+              placeholder={p.default ?? p.description}
+              value={params[p.name] ?? ''}
+              onChange={e => setParams(prev => ({ ...prev, [p.name]: e.target.value }))}
+            />
+          )}
+        </div>
+      ))}
+
+      <button
+        className={cx(button({ intent: 'primary', size: 'sm', pending }), 'mt-1')}
+        disabled={!allRequiredFilled || pending}
+        onClick={handleRun}
+      >
+        {pending ? 'Running...' : 'Run'}
+      </button>
+    </div>
+  );
+}
+
+// ── Engine method dialog ──────────────────────────────────
+
+function EngineMethodDialog({
+  engine,
+  open,
+  onOpenChange,
+}: {
+  engine: EngineStatus;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { data: methods, isLoading } = useEngineMethodsQuery(open ? engine.id : undefined);
+
+  return (
+    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+      <Dialog.Portal>
+        <Dialog.Overlay className={modalOverlay()} />
+        <Dialog.Content
+          className={cx(modalCard(), 'max-h-[80vh] overflow-y-auto')}
+          onPointerDownOutside={() => onOpenChange(false)}
+        >
+          <Dialog.Title asChild>
+            <Heading level="subheading" className="mb-1">{engine.name}</Heading>
+          </Dialog.Title>
+          <Dialog.Description asChild>
+            <Text variant="dim">Available methods from this engine</Text>
+          </Dialog.Description>
+
+          {isLoading && <Text variant="dim" className="py-3">Loading methods...</Text>}
+
+          {methods?.length === 0 && (
+            <Text variant="dim" className="py-3">No methods available</Text>
+          )}
+
+          {methods?.map(m => (
+            <MethodForm key={m.id} engineId={engine.id} method={m} />
+          ))}
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+// ── Engine list (interactive) ─────────────────────────────
+
 function EngineList() {
   const { data: engines } = useEnginesQuery();
   const running = engines?.filter(e => e.status === 'ok');
+  const [selectedEngine, setSelectedEngine] = useState<EngineStatus | null>(null);
+
   if (!running?.length) return null;
   return (
-    <div className="flex flex-col gap-0.5 px-3 py-1.5 border-t border-line">
-      <Text variant="muted">Engines</Text>
-      {running.map(e => (
-        <div key={e.name} className="flex items-center gap-1.5">
-          <div className={statusDot({ status: 'connected', size: 'sm' })} />
-          <Text variant="dim">{e.name}</Text>
-        </div>
-      ))}
-    </div>
+    <>
+      <div className="flex flex-col gap-0.5 px-3 py-1.5 border-t border-line">
+        <Text variant="muted">Engines</Text>
+        {running.map(e => (
+          <button
+            key={e.id}
+            onClick={() => setSelectedEngine(e)}
+            className="flex items-center gap-1.5 bg-transparent border-none cursor-pointer p-0 text-left hover:opacity-80 transition-opacity"
+          >
+            <div className={statusDot({ status: 'connected', size: 'sm' })} />
+            <Text variant="dim">{e.name}</Text>
+          </button>
+        ))}
+      </div>
+
+      {selectedEngine && (
+        <EngineMethodDialog
+          engine={selectedEngine}
+          open={!!selectedEngine}
+          onOpenChange={open => { if (!open) setSelectedEngine(null); }}
+        />
+      )}
+    </>
   );
 }
 

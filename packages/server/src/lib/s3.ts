@@ -21,6 +21,7 @@ import {
 import {
   UploadPartCommand,
   GetObjectCommand,
+  PutObjectCommand,
 } from '@aws-sdk/client-s3';
 
 // ─── Client ────────────────────────────────────────────────
@@ -142,6 +143,34 @@ export async function fetchS3Head(
     chunks.push(chunk);
   }
   return Buffer.concat(chunks);
+}
+
+// ─── Get full object ────────────────────────────────────────
+
+export async function getObject(s3Key: string): Promise<Buffer> {
+  const cmd = new GetObjectCommand({ Bucket: BUCKET, Key: s3Key });
+  const res = await s3.send(cmd);
+  const chunks: Buffer[] = [];
+  for await (const chunk of res.Body as AsyncIterable<Buffer>) {
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
+// ─── Put object ─────────────────────────────────────────────
+
+export async function putObject(
+  s3Key:       string,
+  body:        Buffer,
+  contentType: string,
+): Promise<void> {
+  await s3.send(new PutObjectCommand({
+    Bucket:              BUCKET,
+    Key:                 s3Key,
+    Body:                body,
+    ContentType:         contentType,
+    ServerSideEncryption: 'AES256',
+  }));
 }
 
 // ─── S3 key builder ────────────────────────────────────────

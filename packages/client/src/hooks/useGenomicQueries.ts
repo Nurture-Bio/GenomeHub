@@ -996,6 +996,22 @@ export interface EngineStatus {
   createdAt: string;
 }
 
+export interface EngineMethodParam {
+  name:         string;
+  type:         string;
+  required:     boolean;
+  description:  string;
+  default?:     string;
+}
+
+export interface EngineMethod {
+  id:          string;
+  name:        string;
+  description: string;
+  parameters:  EngineMethodParam[];
+  returns:     { type: string; fields: string[]; description: string };
+}
+
 export function useEnginesQuery() {
   return useQuery({
     queryKey: queryKeys.engines.all,
@@ -1054,4 +1070,39 @@ export function useDeleteEngineMutation() {
     onError: () => toast.error('Delete failed'),
   });
   return { deleteEngine: mutation.mutateAsync, pending: mutation.isPending };
+}
+
+export function useEngineMethodsQuery(engineId?: string) {
+  return useQuery({
+    queryKey: queryKeys.engines.methods(engineId!),
+    queryFn: () => fetchApi<EngineMethod[]>(`/api/engines/${engineId}/methods`),
+    enabled: !!engineId,
+    staleTime: 60_000,
+  });
+}
+
+export function useRunMethodMutation() {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: ({ engineId, methodId, params }: {
+      engineId: string;
+      methodId: string;
+      params: Record<string, string>;
+    }) =>
+      mutateApi<{ fileId: string; filename: string }>(
+        `/api/engines/${engineId}/methods/${methodId}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(params),
+        },
+      ),
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: queryKeys.files.all });
+      qc.invalidateQueries({ queryKey: queryKeys.stats.storage });
+      toast.success(`Result: ${result?.filename ?? 'done'}`);
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Method failed'),
+  });
+  return { runMethod: mutation.mutateAsync, pending: mutation.isPending };
 }
