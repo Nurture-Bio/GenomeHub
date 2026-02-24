@@ -2,7 +2,7 @@ import type { GenomicFile } from "../hooks/useGenomicQueries";
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { cx } from 'class-variance-authority';
-import { Gigbag, Vamp, Hum } from 'concertina';
+import { Gigbag, Vamp, Hum, WarmupLine } from 'concertina';
 import {
   useFilesQuery, useDeleteFileMutation, useUpdateFileMutation,
   usePresignedUrl, useAddFilesToCollection, useRemoveFilesFromCollection,
@@ -194,15 +194,15 @@ function SkeletonRow() {
   return (
     <Vamp loading>
       <tr className="border-b border-line">
-        {/* Checkbox placeholder */}
+        {/* Checkbox */}
         <td className="pl-3 pr-1 py-2 w-6 align-top">
-          <div className="concertina-warmup-line rounded-sm" style={{ width: 'var(--target-min-icon)', height: 'var(--target-min-icon)' }} />
+          <div className="skeleton skel-check" />
         </td>
 
-        {/* File: icon shimmer + Hum filename + Hum size */}
+        {/* File: icon + name + size */}
         <td className="py-2 pr-3 align-top">
           <div className="flex items-start gap-2">
-            <div className="concertina-warmup-line rounded-sm shrink-0" style={{ width: 'var(--format-icon-size)', height: 'var(--format-icon-size)' }} />
+            <div className="skeleton skel-format-icon shrink-0" />
             <div className="flex flex-col gap-0.5 flex-1 min-w-0">
               <Hum className="font-mono text-sm block">sequence_data_001.fastq.gz</Hum>
               <Hum className="text-sm block">8.2 MB</Hum>
@@ -217,18 +217,18 @@ function SkeletonRow() {
 
         {/* Time */}
         <td className="py-2 pr-3 align-top">
-          <Hum className="text-body">2 hours ago</Hum>
+          <Hum className="text-body whitespace-nowrap">2 hours ago</Hum>
         </td>
 
-        {/* Organism / Type / Collections — pill shimmers */}
+        {/* Organism / Type / Collections — pill Hums sized to realistic ghost labels */}
         <td className="py-1.5 pr-3 align-top">
-          <div className="concertina-warmup-line concertina-warmup-line-short rounded-full" />
+          <Hum className="rounded-full">H. sapiens</Hum>
         </td>
         <td className="py-1.5 pr-3 align-top">
-          <div className="concertina-warmup-line concertina-warmup-line-short rounded-full" />
+          <Hum className="rounded-full">Annotation</Hum>
         </td>
         <td className="py-1.5 pr-3 align-top">
-          <div className="concertina-warmup-line concertina-warmup-line-short rounded-full" />
+          <Hum className="rounded-full">Reference set</Hum>
         </td>
 
         <td />
@@ -243,14 +243,14 @@ function SkeletonCard() {
   return (
     <Card className="p-2.5 flex flex-col gap-1.5">
       <div className="flex items-center gap-2">
-        <div className="concertina-warmup-line rounded-sm" style={{ width: 'var(--target-min-icon)', height: 'var(--target-min-icon)' }} />
-        <div className="concertina-warmup-line rounded-sm shrink-0" style={{ width: 'var(--format-icon-size)', height: 'var(--format-icon-size)' }} />
-        <div className="concertina-warmup-line concertina-warmup-line-long flex-1" />
+        <div className="skeleton skel-check" />
+        <div className="skeleton skel-format-icon shrink-0" />
+        <WarmupLine className="flex-1" />
       </div>
       <div className="flex gap-2 pl-11">
-        <div className="concertina-warmup-line concertina-warmup-line-short flex-1" />
-        <div className="concertina-warmup-line concertina-warmup-line-short rounded-full flex-1" />
-        <div className="concertina-warmup-line concertina-warmup-line-short flex-1" />
+        <WarmupLine className="flex-1" />
+        <WarmupLine className="rounded-full flex-1" />
+        <WarmupLine className="flex-1" />
       </div>
     </Card>
   );

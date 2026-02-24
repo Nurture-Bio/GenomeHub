@@ -608,6 +608,16 @@
   font-size: calc(var(--format-icon-size) * 0.28);
   letter-spacing: -0.02em;
 }
+/* Shimmer placeholders for fixed-size icon elements.
+   Compose with .skeleton for the shimmer background. */
+.skel-format-icon {
+  width:  var(--format-icon-size);
+  height: var(--format-icon-size);
+}
+.skel-check {
+  width:  var(--target-min-icon);
+  height: var(--target-min-icon);
+}
 .skeleton {
   border-radius: var(--concertina-warmup-line-radius);
   background: linear-gradient(
