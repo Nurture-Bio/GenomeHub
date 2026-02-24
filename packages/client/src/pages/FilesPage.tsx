@@ -2,7 +2,7 @@ import type { GenomicFile } from "../hooks/useGenomicQueries";
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { cx } from 'class-variance-authority';
-import { Gigbag, Vamp, Hum, WarmupLine } from 'concertina';
+import { Gigbag, Vamp, Hum, useVamp } from 'concertina';
 import {
   useFilesQuery, useDeleteFileMutation, useUpdateFileMutation,
   usePresignedUrl, useAddFilesToCollection, useRemoveFilesFromCollection,
@@ -28,6 +28,25 @@ function FormatIcon({ filename, format, className }: { filename: string; format?
   );
 }
 
+// ── Stub rows for Vamp warmup ────────────────────────────
+
+const STUB_FILES: GenomicFile[] = [
+  'sequence_data_001.fastq.gz',
+  'genome_assembly.fa.gz',
+  'gene_annotations.gff3',
+  'variants_filtered.vcf.gz',
+  'methylation_calls.bedGraph',
+  'rna_counts_matrix.tsv',
+  'aligned_reads.bam',
+  'peak_calls.narrowPeak',
+].map((filename, i) => ({
+  id: `__stub_${i}`, filename, s3Key: '',
+  sizeBytes: 8_600_000, format: detectFormat(filename),
+  types: [], md5: null, status: 'ready' as const,
+  uploadedAt: new Date(0).toISOString(),
+  description: null, tags: [], organisms: [], collections: [], uploadedBy: null,
+}));
+
 // ── Mobile file card ────────────────────────────────────
 
 interface FileCardProps {
@@ -38,41 +57,50 @@ interface FileCardProps {
 }
 
 function FileCard({ file, onDownload, selected, onSelect }: FileCardProps) {
-  const fmt  = file.format;
-  const meta = FORMAT_META[fmt] ?? FORMAT_META['other'];
+  const fmt    = file.format;
+  const meta   = FORMAT_META[fmt] ?? FORMAT_META['other'];
+  const warmup = useVamp();
 
   return (
     <Card
       className="p-2.5 flex flex-col gap-1.5"
       style={{ background: selected ? 'var(--color-raised)' : undefined }}
     >
-      {/* Top row: checkbox + format + filename */}
+      {/* Top row: checkbox + format icon + filename shimmer */}
       <div className="flex items-center gap-2">
         <input
           type="checkbox"
           checked={selected}
           onChange={e => onSelect(file.id, e.target.checked)}
           className="accent-cyan cursor-pointer shrink-0"
+          disabled={warmup}
         />
-        <HashPill label={meta.label} colorKey={fmt} />
-        <Text variant="mono" className="truncate flex-1 min-w-0">{file.filename}</Text>
+        {warmup
+          ? <div className="skeleton skel-format-icon shrink-0" />
+          : <HashPill label={meta.label} colorKey={fmt} />
+        }
+        <Hum className="font-mono text-sm truncate flex-1 min-w-0 tabular-nums">
+          {file.filename}
+        </Hum>
       </div>
 
-      {/* Metadata row */}
-      <div className="flex items-center gap-2 flex-wrap pl-5.5">
-        <Text variant="dim">{formatBytes(file.sizeBytes)}</Text>
-        {file.types.map(t => <HashPill key={t} label={t} />)}
-        {file.organisms.map(o => <HashPill key={o.id} label={o.displayName} />)}
-        {file.status === 'ready'   && <Badge variant="status" color="green">ready</Badge>}
-        {file.status === 'pending' && <Badge variant="status" color="yellow">uploading</Badge>}
-        {file.status === 'error'   && <Badge variant="status" color="red">error</Badge>}
-        <Text variant="dim">{formatRelativeTime(file.uploadedAt)}</Text>
-      </div>
-
-      {/* Actions */}
-      <div className="flex gap-1.5 pl-5.5">
-        <Button intent="ghost" size="sm" onClick={() => onDownload(file.id)}>Download</Button>
-      </div>
+      {/* Metadata + actions — only when loaded */}
+      {!warmup && (
+        <>
+          <div className="flex items-center gap-2 flex-wrap pl-5.5">
+            <Text variant="dim">{formatBytes(file.sizeBytes)}</Text>
+            {file.types.map(t => <HashPill key={t} label={t} />)}
+            {file.organisms.map(o => <HashPill key={o.id} label={o.displayName} />)}
+            {file.status === 'ready'   && <Badge variant="status" color="green">ready</Badge>}
+            {file.status === 'pending' && <Badge variant="status" color="yellow">uploading</Badge>}
+            {file.status === 'error'   && <Badge variant="status" color="red">error</Badge>}
+            <Text variant="dim">{formatRelativeTime(file.uploadedAt)}</Text>
+          </div>
+          <div className="flex gap-1.5 pl-5.5">
+            <Button intent="ghost" size="sm" onClick={() => onDownload(file.id)}>Download</Button>
+          </div>
+        </>
+      )}
     </Card>
   );
 }
@@ -92,6 +120,8 @@ interface FileRowProps {
 }
 
 function FileRow({ file, onDownload, onUpdateTypes, onAddOrganism, onRemoveOrganism, onAddToCollection, onRemoveFromCollection, selected, onSelect }: FileRowProps) {
+  const warmup = useVamp();
+
   return (
     <tr
       className="border-b border-line transition-colors duration-fast hover:bg-base group"
@@ -104,155 +134,104 @@ function FileRow({ file, onDownload, onUpdateTypes, onAddOrganism, onRemoveOrgan
           checked={selected}
           onChange={e => onSelect(file.id, e.target.checked)}
           className="accent-cyan cursor-pointer"
+          disabled={warmup}
         />
       </td>
 
       {/* File: icon + name + size */}
       <td className="py-2 pr-3 align-top min-w-0">
         <div className="flex items-start gap-2">
-          <FormatIcon filename={file.filename} format={file.format} />
+          {warmup
+            ? <div className="skeleton skel-format-icon shrink-0" />
+            : <FormatIcon filename={file.filename} format={file.format} />
+          }
           <div className="min-w-0 flex-1">
             <Link to={`/files/${file.id}`} className="no-underline">
-              <span className="font-mono text-sm text-fg tabular-nums truncate block hover:text-cyan transition-colors duration-fast">
+              <Hum className="font-mono text-sm truncate block hover:text-cyan transition-colors duration-fast tabular-nums">
                 {file.filename}
-              </span>
+              </Hum>
             </Link>
-            <span className="text-sm text-fg-2">{formatBytes(file.sizeBytes)}</span>
+            <Hum className="text-sm">{formatBytes(file.sizeBytes)}</Hum>
           </div>
         </div>
       </td>
 
-      {/* Status — own column so badges align across all rows */}
+      {/* Status */}
       <td className="py-2 pr-2 align-top">
-        {file.status === 'ready'   && <Badge variant="status" color="green">ready</Badge>}
-        {file.status === 'pending' && <Badge variant="status" color="yellow">uploading</Badge>}
-        {file.status === 'error'   && <Badge variant="status" color="red">error</Badge>}
+        {warmup
+          ? <Hum className="text-body">ready</Hum>
+          : <>
+              {file.status === 'ready'   && <Badge variant="status" color="green">ready</Badge>}
+              {file.status === 'pending' && <Badge variant="status" color="yellow">uploading</Badge>}
+              {file.status === 'error'   && <Badge variant="status" color="red">error</Badge>}
+            </>
+        }
       </td>
 
-      {/* Time — own column so timestamps align across all rows */}
+      {/* Time */}
       <td className="py-2 pr-3 align-top whitespace-nowrap">
-        <Text variant="dim">{formatRelativeTime(file.uploadedAt)}</Text>
+        <Hum className="text-body whitespace-nowrap">{formatRelativeTime(file.uploadedAt)}</Hum>
       </td>
 
       {/* Organism — ChipEditor */}
       <td className="py-1.5 pr-3 align-top overflow-hidden">
-        <ChipEditor
-          colored
-          items={file.organisms.map(o => ({ id: o.id, label: o.displayName }))}
-          onAdd={id => onAddOrganism(file.id, id)}
-          onRemove={id => onRemoveOrganism(file.id, id)}
-          renderPicker={p => <OrganismPicker {...p} variant="surface" size="sm" className="w-32" />}
-          maxVisible={2}
-        />
+        {!warmup && (
+          <ChipEditor
+            colored
+            items={file.organisms.map(o => ({ id: o.id, label: o.displayName }))}
+            onAdd={id => onAddOrganism(file.id, id)}
+            onRemove={id => onRemoveOrganism(file.id, id)}
+            renderPicker={p => <OrganismPicker {...p} variant="surface" size="sm" className="w-32" />}
+            maxVisible={2}
+          />
+        )}
       </td>
 
       {/* Type — ChipEditor */}
       <td className="py-1.5 pr-3 align-top overflow-hidden">
-        <ChipEditor
-          colored
-          items={file.types.map(t => ({ id: t, label: t }))}
-          onAdd={id => onUpdateTypes(file.id, [...file.types, id])}
-          onRemove={id => onUpdateTypes(file.id, file.types.filter(t => t !== id))}
-          renderPicker={p => <FileTypePicker {...p} variant="surface" size="sm" className="w-28" />}
-          maxVisible={2}
-        />
+        {!warmup && (
+          <ChipEditor
+            colored
+            items={file.types.map(t => ({ id: t, label: t }))}
+            onAdd={id => onUpdateTypes(file.id, [...file.types, id])}
+            onRemove={id => onUpdateTypes(file.id, file.types.filter(t => t !== id))}
+            renderPicker={p => <FileTypePicker {...p} variant="surface" size="sm" className="w-28" />}
+            maxVisible={2}
+          />
+        )}
       </td>
 
       {/* Collections */}
       <td className="py-1.5 pr-3 align-top overflow-hidden">
-        <ChipEditor
-          colored
-          items={file.collections.map(c => ({ id: c.id, label: c.name ?? '' }))}
-          onAdd={id => onAddToCollection(id, [file.id])}
-          onRemove={id => onRemoveFromCollection(id, [file.id])}
-          renderPicker={p => <CollectionPicker {...p} variant="surface" size="sm" className="w-32" />}
-          renderLabel={item => (
-            <Link to={`/collections/${item.id}`} className="no-underline hover:opacity-80">
-              {item.label}
-            </Link>
-          )}
-        />
+        {!warmup && (
+          <ChipEditor
+            colored
+            items={file.collections.map(c => ({ id: c.id, label: c.name ?? '' }))}
+            onAdd={id => onAddToCollection(id, [file.id])}
+            onRemove={id => onRemoveFromCollection(id, [file.id])}
+            renderPicker={p => <CollectionPicker {...p} variant="surface" size="sm" className="w-32" />}
+            renderLabel={item => (
+              <Link to={`/collections/${item.id}`} className="no-underline hover:opacity-80">
+                {item.label}
+              </Link>
+            )}
+          />
+        )}
       </td>
 
       {/* Download */}
       <td className="py-2 pr-3 align-top">
-        <button
-          onClick={() => onDownload(file.id)}
-          className={iconAction({ color: 'dim', reveal: true })}
-          title="Download"
-        >
-          ↓
-        </button>
+        {!warmup && (
+          <button
+            onClick={() => onDownload(file.id)}
+            className={iconAction({ color: 'dim', reveal: true })}
+            title="Download"
+          >
+            ↓
+          </button>
+        )}
       </td>
     </tr>
-  );
-}
-
-// ── Skeleton row ─────────────────────────────────────────
-
-function SkeletonRow() {
-  return (
-    <Vamp loading>
-      <tr className="border-b border-line">
-        {/* Checkbox */}
-        <td className="pl-3 pr-1 py-2 w-6 align-top">
-          <div className="skeleton skel-check" />
-        </td>
-
-        {/* File: icon + name + size */}
-        <td className="py-2 pr-3 align-top">
-          <div className="flex items-start gap-2">
-            <div className="skeleton skel-format-icon shrink-0" />
-            <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-              <Hum className="font-mono text-sm block">sequence_data_001.fastq.gz</Hum>
-              <Hum className="text-sm block">8.2 MB</Hum>
-            </div>
-          </div>
-        </td>
-
-        {/* Status */}
-        <td className="py-2 pr-2 align-top">
-          <Hum className="text-body">ready</Hum>
-        </td>
-
-        {/* Time */}
-        <td className="py-2 pr-3 align-top">
-          <Hum className="text-body whitespace-nowrap">2 hours ago</Hum>
-        </td>
-
-        {/* Organism / Type / Collections — pill Hums sized to realistic ghost labels */}
-        <td className="py-1.5 pr-3 align-top">
-          <Hum className="rounded-full">H. sapiens</Hum>
-        </td>
-        <td className="py-1.5 pr-3 align-top">
-          <Hum className="rounded-full">Annotation</Hum>
-        </td>
-        <td className="py-1.5 pr-3 align-top">
-          <Hum className="rounded-full">Reference set</Hum>
-        </td>
-
-        <td />
-      </tr>
-    </Vamp>
-  );
-}
-
-// ── Skeleton card (mobile) ──────────────────────────────
-
-function SkeletonCard() {
-  return (
-    <Card className="p-2.5 flex flex-col gap-1.5">
-      <div className="flex items-center gap-2">
-        <div className="skeleton skel-check" />
-        <div className="skeleton skel-format-icon shrink-0" />
-        <WarmupLine className="flex-1" />
-      </div>
-      <div className="flex gap-2 pl-11">
-        <WarmupLine className="flex-1" />
-        <WarmupLine className="rounded-full flex-1" />
-        <WarmupLine className="flex-1" />
-      </div>
-    </Card>
   );
 }
 
@@ -445,10 +424,9 @@ export default function FilesPage() {
               <th className="w-8" />
             </tr>
           </thead>
-          <tbody>
-            {isLoading
-              ? [...Array(8)].map((_, i) => <SkeletonRow key={i} />)
-              : files.length === 0
+          <Vamp loading={isLoading}>
+            <tbody>
+              {!isLoading && files.length === 0
                 ? (
                   <tr>
                     <td colSpan={8} className="py-12 text-center">
@@ -458,7 +436,7 @@ export default function FilesPage() {
                     </td>
                   </tr>
                 )
-                : files.map(f => (
+                : (isLoading ? STUB_FILES : files).map(f => (
                   <FileRow
                     key={f.id}
                     file={f}
@@ -472,36 +450,35 @@ export default function FilesPage() {
                     onRemoveFromCollection={handleRemoveFromCollection}
                   />
                 ))
-            }
-          </tbody>
+              }
+            </tbody>
+          </Vamp>
         </table>
         </Gigbag>
       </div>
 
       {/* Mobile cards — visible below md */}
-      <div className="flex flex-col gap-1.5 md:hidden flex-1 overflow-auto min-h-0">
-        {/* Select all row */}
-        {files.length > 0 && (
-          <label className="flex items-center gap-2 px-1 py-0.5">
-            <input
-              type="checkbox"
-              checked={allSelected}
-              onChange={toggleAll}
-              className="accent-cyan cursor-pointer"
-            />
-            <Text variant="dim">Select all</Text>
-          </label>
-        )}
+      <Vamp loading={isLoading}>
+        <div className="flex flex-col gap-1.5 md:hidden flex-1 overflow-auto min-h-0">
+          {!isLoading && files.length > 0 && (
+            <label className="flex items-center gap-2 px-1 py-0.5">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={toggleAll}
+                className="accent-cyan cursor-pointer"
+              />
+              <Text variant="dim">Select all</Text>
+            </label>
+          )}
 
-        {isLoading
-          ? [...Array(4)].map((_, i) => <SkeletonCard key={i} />)
-          : files.length === 0
+          {!isLoading && files.length === 0
             ? (
               <Text variant="body" className="py-8 text-center text-fg-3">
                 {search || fmtFilter || filterType || orgFilter || filterCollectionId ? 'No files match your filters.' : 'No files yet. Upload some to get started.'}
               </Text>
             )
-            : files.map(f => (
+            : (isLoading ? STUB_FILES.slice(0, 4) : files).map(f => (
               <FileCard
                 key={f.id}
                 file={f}
@@ -510,8 +487,9 @@ export default function FilesPage() {
                 onDownload={handleDownload}
               />
             ))
-        }
-      </div>
+          }
+        </div>
+      </Vamp>
     </div>
   );
 }
