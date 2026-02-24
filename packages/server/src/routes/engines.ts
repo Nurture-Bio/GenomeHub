@@ -112,7 +112,7 @@ router.post('/:id/methods/:methodId', asyncWrap(async (req, res) => {
     }
     if (value === undefined) continue;
 
-    if (param.type === 'track') {
+    if (param.type === 'track' || param.type === 'genome') {
       // value is a GenomicFile ID — download bytes, forward to engine
       const file = await fileRepo.findOneBy({ id: value });
       if (!file) {
@@ -125,7 +125,11 @@ router.post('/:id/methods/:methodId', asyncWrap(async (req, res) => {
       const form = new FormData();
       form.append('file', new Blob([new Uint8Array(bytes)]), file.filename);
 
-      const uploadRes = await fetch(`${engine.url}/api/tracks/upload`, {
+      const uploadEndpoint = param.type === 'genome'
+        ? `${engine.url}/api/genomes/upload`
+        : `${engine.url}/api/tracks/upload`;
+
+      const uploadRes = await fetch(uploadEndpoint, {
         method: 'POST',
         body: form,
         signal: AbortSignal.timeout(30000),
@@ -135,8 +139,9 @@ router.post('/:id/methods/:methodId', asyncWrap(async (req, res) => {
         res.status(502).json({ error: `Engine upload failed: ${errBody}` });
         return;
       }
-      const { track_id } = await uploadRes.json() as { track_id: string };
-      dispatchBody[param.name] = track_id;
+      const uploadResult = await uploadRes.json() as Record<string, string>;
+      // Engine returns {track_id} for tracks, {genome_id} for genomes
+      dispatchBody[param.name] = uploadResult.track_id ?? uploadResult.genome_id;
     } else {
       dispatchBody[param.name] = value;
     }

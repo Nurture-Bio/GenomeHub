@@ -173,7 +173,7 @@ function MethodForm({ engineId, method }: { engineId: string; method: EngineMeth
       {method.parameters.map(p => (
         <div key={p.name} className="flex flex-col gap-0.5">
           <Text variant="muted">{p.name.replace(/_/g, ' ')}{p.required ? '' : ' (optional)'}</Text>
-          {p.type === 'track' ? (
+          {(p.type === 'track' || p.type === 'genome') ? (
             <ComboBox
               items={fileItems}
               value={params[p.name] ?? ''}
