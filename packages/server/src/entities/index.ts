@@ -176,6 +176,25 @@ export class RelationType {
   createdAt!: Date;
 }
 
+// ─── Engine ─────────────────────────────────────────────
+// External analysis services that GenomeHub can reach.
+// Managed through Settings UI. Health polled at runtime.
+
+@Entity('engines')
+export class Engine {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @Column({ type: 'text', unique: true })
+  name!: string;
+
+  @Column({ type: 'text' })
+  url!: string;
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt!: Date;
+}
+
 // ─── EntityEdge ──────────────────────────────────────────
 
 export type EntityType = 'collection' | 'file' | 'organism' | 'technique';

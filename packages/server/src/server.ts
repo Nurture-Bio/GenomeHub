@@ -31,6 +31,7 @@ import edgeRoutes, { linksRouter } from './routes/edges.js';
 import statsRoutes from './routes/stats.js';
 import relationTypeRoutes from './routes/relation_types.js';
 import fileTypeRoutes from './routes/file_types.js';
+import engineRoutes from './routes/engines.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fallbackLimiter = rateLimit({
@@ -79,6 +80,8 @@ app.use('/api/links', linksRouter);
 app.use('/api/stats', statsRoutes);
 app.use('/api/relation-types', relationTypeRoutes);
 app.use('/api/file-types', fileTypeRoutes);
+app.use('/api/engines', engineRoutes);
+
 // ─── Serve client ──────────────────────────────────────────
 
 const clientDist = path.join(__dirname, '..', '..', '..', 'dist', 'client');

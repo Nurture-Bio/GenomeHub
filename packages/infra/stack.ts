@@ -138,37 +138,67 @@ export class GenomeHubStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
+    // ── Task definition (two containers: GenomeHub + SeqChain) ─
+
+    const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
+      cpu:            1024,
+      memoryLimitMiB: 2048,
+      taskRole,
+    });
+
+    // GenomeHub container — Express API + React client
+    const appContainer = taskDef.addContainer('genomehub', {
+      image: ecs.ContainerImage.fromAsset('../..', {
+        exclude: ['**/cdk.out'],
+        buildArgs: {
+          VITE_GOOGLE_CLIENT_ID: '631098657995-b6gm7u609caa7si5h8ep3tj1cf8m9in2.apps.googleusercontent.com',
+        },
+      }),
+      portMappings: [{ containerPort: 3000 }],
+      logging: ecs.LogDrivers.awsLogs({ logGroup, streamPrefix: 'app' }),
+      environment: {
+        NODE_ENV:         'production',
+        PORT:             '3000',
+        AWS_REGION:       this.region,
+        S3_BUCKET:        bucket.bucketName,
+        GOOGLE_CLIENT_ID: '631098657995-b6gm7u609caa7si5h8ep3tj1cf8m9in2.apps.googleusercontent.com',
+        SEQCHAIN_URL:     'http://localhost:8001',
+      },
+      secrets: {
+        DATABASE_URL: ecs.Secret.fromSecretsManager(db.secret!),
+      },
+      essential: true,
+    });
+
+    // SeqChain container — Python analysis engine (sidecar)
+    // Shares the task's network namespace, so GenomeHub reaches it
+    // at localhost:8001. Shares the task IAM role, so it gets S3
+    // access automatically. No ALB routing — internal only.
+    const seqchainLogGroup = new logs.LogGroup(this, 'SeqChainLogs', {
+      logGroupName:  '/genome-hub/seqchain',
+      retention:     logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    taskDef.addContainer('seqchain', {
+      // To use a pre-built image from ECR instead:
+      //   image: ecs.ContainerImage.fromEcrRepository(repo, 'latest'),
+      image: ecs.ContainerImage.fromAsset('../../SeqChain', {
+        file: 'Dockerfile.api',
+      }),
+      portMappings: [{ containerPort: 8001 }],
+      logging: ecs.LogDrivers.awsLogs({ logGroup: seqchainLogGroup, streamPrefix: 'seqchain' }),
+      environment: {
+        AWS_REGION: this.region,
+        S3_BUCKET:  bucket.bucketName,
+      },
+      essential: false,  // GenomeHub runs fine without analysis engine
+    });
+
     // ── Fargate service ────────────────────────────────────
     const service = new ecsPatterns.ApplicationLoadBalancedFargateService(this, 'Service', {
       cluster,
-      cpu:    512,
-      memoryLimitMiB: 1024,
-
-      taskImageOptions: {
-        image: ecs.ContainerImage.fromAsset('../..', {
-          exclude: ['**/cdk.out'],
-          buildArgs: {
-            VITE_GOOGLE_CLIENT_ID: '631098657995-b6gm7u609caa7si5h8ep3tj1cf8m9in2.apps.googleusercontent.com',
-          },
-        }),
-        containerPort: 3000,
-        taskRole,
-        logDriver: ecs.LogDrivers.awsLogs({
-          logGroup,
-          streamPrefix: 'app',
-        }),
-        environment: {
-          NODE_ENV:         'production',
-          PORT:             '3000',
-          AWS_REGION:       this.region,
-          S3_BUCKET:        bucket.bucketName,
-          GOOGLE_CLIENT_ID: '631098657995-b6gm7u609caa7si5h8ep3tj1cf8m9in2.apps.googleusercontent.com',
-        },
-        secrets: {
-          DATABASE_URL: ecs.Secret.fromSecretsManager(db.secret!),
-        },
-      },
-
+      taskDefinition: taskDef,
       publicLoadBalancer: true,
       desiredCount:       1,
     });

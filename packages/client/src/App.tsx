@@ -3,9 +3,10 @@ import { useState } from 'react';
 import { Routes, Route, NavLink, Navigate, useParams } from 'react-router-dom';
 import * as Dialog from '@radix-ui/react-dialog';
 import { cx } from 'class-variance-authority';
-import { navLink } from './ui/recipes';
+import { navLink, statusDot } from './ui/recipes';
 import { Text, Heading, iconAction } from './ui';
 import { useAuth } from './hooks/useAuth';
+import { useEnginesQuery } from './hooks/useGenomicQueries';
 import LoginPage            from './pages/LoginPage';
 import DashboardPage        from './pages/DashboardPage';
 import FilesPage            from './pages/FilesPage';
@@ -21,20 +22,24 @@ import Breadcrumbs          from './components/Breadcrumbs';
 import GlobalUploadProgress from './components/GlobalUploadProgress';
 import ConfirmDialog        from './components/ConfirmDialog';
 
-// ── DNA helix icon ────────────────────────────────────────
+// ── Hub icon ─────────────────────────────────────────────
 const GenomicIcon = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
     style={{ color: 'var(--color-accent)' }}>
-    <path d="M7 3c0 0 1 2 5 2s5 2 5 2" stroke="currentColor" strokeWidth="2"
-      strokeLinecap="round" />
-    <path d="M17 3c0 0-1 2-5 2S7 7 7 7" stroke="currentColor" strokeWidth="2"
-      strokeLinecap="round" />
-    <path d="M7 12c0 0 1 2 5 2s5 2 5 2" stroke="currentColor" strokeWidth="2"
-      strokeLinecap="round" />
-    <path d="M17 12c0 0-1 2-5 2s-5 2-5 2" stroke="currentColor" strokeWidth="2"
-      strokeLinecap="round" />
-    <path d="M7 3v18M17 3v18" stroke="currentColor" strokeWidth="1.5"
-      strokeLinecap="round" strokeDasharray="2 3" />
+    {/* Center node */}
+    <circle cx="12" cy="12" r="3.5" fill="currentColor" />
+    {/* Spokes */}
+    <line x1="12" y1="8.5" x2="12" y2="4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    <line x1="15.1" y1="13.8" x2="19" y2="16.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    <line x1="8.9" y1="13.8" x2="5" y2="16.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    <line x1="14.5" y1="10.2" x2="19" y2="7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    <line x1="9.5" y1="10.2" x2="5" y2="7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    {/* Outer nodes */}
+    <circle cx="12" cy="3" r="1.8" fill="currentColor" opacity="0.5" />
+    <circle cx="19.5" cy="17" r="1.8" fill="currentColor" opacity="0.5" />
+    <circle cx="4.5" cy="17" r="1.8" fill="currentColor" opacity="0.5" />
+    <circle cx="19.5" cy="6.5" r="1.8" fill="currentColor" opacity="0.5" />
+    <circle cx="4.5" cy="6.5" r="1.8" fill="currentColor" opacity="0.5" />
   </svg>
 );
 
@@ -129,6 +134,23 @@ function SidebarNav({ onNavClick }: { onNavClick?: () => void }) {
         </NavLink>
       ))}
     </nav>
+  );
+}
+
+function EngineList() {
+  const { data: engines } = useEnginesQuery();
+  const running = engines?.filter(e => e.status === 'ok');
+  if (!running?.length) return null;
+  return (
+    <div className="flex flex-col gap-0.5 px-3 py-1.5 border-t border-border-subtle">
+      <Text variant="overline">Engines</Text>
+      {running.map(e => (
+        <div key={e.name} className="flex items-center gap-1.5">
+          <div className={statusDot({ status: 'connected', size: 'sm' })} />
+          <Text variant="caption" className="text-text-dim">{e.name}</Text>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -227,6 +249,7 @@ export default function App() {
           >
             <SidebarBrand />
             <SidebarNav onNavClick={() => setMobileMenuOpen(false)} />
+            <EngineList />
             <SidebarFooter user={user} logout={logout} />
           </Dialog.Content>
         </Dialog.Portal>
@@ -239,6 +262,7 @@ export default function App() {
       >
         <SidebarBrand />
         <SidebarNav />
+        <EngineList />
         <SidebarFooter user={user} logout={logout} />
       </aside>
 

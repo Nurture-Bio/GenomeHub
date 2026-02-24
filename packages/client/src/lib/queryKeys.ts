@@ -32,4 +32,7 @@ export const queryKeys = {
   stats: {
     storage: ['stats', 'storage'] as const,
   },
+  engines: {
+    all: ['engines'] as const,
+  },
 };

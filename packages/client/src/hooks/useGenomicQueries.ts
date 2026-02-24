@@ -985,3 +985,73 @@ export function useMultipartUpload() {
 
   return { uploads, upload, clearDone };
 }
+
+// ─── Engines ──────────────────────────────────────────────
+
+export interface EngineStatus {
+  id: string;
+  name: string;
+  url: string;
+  status: 'ok' | 'error' | 'unavailable';
+  createdAt: string;
+}
+
+export function useEnginesQuery() {
+  return useQuery({
+    queryKey: queryKeys.engines.all,
+    queryFn: () => fetchApi<EngineStatus[]>('/api/engines'),
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+    retry: false,
+  });
+}
+
+export function useCreateEngineMutation() {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (body: { name: string; url: string }) =>
+      mutateApi('/api/engines', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.engines.all });
+      toast.success('Engine added');
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to add engine'),
+  });
+  return { createEngine: mutation.mutateAsync, pending: mutation.isPending };
+}
+
+export function useUpdateEngineMutation() {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: { name?: string; url?: string } }) =>
+      mutateApi(`/api/engines/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.engines.all });
+      toast.success('Updated');
+    },
+    onError: () => toast.error('Update failed'),
+  });
+  return { updateEngine: mutation.mutateAsync, pending: mutation.isPending };
+}
+
+export function useDeleteEngineMutation() {
+  const qc = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (id: string) =>
+      mutateApi(`/api/engines/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.engines.all });
+      toast.success('Engine removed');
+    },
+    onError: () => toast.error('Delete failed'),
+  });
+  return { deleteEngine: mutation.mutateAsync, pending: mutation.isPending };
+}
