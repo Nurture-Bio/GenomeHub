@@ -21,9 +21,10 @@ function MethodForm({ engineId, method }: { engineId: string; method: EngineMeth
   const { data: collections } = useCollectionsQuery();
   const { runMethod, pending } = useRunMethodMutation();
   const [params, setParams] = useState<Record<string, string>>({});
-  const [fmtFilter, setFmtFilter] = useState('');
-  const [orgFilter, setOrgFilter] = useState('');
-  const [colFilter, setColFilter] = useState('');
+  const [fmtFilter,  setFmtFilter]  = useState('');
+  const [orgFilter,  setOrgFilter]  = useState('');
+  const [colFilter,  setColFilter]  = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
 
   const hasFileParams = method.parameters.some(p => p.type === 'file');
 
@@ -44,10 +45,16 @@ function MethodForm({ engineId, method }: { engineId: string; method: EngineMeth
     return (collections ?? []).map(c => ({ id: c.id, label: c.name }));
   }, [collections]);
 
+  const typeItems = useMemo(() => {
+    const types = new Set(readyFiles.flatMap(f => f.types).filter(Boolean));
+    return Array.from(types).sort().map(t => ({ id: t, label: t }));
+  }, [readyFiles]);
+
   const fileItems: ComboBoxItem[] = readyFiles
     .filter(f => !fmtFilter || f.format === fmtFilter)
     .filter(f => !orgFilter || f.organisms.some(o => o.id === orgFilter))
     .filter(f => !colFilter || f.collections.some(c => c.id === colFilter))
+    .filter(f => !typeFilter || f.types.includes(typeFilter))
     .map(f => ({ id: f.id, label: f.filename, group: f.format.toUpperCase() }));
 
   const allRequiredFilled = method.parameters
@@ -65,7 +72,7 @@ function MethodForm({ engineId, method }: { engineId: string; method: EngineMeth
         <Text variant="dim" as="div" className="mt-0.5">{method.description}</Text>
       </div>
 
-      {hasFileParams && (formatItems.length > 1 || orgItems.length > 1 || colItems.length > 1) && (
+      {hasFileParams && (formatItems.length > 1 || orgItems.length > 1 || colItems.length > 1 || typeItems.length > 1) && (
         <div className="flex gap-1 flex-wrap">
           {formatItems.length > 1 && (
             <FilterChip label="All formats" items={formatItems} value={fmtFilter} onValueChange={setFmtFilter} />
@@ -75,6 +82,9 @@ function MethodForm({ engineId, method }: { engineId: string; method: EngineMeth
           )}
           {colItems.length > 1 && (
             <FilterChip label="All collections" items={colItems} value={colFilter} onValueChange={setColFilter} />
+          )}
+          {typeItems.length > 1 && (
+            <FilterChip label="All types" items={typeItems} value={typeFilter} onValueChange={setTypeFilter} />
           )}
         </div>
       )}
