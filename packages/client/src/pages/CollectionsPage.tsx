@@ -10,8 +10,7 @@ import {
   useAddCollectionTechnique, useRemoveCollectionTechnique,
 } from '../hooks/useGenomicQueries';
 import { useConfirmDelete } from '../hooks/useConfirmDelete';
-import { techniqueColor } from '../lib/techniqueColors';
-import { Badge, Text, Heading, Card, ChipEditor, HashPill, inlineInput, iconAction } from '../ui';
+import { Badge, Text, Heading, Card, ChipEditor, HashPill, FilterChip, inlineInput, iconAction } from '../ui';
 import { TechniquePicker, OrganismPicker, FileTypePicker } from '../ui';
 
 function SkeletonRow() {
@@ -53,7 +52,7 @@ export default function CollectionsPage() {
   const { addCollectionTechnique } = useAddCollectionTechnique();
   const { removeCollectionTechnique } = useRemoveCollectionTechnique();
 
-  const [techFilter, setTechFilter] = useState<string>('all');
+  const [techFilter, setTechFilter] = useState('');
 
   // Inline add row
   const [newName, setNewName] = useState('');
@@ -63,7 +62,7 @@ export default function CollectionsPage() {
 
   const filtered = useMemo(() => {
     if (!data) return [];
-    if (techFilter === 'all') return data;
+    if (!techFilter) return data;
     return data.filter(c => c.techniques.some(t => t.name === techFilter));
   }, [data, techFilter]);
 
@@ -78,8 +77,8 @@ export default function CollectionsPage() {
     nameRef.current?.focus();
   };
 
-  const techniqueFilters = useMemo(() => {
-    return ['all', ...(techniques ?? []).map(t => t.name)];
+  const techniqueItems = useMemo(() => {
+    return (techniques ?? []).map(t => ({ id: t.name, label: t.name }));
   }, [techniques]);
 
   const ready = newName.trim().length > 0;
@@ -106,21 +105,9 @@ export default function CollectionsPage() {
         </Text>
       </div>
 
-      {/* Technique filters */}
-      <div className="flex gap-1 flex-wrap shrink-0">
-        {techniqueFilters.map(t => {
-          const hc = t === 'all' ? null : techniqueColor(t);
-          const active = techFilter === t;
-          return (
-            <button key={t} onClick={() => setTechFilter(t)}
-              className="hash-filter-btn"
-              data-active={active}
-              style={hc ? { '--hc-bg': hc.bg, '--hc-fg': hc.color } as React.CSSProperties : undefined}
-            >
-              {t === 'all' ? 'All' : t}
-            </button>
-          );
-        })}
+      {/* Technique filter */}
+      <div className="shrink-0">
+        <FilterChip label="All techniques" items={techniqueItems} value={techFilter} onValueChange={setTechFilter} />
       </div>
 
       {/* Desktop table */}
@@ -146,7 +133,7 @@ export default function CollectionsPage() {
                     <tr>
                       <td colSpan={6} className="py-12 text-center">
                         <Text variant="body" className="text-fg-3">
-                          {techFilter !== 'all' ? 'No collections match this technique.' : 'No collections yet.'}
+                          {techFilter ? 'No collections match this technique.' : 'No collections yet.'}
                         </Text>
                       </td>
                     </tr>
@@ -255,7 +242,7 @@ export default function CollectionsPage() {
             </Card>
           ))
           : !filtered.length
-            ? <Text variant="body" className="py-8 text-center text-fg-3">{techFilter !== 'all' ? 'No collections match this technique.' : 'No collections yet.'}</Text>
+            ? <Text variant="body" className="py-8 text-center text-fg-3">{techFilter ? 'No collections match this technique.' : 'No collections yet.'}</Text>
             : filtered.map(c => (
               <Link key={c.id} to={`/collections/${c.id}`} className="no-underline">
                 <Card className="p-2.5 flex flex-col gap-1 hover:border-cyan transition-colors duration-fast cursor-pointer">

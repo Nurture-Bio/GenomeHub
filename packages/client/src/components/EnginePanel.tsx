@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { cx } from 'class-variance-authority';
 import { statusDot, button, input, modalOverlay } from '../ui/recipes';
-import { Text, Heading, ComboBox } from '../ui';
+import { Text, Heading, ComboBox, FilterChip } from '../ui';
 import type { ComboBoxItem } from '../ui';
+import { FORMAT_META } from '../lib/formats';
 import {
   useEnginesQuery,
   useEngineMethodsQuery,
@@ -18,9 +19,27 @@ function MethodForm({ engineId, method }: { engineId: string; method: EngineMeth
   const { data: files } = useFilesQuery();
   const { runMethod, pending } = useRunMethodMutation();
   const [params, setParams] = useState<Record<string, string>>({});
+  const [fmtFilter, setFmtFilter] = useState('');
+  const [orgFilter, setOrgFilter] = useState('');
 
-  const fileItems: ComboBoxItem[] = (files ?? [])
-    .filter(f => f.status === 'ready')
+  const hasFileParams = method.parameters.some(p => p.type === 'track' || p.type === 'genome');
+
+  const readyFiles = useMemo(() => (files ?? []).filter(f => f.status === 'ready'), [files]);
+
+  const formatItems = useMemo(() => {
+    const fmts = new Set(readyFiles.map(f => f.format));
+    return Array.from(fmts).sort().map(f => ({ id: f, label: FORMAT_META[f]?.label ?? f }));
+  }, [readyFiles]);
+
+  const orgItems = useMemo(() => {
+    const orgs = new Map<string, string>();
+    readyFiles.forEach(f => f.organisms.forEach(o => orgs.set(o.id, o.displayName)));
+    return Array.from(orgs.entries()).sort((a, b) => a[1].localeCompare(b[1])).map(([id, label]) => ({ id, label }));
+  }, [readyFiles]);
+
+  const fileItems: ComboBoxItem[] = readyFiles
+    .filter(f => !fmtFilter || f.format === fmtFilter)
+    .filter(f => !orgFilter || f.organisms.some(o => o.id === orgFilter))
     .map(f => ({ id: f.id, label: f.filename, group: f.format.toUpperCase() }));
 
   const allRequiredFilled = method.parameters
@@ -37,6 +56,17 @@ function MethodForm({ engineId, method }: { engineId: string; method: EngineMeth
         <Text variant="body" className="font-semibold">{method.name}</Text>
         <Text variant="dim" as="div" className="mt-0.5">{method.description}</Text>
       </div>
+
+      {hasFileParams && (formatItems.length > 1 || orgItems.length > 1) && (
+        <div className="flex gap-1 flex-wrap">
+          {formatItems.length > 1 && (
+            <FilterChip label="All formats" items={formatItems} value={fmtFilter} onValueChange={setFmtFilter} />
+          )}
+          {orgItems.length > 1 && (
+            <FilterChip label="All organisms" items={orgItems} value={orgFilter} onValueChange={setOrgFilter} />
+          )}
+        </div>
+      )}
 
       {method.parameters.map(p => (
         <div key={p.name} className="flex flex-col gap-0.5">

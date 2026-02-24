@@ -1,6 +1,5 @@
 import type { GenomicFile } from "../hooks/useGenomicQueries";
 import { useState, useMemo } from 'react';
-import type { CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { cx } from 'class-variance-authority';
 import { Gigbag } from 'concertina';
@@ -11,8 +10,7 @@ import {
 } from '../hooks/useGenomicQueries';
 import { useConfirm } from '../hooks/useConfirm';
 import { detectFormat, FORMAT_META, formatBytes, formatRelativeTime } from '../lib/formats';
-import { hashColor } from '../lib/colors';
-import { Button, Badge, Input, Text, Heading, Card, ChipEditor, HashPill, iconAction } from '../ui';
+import { Button, Badge, Input, Text, Heading, Card, ChipEditor, HashPill, FilterChip, iconAction } from '../ui';
 import { CollectionPicker, OrganismPicker, FileTypePicker } from '../ui';
 
 // ── Format icon ──────────────────────────────────────────
@@ -255,21 +253,21 @@ export default function FilesPage() {
   const { getUrl } = usePresignedUrl();
   const { confirm } = useConfirm();
 
-  // Derive format and type filters from actual data
-  const formatFilters = useMemo(() => {
-    if (!data) return ['all'];
+  // Derive format and type filter items from actual data
+  const formatItems = useMemo(() => {
+    if (!data) return [];
     const fmts = new Set(data.map(f => f.format));
-    return ['all', ...Array.from(fmts).sort()];
+    return Array.from(fmts).sort().map(f => ({ id: f, label: FORMAT_META[f]?.label ?? f }));
   }, [data]);
 
-  const typeFilters = useMemo(() => {
-    if (!data) return ['all'];
+  const typeItems = useMemo(() => {
+    if (!data) return [];
     const types = new Set(data.flatMap(f => f.types).filter(Boolean));
-    return ['all', ...Array.from(types).sort()];
+    return Array.from(types).sort().map(t => ({ id: t, label: t }));
   }, [data]);
 
   const [search,     setSearch]     = useState('');
-  const [fmtFilter,  setFmtFilter]  = useState<string>('all');
+  const [fmtFilter,  setFmtFilter]  = useState('');
   const [selected,   setSelected]   = useState<Set<string>>(new Set());
   const [addToColId, setAddToColId] = useState<string | null>(null);
 
@@ -281,7 +279,7 @@ export default function FilesPage() {
         || f.organisms.some(o => o.displayName.toLowerCase().includes(q))
         || f.collections.some(c => c.name?.toLowerCase().includes(q))
         || f.tags.some(t => t.toLowerCase().includes(q));
-      const matchFmt = fmtFilter === 'all' || f.format === fmtFilter;
+      const matchFmt = !fmtFilter || f.format === fmtFilter;
       return matchSearch && matchFmt;
     });
   }, [data, search, fmtFilter]);
@@ -389,41 +387,8 @@ export default function FilesPage() {
           className="w-full sm:w-44"
         />
 
-        <div className="flex gap-1 flex-wrap">
-          {typeFilters.map(k => {
-            const active = k === 'all' ? !filterType : filterType === k;
-            const hc = k === 'all' ? null : hashColor(k);
-            return (
-              <button
-                key={k}
-                onClick={() => setFilterType(k === 'all' ? '' : k)}
-                className="hash-filter-btn"
-                data-active={active}
-                style={hc ? { '--hc-bg': hc.bg, '--hc-fg': hc.color } as CSSProperties : undefined}
-              >
-                {k === 'all' ? 'All types' : k}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="flex gap-1 flex-wrap">
-          {formatFilters.map(f => {
-            const active = fmtFilter === f;
-            const meta = f === 'all' ? null : FORMAT_META[f];
-            return (
-              <button
-                key={f}
-                onClick={() => setFmtFilter(f)}
-                className="hash-filter-btn"
-                data-active={active}
-                style={meta ? { '--hc-bg': meta.bg, '--hc-fg': meta.color } as CSSProperties : undefined}
-              >
-                {f === 'all' ? 'All formats' : meta?.label ?? f}
-              </button>
-            );
-          })}
-        </div>
+        <FilterChip label="All types" items={typeItems} value={filterType} onValueChange={setFilterType} />
+        <FilterChip label="All formats" items={formatItems} value={fmtFilter} onValueChange={setFmtFilter} />
       </div>
 
       {/* Desktop table — hidden below md */}
@@ -455,7 +420,7 @@ export default function FilesPage() {
                   <tr>
                     <td colSpan={6} className="py-12 text-center">
                       <Text variant="body" className="text-fg-3">
-                        {search || fmtFilter !== 'all' || filterCollectionId ? 'No files match your filters.' : 'No files yet. Upload some to get started.'}
+                        {search || fmtFilter || filterType || filterCollectionId ? 'No files match your filters.' : 'No files yet. Upload some to get started.'}
                       </Text>
                     </td>
                   </tr>
@@ -500,7 +465,7 @@ export default function FilesPage() {
           : files.length === 0
             ? (
               <Text variant="body" className="py-8 text-center text-fg-3">
-                {search || fmtFilter !== 'all' || filterCollectionId ? 'No files match your filters.' : 'No files yet. Upload some to get started.'}
+                {search || fmtFilter || filterType || filterCollectionId ? 'No files match your filters.' : 'No files yet. Upload some to get started.'}
               </Text>
             )
             : files.map(f => (

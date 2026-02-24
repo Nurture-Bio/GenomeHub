@@ -7,8 +7,10 @@ export { default as ComboBox }        from './ComboBox';
 export { default as InlineInput }     from './InlineInput';
 export { default as ChipEditor, chipColorStyle } from './ChipEditor';
 export { default as HashPill }                   from './HashPill';
+export { default as FilterChip }                 from './FilterChip';
 export type { ChipItem }             from './ChipEditor';
 export type { ComboBoxItem }          from './ComboBox';
+export type { FilterChipItem }        from './FilterChip';
 export {
   CollectionPicker, OrganismPicker,
   FileTypePicker, TechniquePicker, RelationPicker,
