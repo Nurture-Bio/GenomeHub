@@ -110,7 +110,6 @@ export default function CollectionDetailPage() {
 
         <InlineInput
           value={collection.name}
-          mono
           className="text-heading font-semibold"
           onCommit={v => { if (collectionId && v) updateCollection(collectionId, { name: v }); }}
         />

@@ -155,7 +155,7 @@ export default function CollectionsPage() {
                     <tr key={c.id} className="border-b border-line hover:bg-base transition-colors duration-fast group">
                       <td className="py-1.5 pl-2.5 pr-3">
                         <Link to={`/collections/${c.id}`} className="no-underline">
-                          <Text variant="mono" className="hover:text-cyan transition-colors duration-fast">{c.name}</Text>
+                          <Text variant="body" className="hover:text-cyan transition-colors duration-fast">{c.name}</Text>
                           {c.description && <Text variant="dim" className="truncate max-w-xs block">{c.description}</Text>}
                         </Link>
                       </td>
@@ -206,7 +206,7 @@ export default function CollectionsPage() {
                       <input ref={nameRef} value={newName} onChange={e => setNewName(e.target.value)}
                         onKeyDown={e => { if (e.key === 'Enter') handleCreate(); }}
                         placeholder="+ collection name"
-                        className={cx(inlineInput({ font: 'mono' }), 'w-full')} />
+                        className={cx(inlineInput({ font: 'body' }), 'w-full')} />
                     </td>
                     <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
                       <ChipEditor
@@ -261,7 +261,7 @@ export default function CollectionsPage() {
                 <Card className="p-2.5 flex flex-col gap-1 hover:border-cyan transition-colors duration-fast cursor-pointer">
                   <div className="flex items-center gap-2 flex-wrap">
                     {c.techniques.map(t => <HashPill key={t.id} label={t.name} />)}
-                    <Text variant="mono" className="truncate flex-1 min-w-0">{c.name}</Text>
+                    <Text variant="body" className="truncate flex-1 min-w-0">{c.name}</Text>
                     {c.types.map(t => <HashPill key={t} label={t} />)}
                   </div>
                   {c.description && <Text variant="dim" className="truncate">{c.description}</Text>}
