@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Engine Method Catalog",
+  "description": "Schema for GET /api/engines/:id/methods. Any engine returns an array of these. GenomeHub renders UI from this schema without knowing what the engine does internally.",
+
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["id", "name", "description", "parameters", "returns"],
+    "properties": {
+      "id": {
+        "type": "string",
+        "description": "Unique method identifier. Used in POST /api/engines/:id/methods/:methodId"
+      },
+      "name": {
+        "type": "string",
+        "description": "Human-readable method name for the UI"
+      },
+      "description": {
+        "type": "string",
+        "description": "What this method does, shown below the name"
+      },
+      "parameters": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["name", "type", "required", "description"],
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Parameter key sent in the request body"
+            },
+            "type": {
+              "type": "string",
+              "enum": ["file", "string"],
+              "description": "file = GenomeHub uploads a file to the engine before calling the method. string = plain value passed through as-is."
+            },
+            "required": {
+              "type": "boolean"
+            },
+            "description": {
+              "type": "string",
+              "description": "Shown as label or help text"
+            },
+            "default": {
+              "type": "string",
+              "description": "Default value for optional string params. Shown as placeholder. Omitted if no default."
+            },
+            "accept": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "For file params: list of accepted formats to filter the file picker. e.g. [\"json\", \"bed\", \"bigwig\"]. Omit to accept any file."
+            }
+          }
+        }
+      },
+      "returns": {
+        "type": "object",
+        "required": ["type", "description"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["file"],
+            "description": "Always file. GenomeHub downloads the result and stores it."
+          },
+          "description": {
+            "type": "string",
+            "description": "What the result contains"
+          }
+        }
+      }
+    }
+  },
+
+  "examples": [
+    {
+      "id": "overlay",
+      "name": "Spatial Overlay",
+      "description": "Spatial join of two region sets with tag merge.",
+      "parameters": [
+        {
+          "name": "query",
+          "type": "file",
+          "required": true,
+          "description": "Regions to enrich",
+          "accept": ["json", "bed"]
+        },
+        {
+          "name": "reference",
+          "type": "file",
+          "required": true,
+          "description": "Source of tags",
+          "accept": ["json", "bed"]
+        },
+        {
+          "name": "name_tag",
+          "type": "string",
+          "required": false,
+          "default": "feature_type",
+          "description": "Tag key for promoted reference region name"
+        }
+      ],
+      "returns": {
+        "type": "file",
+        "description": "Regions with merged tags from both inputs"
+      }
+    },
+    {
+      "id": "annotate",
+      "name": "Feature Annotation",
+      "description": "Annotate regions against a feature map. Adds overlap, offset, and relative position.",
+      "parameters": [
+        {
+          "name": "query",
+          "type": "file",
+          "required": true,
+          "description": "Regions to annotate (e.g. guides, peaks)",
+          "accept": ["json", "bed"]
+        },
+        {
+          "name": "features",
+          "type": "file",
+          "required": true,
+          "description": "Feature map (promoters, gene bodies, terminators)",
+          "accept": ["json", "bed"]
+        }
+      ],
+      "returns": {
+        "type": "file",
+        "description": "Annotated regions with positional tags"
+      }
+    },
+    {
+      "id": "crispr_guides",
+      "name": "CRISPR Guide Design",
+      "description": "Design and score CRISPR guides for a genome.",
+      "parameters": [
+        {
+          "name": "genome",
+          "type": "file",
+          "required": true,
+          "description": "Target genome",
+          "accept": ["gb", "gbk", "fa", "fasta"]
+        },
+        {
+          "name": "pam",
+          "type": "string",
+          "required": false,
+          "default": "NGG",
+          "description": "PAM sequence (IUPAC)"
+        },
+        {
+          "name": "spacer_length",
+          "type": "string",
+          "required": false,
+          "default": "20",
+          "description": "Spacer length in bp"
+        }
+      ],
+      "returns": {
+        "type": "file",
+        "description": "Scored CRISPR guides"
+      }
+    }
+  ]
+}
