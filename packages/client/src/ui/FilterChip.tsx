@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react';
 import { hashColor } from '../lib/colors';
 import ComboBox from './ComboBox';
 import type { ComboBoxItem } from './ComboBox';
+import HashPill from './HashPill';
 
 export interface FilterChipItem {
   id: string;
@@ -24,6 +25,7 @@ export default function FilterChip({ label, items, value, onValueChange, classNa
   const comboItems: ComboBoxItem[] = items.map(i => ({
     id: i.id,
     label: i.label,
+    icon: <HashPill label={i.label} colorKey={i.id} />,
   }));
 
   return (

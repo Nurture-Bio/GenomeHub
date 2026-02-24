@@ -196,10 +196,12 @@ function ComboBoxOption({ item, selected, onSelect }: { item: ComboBoxItem; sele
       )}
     >
       {item.icon}
-      <div className="flex-1 min-w-0">
-        <div className={cx(text({ variant: 'body' }), 'text-body truncate')}>{item.label}</div>
-        {item.description && <div className={cx(text({ variant: 'dim' }), 'text-body truncate')}>{item.description}</div>}
-      </div>
+      {(!item.icon || item.description) && (
+        <div className="flex-1 min-w-0">
+          {!item.icon && <div className={cx(text({ variant: 'body' }), 'text-body truncate')}>{item.label}</div>}
+          {item.description && <div className={cx(text({ variant: 'dim' }), 'text-body truncate')}>{item.description}</div>}
+        </div>
+      )}
       {selected && (
         <svg width="14" height="14" viewBox="0 0 14 14" className="shrink-0 text-cyan">
           <path d="M3 7l3 3 5-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
