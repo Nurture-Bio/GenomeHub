@@ -165,7 +165,7 @@ function ProgressBar({ filename, loaded, total, status, error }: ProgressBarProp
       <div className="flex items-center gap-2">
         <HashPill label={meta.label} colorKey={fmt} />
         <Text variant="mono" className="flex-1 truncate min-w-0">{filename}</Text>
-        <Text variant="mono" className="text-fg-3 text-body shrink-0 tabular-nums">
+        <Text variant="dim" className="shrink-0 tabular-nums">
           {status === 'done' ? '✓' : status === 'error' ? '✗' : `${pct}%`}
         </Text>
       </div>

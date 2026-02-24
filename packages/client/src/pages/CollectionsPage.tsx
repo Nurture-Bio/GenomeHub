@@ -190,7 +190,7 @@ export default function CollectionsPage() {
                         />
                       </td>
                       <td className="py-1.5 pl-2.5 pr-3 text-right">
-                        <Text variant="mono" className="text-fg-2">{c.fileCount}</Text>
+                        <Text variant="dim" className="tabular-nums">{c.fileCount}</Text>
                       </td>
                       <td className="py-1.5 pr-2.5 w-6">
                         <button onClick={() => confirmDelete(c.id, c.name)}

@@ -242,7 +242,7 @@ export default function CollectionDetailPage() {
                         </div>
                       </td>
                       <td className="py-1.5 pr-3 text-right">
-                        <Text variant="mono" className="text-fg-2">{formatBytes(file.sizeBytes)}</Text>
+                        <Text variant="dim" className="tabular-nums">{formatBytes(file.sizeBytes)}</Text>
                       </td>
                       <td className="py-1.5 pr-3">
                         {file.status === 'ready' && <Badge variant="status" color="green">ready</Badge>}

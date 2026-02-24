@@ -94,12 +94,12 @@ export default function DashboardPage() {
                   <div className="w-2 h-2 rounded-full shrink-0"
                     style={{ background: meta.color }} />
                   <div className="min-w-0 flex-1">
-                    <Text variant="mono" className="text-body">{meta.label}</Text>
+                    <Text variant="body">{meta.label}</Text>
                     <Text variant="dim" className="tabular-nums">
                       {formatBytes(item.bytes)} · {item.count} files
                     </Text>
                   </div>
-                  <Text variant="mono" className="text-fg-3 text-body shrink-0">{pct}%</Text>
+                  <Text variant="dim" className="shrink-0 tabular-nums">{pct}%</Text>
                 </div>
               );
             })}

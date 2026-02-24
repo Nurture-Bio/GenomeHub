@@ -101,14 +101,14 @@ export default function OrganismsPage() {
                       <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
                         <InlineInput value={o.referenceGenome ?? ''} placeholder="ref. genome" onCommit={v => handleUpdate(o.id, { referenceGenome: v || null })} />
                         <div className="mt-0.5">
-                          <InlineInput value={o.ncbiTaxId?.toString() ?? ''} placeholder="NCBI tax ID" mono onCommit={v => handleUpdate(o.id, { ncbiTaxId: parseInt(v) || null })} />
+                          <InlineInput value={o.ncbiTaxId?.toString() ?? ''} placeholder="NCBI tax ID" onCommit={v => handleUpdate(o.id, { ncbiTaxId: parseInt(v) || null })} />
                         </div>
                       </td>
                       <td className="py-1.5 pl-2.5 pr-3 text-right align-top pt-2">
-                        <Text variant="mono" className="text-fg-2">{o.collectionCount}</Text>
+                        <Text variant="dim" className="tabular-nums">{o.collectionCount}</Text>
                       </td>
                       <td className="py-1.5 pl-2.5 pr-3 text-right align-top pt-2">
-                        <Text variant="mono" className="text-fg-2">{o.fileCount}</Text>
+                        <Text variant="dim" className="tabular-nums">{o.fileCount}</Text>
                       </td>
                       <td className="py-1.5 pr-2.5 w-6 align-top pt-2">
                         <button onClick={() => confirmDelete(o.id, `${o.genus} ${o.species}`)}
@@ -125,11 +125,11 @@ export default function OrganismsPage() {
                         <input ref={genusRef} value={newGenus} onChange={e => setNewGenus(e.target.value)}
                           onKeyDown={e => { if (e.key === 'Enter') handleCreate(); }}
                           placeholder="+ genus"
-                          className={cx(inlineInput({ font: 'mono' }), 'italic flex-1 min-w-0')} />
+                          className={cx(inlineInput({ font: 'body' }), 'italic flex-1 min-w-0')} />
                         <input value={newSpecies} onChange={e => setNewSpecies(e.target.value)}
                           onKeyDown={e => { if (e.key === 'Enter') handleCreate(); }}
                           placeholder="species"
-                          className={cx(inlineInput({ font: 'mono' }), 'font-semibold flex-1 min-w-0')} />
+                          className={cx(inlineInput({ font: 'body' }), 'font-semibold flex-1 min-w-0')} />
                       </div>
                     </td>
                     <td colSpan={3} />

@@ -120,7 +120,7 @@ function FileRow({ file, onDownload, onUpdateTypes, onAddOrganism, onRemoveOrgan
               </Text>
             </Link>
             <div className="flex items-center gap-1.5">
-              <Text variant="mono" className="text-fg-3 text-body">{formatBytes(file.sizeBytes)}</Text>
+              <Text variant="dim">{formatBytes(file.sizeBytes)}</Text>
               <Text variant="dim">·</Text>
               {file.status === 'ready'   && <Badge variant="status" color="green">ready</Badge>}
               {file.status === 'pending' && <Badge variant="status" color="yellow">uploading</Badge>}

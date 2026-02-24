@@ -143,7 +143,7 @@ export default function FileDetailPage() {
 
         <div className="flex items-center gap-2 mt-1 flex-wrap">
           <Text variant="dim">{formatBytes(file.sizeBytes)}</Text>
-          {file.md5 && <Text variant="mono" className="text-fg-3 text-body">MD5: {file.md5.slice(0, 12)}...</Text>}
+          {file.md5 && <Text variant="dim">MD5: {file.md5.slice(0, 12)}...</Text>}
           <Text variant="dim">Uploaded {formatRelativeTime(file.uploadedAt)}</Text>
           {file.uploadedBy && <Text variant="dim">by {file.uploadedBy}</Text>}
         </div>

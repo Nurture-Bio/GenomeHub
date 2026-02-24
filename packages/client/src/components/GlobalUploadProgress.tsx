@@ -120,8 +120,7 @@ function UploadRow({ upload }: { upload: UploadProgress }) {
       <Text variant="mono" className="flex-1 min-w-0 truncate">
         {upload.filename}
       </Text>
-      <Text variant="mono" className="shrink-0 tabular-nums" style={{
-        fontSize: 'var(--font-size-body)',
+      <Text variant="dim" className="shrink-0 tabular-nums" style={{
         color: upload.status === 'done'  ? 'var(--color-green)'
              : upload.status === 'error' ? 'var(--color-red)'
              : 'var(--color-fg-3)',

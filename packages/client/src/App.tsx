@@ -172,7 +172,7 @@ function SidebarFooter({ user, logout }: { user: { name: string; email: string; 
       )}
       <div className="flex-1 min-w-0">
         <Text as="div" variant="dim" className="text-fg truncate">{user.name}</Text>
-        <Text as="div" variant="mono" className="text-fg-3 truncate">{user.email}</Text>
+        <Text as="div" variant="dim" className="text-fg-3 truncate">{user.email}</Text>
       </div>
       <button
         onClick={logout}

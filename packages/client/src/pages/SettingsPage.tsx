@@ -28,7 +28,7 @@ function EditableRow({ id, name, description, onSave, onDelete }: EditableRowPro
   return (
     <tr className="border-b border-line group hover:bg-base transition-colors duration-fast">
       <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
-        <InlineInput value={name} mono fullWidth className="font-semibold" onCommit={val => onSave(id, { name: val })} />
+        <InlineInput value={name} fullWidth className="font-semibold" onCommit={val => onSave(id, { name: val })} />
       </td>
       <td className="py-1.5 pr-3 overflow-hidden">
         <InlineInput value={description ?? ''} placeholder="add description" fullWidth onCommit={val => onSave(id, { description: val })} />
@@ -67,7 +67,7 @@ function AddRow({ placeholder, onAdd }: { placeholder: string; onAdd: (name: str
         <input ref={nameRef} value={name} onChange={e => setName(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') commit(); }}
           placeholder={placeholder}
-          className={cx(inlineInput({ font: 'mono' }), 'font-semibold w-full')} />
+          className={cx(inlineInput({ font: 'body' }), 'font-semibold w-full')} />
       </td>
       <td className="py-1.5 pr-3 overflow-hidden">
         <input value={desc} onChange={e => setDesc(e.target.value)}
@@ -129,11 +129,11 @@ function EngineRow({ id, name, url, status, onSave, onDelete }: EngineRowProps) 
       <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
         <div className="flex items-center gap-1.5">
           <div className={statusDot({ status: status === 'ok' ? 'connected' : 'disconnected', size: 'sm' })} />
-          <InlineInput value={name} mono fullWidth className="font-semibold" onCommit={val => onSave(id, { name: val })} />
+          <InlineInput value={name} fullWidth className="font-semibold" onCommit={val => onSave(id, { name: val })} />
         </div>
       </td>
       <td className="py-1.5 pr-3 overflow-hidden">
-        <InlineInput value={url} mono fullWidth onCommit={val => onSave(id, { url: val })} />
+        <InlineInput value={url} fullWidth onCommit={val => onSave(id, { url: val })} />
       </td>
       <td className="py-1.5 pr-2.5 w-8">
         <button onClick={() => onDelete(id, name)}
@@ -167,13 +167,13 @@ function EngineAddRow({ onAdd }: { onAdd: (name: string, url: string) => Promise
         <input ref={nameRef} value={name} onChange={e => setName(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') commit(); }}
           placeholder="+ new engine"
-          className={cx(inlineInput({ font: 'mono' }), 'font-semibold w-full')} />
+          className={cx(inlineInput({ font: 'body' }), 'font-semibold w-full')} />
       </td>
       <td className="py-1.5 pr-3 overflow-hidden">
         <input value={url} onChange={e => setUrl(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') commit(); }}
           placeholder="http://localhost:8001"
-          className={cx(inlineInput({ font: 'mono' }), 'w-full')} />
+          className={cx(inlineInput({ font: 'body' }), 'w-full')} />
       </td>
       <td className="py-1.5 pr-2.5 w-8">
         <span className={`inline-flex items-center gap-1 transition-opacity duration-fast ${hasInput ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
