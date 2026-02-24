@@ -17,6 +17,7 @@ import * as ecsPatterns from 'aws-cdk-lib/aws-ecs-patterns';
 import * as s3      from 'aws-cdk-lib/aws-s3';
 import * as rds     from 'aws-cdk-lib/aws-rds';
 import * as ssm     from 'aws-cdk-lib/aws-ssm';
+import * as ecr     from 'aws-cdk-lib/aws-ecr';
 import * as iam     from 'aws-cdk-lib/aws-iam';
 import * as logs    from 'aws-cdk-lib/aws-logs';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
@@ -121,6 +122,7 @@ export class GenomeHubStack extends cdk.Stack {
     const cluster = new ecs.Cluster(this, 'Cluster', {
       vpc,
       containerInsights: true,
+      defaultCloudMapNamespace: { name: 'genomehub.local' },
     });
 
     // ── Task IAM role ──────────────────────────────────────
@@ -138,7 +140,7 @@ export class GenomeHubStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
-    // ── Task definition (two containers: GenomeHub + SeqChain) ─
+    // ── Task definition ────────────────────────────────────
 
     const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
       cpu:            1024,
@@ -162,7 +164,6 @@ export class GenomeHubStack extends cdk.Stack {
         AWS_REGION:       this.region,
         S3_BUCKET:        bucket.bucketName,
         GOOGLE_CLIENT_ID: '631098657995-b6gm7u609caa7si5h8ep3tj1cf8m9in2.apps.googleusercontent.com',
-        SEQCHAIN_URL:     'http://localhost:8001',
       },
       secrets: {
         DATABASE_URL: ecs.Secret.fromSecretsManager(db.secret!),
@@ -170,29 +171,44 @@ export class GenomeHubStack extends cdk.Stack {
       essential: true,
     });
 
-    // SeqChain container — Python analysis engine (sidecar)
-    // Shares the task's network namespace, so GenomeHub reaches it
-    // at localhost:8001. Shares the task IAM role, so it gets S3
-    // access automatically. No ALB routing — internal only.
+    // ── SeqChain engine service (separate deploy cycle) ────
+    // Image pushed to ECR independently from the SeqChain repo.
+    // Runs in the same VPC — S3 presigned URL transfers are free (same region).
+    // Registered in GenomeHub Settings by its internal URL.
+
+    const seqchainRepo = new ecr.Repository(this, 'SeqChainRepo', {
+      repositoryName: 'seqchain',
+      removalPolicy:  cdk.RemovalPolicy.RETAIN,
+      lifecycleRules: [{ maxImageCount: 5, description: 'Keep last 5 images' }],
+    });
+
     const seqchainLogGroup = new logs.LogGroup(this, 'SeqChainLogs', {
       logGroupName:  '/genome-hub/seqchain',
       retention:     logs.RetentionDays.ONE_MONTH,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
-    taskDef.addContainer('seqchain', {
-      // To use a pre-built image from ECR instead:
-      //   image: ecs.ContainerImage.fromEcrRepository(repo, 'latest'),
-      image: ecs.ContainerImage.fromAsset('../../../SeqChain', {
-        file: 'Dockerfile.api',
-      }),
+    const seqchainTaskDef = new ecs.FargateTaskDefinition(this, 'SeqChainTaskDef', {
+      cpu:            512,
+      memoryLimitMiB: 1024,
+    });
+
+    seqchainTaskDef.addContainer('seqchain', {
+      image: ecs.ContainerImage.fromEcrRepository(seqchainRepo, 'latest'),
       portMappings: [{ containerPort: 8001 }],
       logging: ecs.LogDrivers.awsLogs({ logGroup: seqchainLogGroup, streamPrefix: 'seqchain' }),
-      environment: {
-        AWS_REGION: this.region,
-        S3_BUCKET:  bucket.bucketName,
-      },
-      essential: false,  // GenomeHub runs fine without analysis engine
+    });
+
+    const seqchainService = new ecs.FargateService(this, 'SeqChainService', {
+      cluster,
+      taskDefinition: seqchainTaskDef,
+      desiredCount: 0,  // No image yet — push to ECR first, then scale up
+      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
+    });
+
+    // Service discovery so GenomeHub can reach SeqChain by DNS name
+    const seqchainDns = seqchainService.enableCloudMap({
+      name: 'seqchain',
     });
 
     // ── Fargate service ────────────────────────────────────
@@ -268,6 +284,16 @@ export class GenomeHubStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'LoadBalancerDns', {
       value: service.loadBalancer.loadBalancerDnsName,
       description: 'ALB DNS (for health checks / direct access)',
+    });
+
+    new cdk.CfnOutput(this, 'SeqChainUrl', {
+      value: `http://seqchain.${cluster.defaultCloudMapNamespace?.namespaceName ?? 'local'}:8001`,
+      description: 'SeqChain internal URL — register this in GenomeHub Settings',
+    });
+
+    new cdk.CfnOutput(this, 'SeqChainEcrUri', {
+      value: seqchainRepo.repositoryUri,
+      description: 'ECR URI for pushing SeqChain images',
     });
   }
 }

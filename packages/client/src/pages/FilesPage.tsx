@@ -266,6 +266,13 @@ export default function FilesPage() {
     return Array.from(types).sort().map(t => ({ id: t, label: t }));
   }, [data]);
 
+  const colItems = useMemo(() => {
+    if (!data) return [];
+    const cols = new Map<string, string>();
+    data.forEach(f => f.collections.forEach(c => { if (c.name) cols.set(c.id, c.name); }));
+    return Array.from(cols.entries()).sort((a, b) => a[1].localeCompare(b[1])).map(([id, label]) => ({ id, label }));
+  }, [data]);
+
   const orgItems = useMemo(() => {
     if (!data) return [];
     const orgs = new Map<string, string>();
@@ -387,15 +394,7 @@ export default function FilesPage() {
           className="w-full md:w-64"
         />
 
-        <CollectionPicker
-          value={filterCollectionId}
-          onValueChange={setFilterCollectionId}
-          placeholder="All collections"
-          variant="surface"
-          size="md"
-          className="w-full sm:w-44"
-        />
-
+        <FilterChip label="All collections" items={colItems} value={filterCollectionId} onValueChange={setFilterCollectionId} />
         <FilterChip label="All types" items={typeItems} value={filterType} onValueChange={setFilterType} />
         <FilterChip label="All formats" items={formatItems} value={fmtFilter} onValueChange={setFmtFilter} />
         <FilterChip label="All organisms" items={orgItems} value={orgFilter} onValueChange={setOrgFilter} />

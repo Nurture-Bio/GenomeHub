@@ -5,11 +5,10 @@
  * needs a deterministic per-label color imports from here.
  *
  * Algorithm:
- *   1. Polynomial accumulation  (h = 31h + c) — fast, portable
- *   2. Knuth multiplicative scramble (× 2654435761 = ⌊2³²/φ⌋)
- *      Maps adjacent raw hashes to distant hue angles, so visually similar
- *      strings (e.g. "gtf" vs "gbff") land far apart on the wheel.
- *   3. Modulo 360 → HSL hue angle
+ *   1. FNV-1a accumulation — good distribution for short strings
+ *   2. Murmur3 32-bit finalizer — avalanche mixing so similar strings
+ *      (e.g. "gff" vs "gtf" vs "gbk") land far apart on the hue wheel
+ *   3. Scale to 0–360 → hue angle
  *
  * Color model: OKLCH for perceptually uniform brightness across hues.
  *   bg    = dark, low-chroma tint  (suitable for dark-mode pill backgrounds)
@@ -17,22 +16,29 @@
  */
 
 export interface HashColor {
-  bg:    string;   // e.g. oklch(0.22 0.05 147)
-  color: string;   // e.g. oklch(0.72 0.18 147)
+  bg:    string;   // e.g. oklch(0.20 0.05 147)
+  color: string;   // e.g. oklch(0.75 0.18 147)
 }
 
-function knuthHue(s: string): number {
-  let h = 0;
+function hashHue(s: string): number {
+  // FNV-1a
+  let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) {
-    h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
   }
-  h = Math.imul(h >>> 0, 2654435761) >>> 0;
-  return h % 360;
+  // Murmur3 finalizer
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x85ebca6b);
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35);
+  h ^= h >>> 16;
+  return ((h >>> 0) / 0xFFFFFFFF) * 360;
 }
 
 /** Deterministic color pair for any string label. */
 export function hashColor(label: string): HashColor {
-  const hue = knuthHue(label);
+  const hue = hashHue(label);
   return {
     bg:    `oklch(0.20 0.05 ${hue})`,
     color: `oklch(0.75 0.18 ${hue})`,

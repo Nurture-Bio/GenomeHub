@@ -58,13 +58,25 @@ GenomeHub can connect to external analysis engines at runtime. An engine is any 
 
 The sidebar shows a green status dot next to each reachable engine. If no engines are configured or none are reachable, the section is hidden. The Settings page shows each engine with its live status, and you can inline-edit the name or URL.
 
-In production, engines typically run as sidecar containers in the same ECS Fargate task. They share the task's network namespace (reachable at `localhost`) and IAM role (automatic S3 access). The ALB only routes traffic to GenomeHub on port 3000. Engine containers are marked `essential: false`, so GenomeHub runs normally whether engines are healthy or not.
+Engines deploy independently — their own repo, their own infra, anywhere with a URL. GenomeHub proxies all data: it downloads files from S3, uploads them to the engine, fetches results, and stores them back. Engines never touch S3 or need AWS credentials. Register the URL in Settings and GenomeHub starts polling immediately.
 
-The only contract an engine must satisfy is `GET /api/health` returning `{"status":"ok"}`. That is the entire integration surface.
+The full engine contract is documented in [`docs/engine-interface.md`](docs/engine-interface.md). In short, an engine exposes:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/health` | Returns `{"status":"ok"}` — GenomeHub polls this for status |
+| `GET /api/methods` | Returns method schemas — GenomeHub builds UI from these |
+| `POST /api/files/upload` | Accepts a file via multipart form, returns `{"id":"..."}` |
+| `POST /api/methods/:id` | Executes a method, returns `{"id":"..."}` for the result |
+| `GET /api/tracks/:id/data` | Returns result data as JSON |
+
+Method parameters have two types: `file` (GenomeHub uploads a file from S3) and `string` (passed through as-is). File params can include an `accept` array to filter the file picker by format. GenomeHub doesn't know or care what the engine does with a file — that's the engine's problem.
+
+The formal JSON Schema is at [`docs/engine-methods-schema.json`](docs/engine-methods-schema.json).
 
 ### Chip coloring
 
-Metadata tags (file types, organisms, sequencing techniques) are rendered as colored chips. Each chip's color is derived deterministically from its label text using a polynomial string hash followed by a Knuth multiplicative scramble. The scramble maps small hash differences to large hue offsets, so visually similar labels like `gtf` and `gbff` get reliably distinct colors. No color palette, no database column, zero bytes of color data shipped.
+Metadata tags (file types, organisms, sequencing techniques) are rendered as colored chips. Each chip's color is derived deterministically from its label text using FNV-1a hashing with a murmur3 finalizer. The finalizer provides strong avalanche mixing so short similar strings like `gff`, `gtf`, and `gbk` land at distant hue angles. Colors are rendered in OKLCH for perceptually uniform brightness across hues. No color palette, no database column, zero bytes of color data shipped.
 
 ---
 
@@ -102,7 +114,7 @@ Builds the Docker images, pushes to ECR, and provisions:
 | S3 | `genome-hub-files-{account}-{region}`, all public access blocked |
 | RDS | `db.t4g.small`, isolated subnet, encrypted, deletion protection |
 | ECS Fargate | 1 vCPU / 2 GB, auto-scales to 4 tasks at 70% CPU |
-| Containers | GenomeHub (port 3000, essential) + engine sidecars (optional) |
+| Containers | GenomeHub (port 3000, built from source) |
 | CloudFront | HTTPS redirect, cache disabled for API pass-through |
 | ALB | Public, health-checked, routes to GenomeHub only |
 
@@ -176,6 +188,8 @@ packages/
 | `POST` | `/api/engines` | Register an engine (`{ name, url }`) |
 | `PUT` | `/api/engines/:id` | Update engine name or URL |
 | `DELETE` | `/api/engines/:id` | Remove an engine |
+| `GET` | `/api/engines/:id/methods` | Proxy method schemas from engine |
+| `POST` | `/api/engines/:id/methods/:methodId` | Orchestrate file upload, dispatch, and result ingestion |
 
 ### Reference data
 
@@ -216,8 +230,8 @@ FASTQ, BAM, CRAM, VCF, BCF, BED, GFF/GFF3, GTF, FASTA, SAM, BigWig, BigBed, JSON
 
 ### Engine integration
 
-- [ ] Analysis triggers: launch engine pipelines from uploaded files
-- [ ] Result ingestion: engine outputs cataloged back into GenomeHub with provenance edges
+- [x] Analysis triggers: launch engine methods from the UI with schema-driven parameter forms
+- [x] Result ingestion: engine outputs cataloged back into GenomeHub with provenance edges
 - [ ] Preset library: browse and apply engine presets from the GenomeHub UI
 
 ### End-to-end vision
@@ -228,13 +242,15 @@ flowchart LR
         GH[GenomeHub<br/>FASTQ / BAM / VCF / BED<br/>Catalog + Knowledge Graph]
     end
     subgraph Computation
-        SC[Engines<br/>Annotate / Quantify / Compare]
+        SC[SeqChain<br/>Annotate / Quantify / Compare]
     end
     subgraph Interpretation
         E2P[Epigenome2Phenome<br/>Visualize flux / Design guides<br/>Predict phenotype]
     end
 
-    GH --> SC --> E2P
+    GH -->|upload files, dispatch methods| SC
+    SC -->|results| GH
+    SC --> E2P
     E2P -.-> SC -.-> GH
 ```
 

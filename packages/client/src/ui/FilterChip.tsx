@@ -20,12 +20,12 @@ interface FilterChipProps {
 export default function FilterChip({ label, items, value, onValueChange, className }: FilterChipProps) {
   const selected = items.find(i => i.id === value);
   const active = !!selected;
-  const hc = active ? hashColor(value) : null;
+  const hc = active ? hashColor(selected!.label) : null;
 
   const comboItems: ComboBoxItem[] = items.map(i => ({
     id: i.id,
     label: i.label,
-    icon: <HashPill label={i.label} colorKey={i.id} />,
+    icon: <HashPill label={i.label} />,
   }));
 
   return (
