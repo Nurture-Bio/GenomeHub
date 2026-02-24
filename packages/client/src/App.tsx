@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Routes, Route, NavLink, Navigate, useParams } from 'react-router-dom';
 import * as Dialog from '@radix-ui/react-dialog';
 import { cx } from 'class-variance-authority';
-import { navLink, statusDot, button, input, modalOverlay, modalCard } from './ui/recipes';
+import { navLink, statusDot, button, input, modalOverlay } from './ui/recipes';
 import { Text, Heading, iconAction, ComboBox } from './ui';
 import type { ComboBoxItem } from './ui';
 import { useAuth } from './hooks/useAuth';
@@ -221,7 +221,9 @@ function EngineMethodDialog({
       <Dialog.Portal>
         <Dialog.Overlay className={modalOverlay()} />
         <Dialog.Content
-          className={cx(modalCard(), 'max-h-[80vh] overflow-y-auto')}
+          className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-modal
+                     bg-elevated border border-line rounded-lg shadow-lg
+                     p-3 w-full max-w-embed mx-2 max-h-[80vh] overflow-y-auto animate-fade-in"
           onPointerDownOutside={() => onOpenChange(false)}
         >
           <Dialog.Title asChild>
