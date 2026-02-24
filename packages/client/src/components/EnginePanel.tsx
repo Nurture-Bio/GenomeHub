@@ -10,6 +10,7 @@ import {
   useEngineMethodsQuery,
   useRunMethodMutation,
   useFilesQuery,
+  useCollectionsQuery,
 } from '../hooks/useGenomicQueries';
 import type { EngineMethod, EngineStatus } from '../hooks/useGenomicQueries';
 
@@ -17,12 +18,14 @@ import type { EngineMethod, EngineStatus } from '../hooks/useGenomicQueries';
 
 function MethodForm({ engineId, method }: { engineId: string; method: EngineMethod }) {
   const { data: files } = useFilesQuery();
+  const { data: collections } = useCollectionsQuery();
   const { runMethod, pending } = useRunMethodMutation();
   const [params, setParams] = useState<Record<string, string>>({});
   const [fmtFilter, setFmtFilter] = useState('');
   const [orgFilter, setOrgFilter] = useState('');
+  const [colFilter, setColFilter] = useState('');
 
-  const hasFileParams = method.parameters.some(p => p.type === 'track' || p.type === 'genome');
+  const hasFileParams = method.parameters.some(p => p.type === 'file');
 
   const readyFiles = useMemo(() => (files ?? []).filter(f => f.status === 'ready'), [files]);
 
@@ -37,9 +40,14 @@ function MethodForm({ engineId, method }: { engineId: string; method: EngineMeth
     return Array.from(orgs.entries()).sort((a, b) => a[1].localeCompare(b[1])).map(([id, label]) => ({ id, label }));
   }, [readyFiles]);
 
+  const colItems = useMemo(() => {
+    return (collections ?? []).map(c => ({ id: c.id, label: c.name }));
+  }, [collections]);
+
   const fileItems: ComboBoxItem[] = readyFiles
     .filter(f => !fmtFilter || f.format === fmtFilter)
     .filter(f => !orgFilter || f.organisms.some(o => o.id === orgFilter))
+    .filter(f => !colFilter || f.collections.some(c => c.id === colFilter))
     .map(f => ({ id: f.id, label: f.filename, group: f.format.toUpperCase() }));
 
   const allRequiredFilled = method.parameters
@@ -57,7 +65,7 @@ function MethodForm({ engineId, method }: { engineId: string; method: EngineMeth
         <Text variant="dim" as="div" className="mt-0.5">{method.description}</Text>
       </div>
 
-      {hasFileParams && (formatItems.length > 1 || orgItems.length > 1) && (
+      {hasFileParams && (formatItems.length > 1 || orgItems.length > 1 || colItems.length > 1) && (
         <div className="flex gap-1 flex-wrap">
           {formatItems.length > 1 && (
             <FilterChip label="All formats" items={formatItems} value={fmtFilter} onValueChange={setFmtFilter} />
@@ -65,15 +73,23 @@ function MethodForm({ engineId, method }: { engineId: string; method: EngineMeth
           {orgItems.length > 1 && (
             <FilterChip label="All organisms" items={orgItems} value={orgFilter} onValueChange={setOrgFilter} />
           )}
+          {colItems.length > 1 && (
+            <FilterChip label="All collections" items={colItems} value={colFilter} onValueChange={setColFilter} />
+          )}
         </div>
       )}
 
       {method.parameters.map(p => (
         <div key={p.name} className="flex flex-col gap-0.5">
           <Text variant="muted">{p.name.replace(/_/g, ' ')}{p.required ? '' : ' (optional)'}</Text>
-          {(p.type === 'track' || p.type === 'genome') ? (
+          {p.type === 'file' ? (
             <ComboBox
-              items={fileItems}
+              items={p.accept
+                ? fileItems.filter(f => {
+                    const ext = f.label.split('.').pop()?.toLowerCase();
+                    return ext && p.accept!.includes(ext);
+                  })
+                : fileItems}
               value={params[p.name] ?? ''}
               onValueChange={v => setParams(prev => ({ ...prev, [p.name]: v }))}
               placeholder={p.description}

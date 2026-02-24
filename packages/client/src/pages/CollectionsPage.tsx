@@ -53,6 +53,8 @@ export default function CollectionsPage() {
   const { removeCollectionTechnique } = useRemoveCollectionTechnique();
 
   const [techFilter, setTechFilter] = useState('');
+  const [orgFilter,  setOrgFilter]  = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
 
   // Inline add row
   const [newName, setNewName] = useState('');
@@ -62,9 +64,13 @@ export default function CollectionsPage() {
 
   const filtered = useMemo(() => {
     if (!data) return [];
-    if (!techFilter) return data;
-    return data.filter(c => c.techniques.some(t => t.name === techFilter));
-  }, [data, techFilter]);
+    return data.filter(c => {
+      const matchTech = !techFilter || c.techniques.some(t => t.name === techFilter);
+      const matchOrg  = !orgFilter  || c.organisms.some(o => o.id === orgFilter);
+      const matchType = !typeFilter || c.types.includes(typeFilter);
+      return matchTech && matchOrg && matchType;
+    });
+  }, [data, techFilter, orgFilter, typeFilter]);
 
   const handleCreate = async () => {
     if (!newName.trim()) return;
@@ -80,6 +86,19 @@ export default function CollectionsPage() {
   const techniqueItems = useMemo(() => {
     return (techniques ?? []).map(t => ({ id: t.name, label: t.name }));
   }, [techniques]);
+
+  const orgItems = useMemo(() => {
+    if (!data) return [];
+    const orgs = new Map<string, string>();
+    data.forEach(c => c.organisms.forEach(o => orgs.set(o.id, o.displayName)));
+    return Array.from(orgs.entries()).sort((a, b) => a[1].localeCompare(b[1])).map(([id, label]) => ({ id, label }));
+  }, [data]);
+
+  const typeItems = useMemo(() => {
+    if (!data) return [];
+    const types = new Set(data.flatMap(c => c.types).filter(Boolean));
+    return Array.from(types).sort().map(t => ({ id: t, label: t }));
+  }, [data]);
 
   const ready = newName.trim().length > 0;
 
@@ -105,9 +124,10 @@ export default function CollectionsPage() {
         </Text>
       </div>
 
-      {/* Technique filter */}
-      <div className="shrink-0">
+      <div className="flex gap-1 flex-wrap shrink-0">
         <FilterChip label="All techniques" items={techniqueItems} value={techFilter} onValueChange={setTechFilter} />
+        <FilterChip label="All organisms" items={orgItems} value={orgFilter} onValueChange={setOrgFilter} />
+        <FilterChip label="All types" items={typeItems} value={typeFilter} onValueChange={setTypeFilter} />
       </div>
 
       {/* Desktop table */}
@@ -133,7 +153,7 @@ export default function CollectionsPage() {
                     <tr>
                       <td colSpan={6} className="py-12 text-center">
                         <Text variant="body" className="text-fg-3">
-                          {techFilter ? 'No collections match this technique.' : 'No collections yet.'}
+                          {techFilter || orgFilter || typeFilter ? 'No collections match your filters.' : 'No collections yet.'}
                         </Text>
                       </td>
                     </tr>
@@ -242,7 +262,7 @@ export default function CollectionsPage() {
             </Card>
           ))
           : !filtered.length
-            ? <Text variant="body" className="py-8 text-center text-fg-3">{techFilter ? 'No collections match this technique.' : 'No collections yet.'}</Text>
+            ? <Text variant="body" className="py-8 text-center text-fg-3">{techFilter || orgFilter || typeFilter ? 'No collections match your filters.' : 'No collections yet.'}</Text>
             : filtered.map(c => (
               <Link key={c.id} to={`/collections/${c.id}`} className="no-underline">
                 <Card className="p-2.5 flex flex-col gap-1 hover:border-cyan transition-colors duration-fast cursor-pointer">

@@ -266,8 +266,16 @@ export default function FilesPage() {
     return Array.from(types).sort().map(t => ({ id: t, label: t }));
   }, [data]);
 
+  const orgItems = useMemo(() => {
+    if (!data) return [];
+    const orgs = new Map<string, string>();
+    data.forEach(f => f.organisms.forEach(o => orgs.set(o.id, o.displayName)));
+    return Array.from(orgs.entries()).sort((a, b) => a[1].localeCompare(b[1])).map(([id, label]) => ({ id, label }));
+  }, [data]);
+
   const [search,     setSearch]     = useState('');
   const [fmtFilter,  setFmtFilter]  = useState('');
+  const [orgFilter,  setOrgFilter]  = useState('');
   const [selected,   setSelected]   = useState<Set<string>>(new Set());
   const [addToColId, setAddToColId] = useState<string | null>(null);
 
@@ -280,9 +288,10 @@ export default function FilesPage() {
         || f.collections.some(c => c.name?.toLowerCase().includes(q))
         || f.tags.some(t => t.toLowerCase().includes(q));
       const matchFmt = !fmtFilter || f.format === fmtFilter;
-      return matchSearch && matchFmt;
+      const matchOrg = !orgFilter || f.organisms.some(o => o.id === orgFilter);
+      return matchSearch && matchFmt && matchOrg;
     });
-  }, [data, search, fmtFilter]);
+  }, [data, search, fmtFilter, orgFilter]);
 
   const allSelected   = files.length > 0 && files.every(f => selected.has(f.id));
   const toggleAll     = () => setSelected(allSelected ? new Set() : new Set(files.map(f => f.id)));
@@ -389,6 +398,7 @@ export default function FilesPage() {
 
         <FilterChip label="All types" items={typeItems} value={filterType} onValueChange={setFilterType} />
         <FilterChip label="All formats" items={formatItems} value={fmtFilter} onValueChange={setFmtFilter} />
+        <FilterChip label="All organisms" items={orgItems} value={orgFilter} onValueChange={setOrgFilter} />
       </div>
 
       {/* Desktop table — hidden below md */}
@@ -420,7 +430,7 @@ export default function FilesPage() {
                   <tr>
                     <td colSpan={6} className="py-12 text-center">
                       <Text variant="body" className="text-fg-3">
-                        {search || fmtFilter || filterType || filterCollectionId ? 'No files match your filters.' : 'No files yet. Upload some to get started.'}
+                        {search || fmtFilter || filterType || orgFilter || filterCollectionId ? 'No files match your filters.' : 'No files yet. Upload some to get started.'}
                       </Text>
                     </td>
                   </tr>
@@ -465,7 +475,7 @@ export default function FilesPage() {
           : files.length === 0
             ? (
               <Text variant="body" className="py-8 text-center text-fg-3">
-                {search || fmtFilter || filterType || filterCollectionId ? 'No files match your filters.' : 'No files yet. Upload some to get started.'}
+                {search || fmtFilter || filterType || orgFilter || filterCollectionId ? 'No files match your filters.' : 'No files yet. Upload some to get started.'}
               </Text>
             )
             : files.map(f => (

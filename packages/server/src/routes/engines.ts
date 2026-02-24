@@ -100,7 +100,7 @@ router.post('/:id/methods/:methodId', asyncWrap(async (req, res) => {
     parameters: { name: string; type: string; required: boolean }[];
   };
 
-  // 2. For each track param: download from S3, upload to engine
+  // 2. For each file param: download from S3, upload to engine
   const dispatchBody: Record<string, string> = {};
   const inputFileIds: string[] = [];
 
@@ -112,7 +112,7 @@ router.post('/:id/methods/:methodId', asyncWrap(async (req, res) => {
     }
     if (value === undefined) continue;
 
-    if (param.type === 'track' || param.type === 'genome') {
+    if (param.type === 'file') {
       // value is a GenomicFile ID — download bytes, forward to engine
       const file = await fileRepo.findOneBy({ id: value });
       if (!file) {
@@ -125,11 +125,7 @@ router.post('/:id/methods/:methodId', asyncWrap(async (req, res) => {
       const form = new FormData();
       form.append('file', new Blob([new Uint8Array(bytes)]), file.filename);
 
-      const uploadEndpoint = param.type === 'genome'
-        ? `${engine.url}/api/genomes/upload`
-        : `${engine.url}/api/tracks/upload`;
-
-      const uploadRes = await fetch(uploadEndpoint, {
+      const uploadRes = await fetch(`${engine.url}/api/files/upload`, {
         method: 'POST',
         body: form,
         signal: AbortSignal.timeout(30000),
@@ -139,9 +135,8 @@ router.post('/:id/methods/:methodId', asyncWrap(async (req, res) => {
         res.status(502).json({ error: `Engine upload failed: ${errBody}` });
         return;
       }
-      const uploadResult = await uploadRes.json() as Record<string, string>;
-      // Engine returns {track_id} for tracks, {genome_id} for genomes
-      dispatchBody[param.name] = uploadResult.track_id ?? uploadResult.genome_id;
+      const { id: engineFileId } = await uploadRes.json() as { id: string };
+      dispatchBody[param.name] = engineFileId;
     } else {
       dispatchBody[param.name] = value;
     }
@@ -159,11 +154,11 @@ router.post('/:id/methods/:methodId', asyncWrap(async (req, res) => {
     res.status(502).json({ error: `Method execution failed: ${errBody}` });
     return;
   }
-  const { track_id: resultTrackId } = await methodRes.json() as { track_id: string };
+  const { id: engineResultId } = await methodRes.json() as { id: string };
 
   // 4. Fetch result as JSON
   const dataRes = await fetch(
-    `${engine.url}/api/tracks/${resultTrackId}/data`,
+    `${engine.url}/api/tracks/${engineResultId}/data`,
     { signal: AbortSignal.timeout(30000) },
   );
   if (!dataRes.ok) {

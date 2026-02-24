@@ -1002,6 +1002,7 @@ export interface EngineMethodParam {
   required:     boolean;
   description:  string;
   default?:     string;
+  accept?:      string[];
 }
 
 export interface EngineMethod {
@@ -1009,7 +1010,7 @@ export interface EngineMethod {
   name:        string;
   description: string;
   parameters:  EngineMethodParam[];
-  returns:     { type: string; fields: string[]; description: string };
+  returns:     { type: string; description: string };
 }
 
 export function useEnginesQuery() {
