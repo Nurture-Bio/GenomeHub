@@ -90,11 +90,11 @@ export default function OrganismsPage() {
                     <tr key={o.id} className="border-b border-line hover:bg-base transition-colors duration-fast group">
                       <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
                         <div className="flex items-baseline gap-1 min-w-0">
-                          <InlineInput value={o.genus} mono className="italic" onCommit={v => handleUpdate(o.id, { genus: v })} />
-                          <InlineInput value={o.species} mono className="font-semibold" onCommit={v => handleUpdate(o.id, { species: v })} />
+                          <InlineInput value={o.genus} className="italic" onCommit={v => handleUpdate(o.id, { genus: v })} />
+                          <InlineInput value={o.species} className="font-semibold" onCommit={v => handleUpdate(o.id, { species: v })} />
                         </div>
                         <div className="flex items-baseline gap-1.5 mt-0.5 min-w-0">
-                          <InlineInput value={o.strain ?? ''} placeholder="strain" mono onCommit={v => handleUpdate(o.id, { strain: v || null })} />
+                          <InlineInput value={o.strain ?? ''} placeholder="strain" onCommit={v => handleUpdate(o.id, { strain: v || null })} />
                           <InlineInput value={o.commonName ?? ''} placeholder="common name" onCommit={v => handleUpdate(o.id, { commonName: v || null })} />
                         </div>
                       </td>
@@ -162,7 +162,7 @@ export default function OrganismsPage() {
             ? <Text variant="body" className="py-8 text-center text-fg-3">No organisms yet.</Text>
             : data.map(o => (
               <Card key={o.id} className="p-2.5 flex flex-col gap-1">
-                <Text variant="mono">
+                <Text variant="body">
                   <span className="text-fg-3 italic">{o.genus.charAt(0)}.</span>{' '}
                   <span className="font-semibold">{o.species}</span>
                   {o.strain && <span className="text-fg-2 ml-1">{o.strain}</span>}
