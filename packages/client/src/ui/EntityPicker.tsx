@@ -9,7 +9,8 @@ import {
   useCreateRelationTypeMutation,
   useCreateFileTypeMutation,
 } from '../hooks/useGenomicQueries';
-// ── Shared helpers ───────────────────────────────────────
+
+// ── Shared base ─────────────────────────────────────────
 
 interface PickerBaseProps {
   value: string;
@@ -23,26 +24,49 @@ interface PickerBaseProps {
   trigger?: ReactNode;
 }
 
+function EntityPicker({
+  data,
+  isLoading,
+  mapItem,
+  onCreate,
+  items: overrideItems,
+  ...comboProps
+}: PickerBaseProps & {
+  data: unknown[] | undefined;
+  isLoading: boolean;
+  mapItem: (item: any) => ComboBoxItem;
+  onCreate?: (search: string) => void;
+}) {
+  const items = useMemo(() => {
+    if (overrideItems) return overrideItems;
+    return (data ?? []).map(mapItem);
+  }, [data, overrideItems, mapItem]);
+
+  return (
+    <ComboBox
+      {...comboProps}
+      items={items}
+      loading={!overrideItems && isLoading}
+      onCreate={overrideItems ? undefined : onCreate}
+    />
+  );
+}
+
 // ── CollectionPicker ────────────────────────────────────
 
 interface CollectionPickerProps extends PickerBaseProps {
   type?: string;
 }
 
-export function CollectionPicker({ value, onValueChange, type, placeholder = 'Collection', items: overrideItems, ...rest }: CollectionPickerProps) {
-  const { data, isLoading } = useCollectionsQuery(
-    type ? { type } : undefined,
-  );
-  const { createCollection } = useCreateCollectionMutation();
+const mapCollection = (c: any): ComboBoxItem => ({
+  id: c.id,
+  label: c.name,
+  description: [...c.techniques.map((t: any) => t.name), ...c.organisms.map((o: any) => o.displayName)].filter(Boolean).join(' / '),
+});
 
-  const items = useMemo(() => {
-    if (overrideItems) return overrideItems;
-    return (data ?? []).map(c => ({
-      id: c.id,
-      label: c.name,
-      description: [...c.techniques.map(t => t.name), ...c.organisms.map(o => o.displayName)].filter(Boolean).join(' / '),
-    }));
-  }, [data, overrideItems]);
+export function CollectionPicker({ type, onValueChange, ...rest }: CollectionPickerProps) {
+  const { data, isLoading } = useCollectionsQuery(type ? { type } : undefined);
+  const { createCollection } = useCreateCollectionMutation();
 
   const handleCreate = async (name: string) => {
     try {
@@ -52,73 +76,64 @@ export function CollectionPicker({ value, onValueChange, type, placeholder = 'Co
   };
 
   return (
-    <ComboBox
-      items={items}
-      value={value}
-      onValueChange={onValueChange}
-      placeholder={placeholder}
-      loading={!overrideItems && isLoading}
-      onCreate={handleCreate}
+    <EntityPicker
       {...rest}
+      data={data}
+      isLoading={isLoading}
+      mapItem={mapCollection}
+      onValueChange={onValueChange}
+      onCreate={handleCreate}
     />
   );
 }
 
-// ── OrganismPicker ───────────────────────────────────────
+// ── OrganismPicker ──────────────────────────────────────
 
-export function OrganismPicker({ value, onValueChange, placeholder = 'Organism', items: overrideItems, ...rest }: PickerBaseProps) {
+const mapOrganism = (o: any): ComboBoxItem => ({
+  id: o.id,
+  label: o.displayName,
+  description: [o.commonName, o.referenceGenome].filter(Boolean).join(' / '),
+});
+
+export function OrganismPicker({ onValueChange, ...rest }: PickerBaseProps) {
   const { data, isLoading } = useOrganismsQuery();
   const { createOrganism } = useCreateOrganismMutation();
 
-  const items = useMemo(() => {
-    if (overrideItems) return overrideItems;
-    return (data ?? []).map(o => ({
-      id: o.id,
-      label: o.displayName,
-      description: [o.commonName, o.referenceGenome].filter(Boolean).join(' / '),
-    }));
-  }, [data, overrideItems]);
-
   const handleCreate = async (input: string) => {
     try {
-      // Parse "Genus species strain" from typed text
       const parts = input.trim().split(/\s+/);
-      const genus = parts[0];
-      const species = parts[1] ?? 'sp.';
-      const strain = parts.slice(2).join(' ') || undefined;
-      const created = await createOrganism({ genus, species, strain });
+      const created = await createOrganism({
+        genus: parts[0],
+        species: parts[1] ?? 'sp.',
+        strain: parts.slice(2).join(' ') || undefined,
+      });
       onValueChange(created.id);
     } catch { /* toast already shown */ }
   };
 
   return (
-    <ComboBox
-      items={items}
-      value={value}
-      onValueChange={onValueChange}
-      placeholder={placeholder}
-      loading={!overrideItems && isLoading}
-      onCreate={handleCreate}
+    <EntityPicker
       {...rest}
+      data={data}
+      isLoading={isLoading}
+      mapItem={mapOrganism}
+      onValueChange={onValueChange}
+      onCreate={handleCreate}
     />
   );
 }
 
 // ── FileTypePicker ──────────────────────────────────────
-// Fetches from file_types table. Value is the type name (not id).
 
-export function FileTypePicker({ value, onValueChange, placeholder = 'Type', items: overrideItems, ...rest }: PickerBaseProps) {
+const mapFileType = (k: any): ComboBoxItem => ({
+  id: k.name,
+  label: k.name,
+  description: k.description ?? undefined,
+});
+
+export function FileTypePicker({ onValueChange, ...rest }: PickerBaseProps) {
   const { data, isLoading } = useFileTypesQuery();
   const { createFileType } = useCreateFileTypeMutation();
-
-  const items = useMemo(() => {
-    if (overrideItems) return overrideItems;
-    return (data ?? []).map(k => ({
-      id: k.name,
-      label: k.name,
-      description: k.description ?? undefined,
-    }));
-  }, [data, overrideItems]);
 
   const handleCreate = async (name: string) => {
     try {
@@ -128,32 +143,28 @@ export function FileTypePicker({ value, onValueChange, placeholder = 'Type', ite
   };
 
   return (
-    <ComboBox
-      items={items}
-      value={value}
-      onValueChange={onValueChange}
-      placeholder={placeholder}
-      loading={!overrideItems && isLoading}
-      onCreate={overrideItems ? undefined : handleCreate}
+    <EntityPicker
       {...rest}
+      data={data}
+      isLoading={isLoading}
+      mapItem={mapFileType}
+      onValueChange={onValueChange}
+      onCreate={handleCreate}
     />
   );
 }
 
 // ── TechniquePicker ─────────────────────────────────────
 
-export function TechniquePicker({ value, onValueChange, placeholder = 'Technique', items: overrideItems, ...rest }: PickerBaseProps) {
+const mapTechnique = (t: any): ComboBoxItem => ({
+  id: t.id,
+  label: t.name,
+  description: t.description ?? undefined,
+});
+
+export function TechniquePicker({ onValueChange, ...rest }: PickerBaseProps) {
   const { data, isLoading } = useTechniquesQuery();
   const { createTechnique } = useCreateTechniqueMutation();
-
-  const items = useMemo(() => {
-    if (overrideItems) return overrideItems;
-    return (data ?? []).map(t => ({
-      id: t.id,
-      label: t.name,
-      description: t.description ?? undefined,
-    }));
-  }, [data, overrideItems]);
 
   const handleCreate = async (name: string) => {
     try {
@@ -163,33 +174,28 @@ export function TechniquePicker({ value, onValueChange, placeholder = 'Technique
   };
 
   return (
-    <ComboBox
-      items={items}
-      value={value}
-      onValueChange={onValueChange}
-      placeholder={placeholder}
-      loading={!overrideItems && isLoading}
-      onCreate={overrideItems ? undefined : handleCreate}
+    <EntityPicker
       {...rest}
+      data={data}
+      isLoading={isLoading}
+      mapItem={mapTechnique}
+      onValueChange={onValueChange}
+      onCreate={handleCreate}
     />
   );
 }
 
-// ── RelationPicker ─────────────────────────────────────
-// Picks from relation_types table. Value is the relation name (not id).
+// ── RelationPicker ──────────────────────────────────────
 
-export function RelationPicker({ value, onValueChange, placeholder = 'Relation', items: overrideItems, ...rest }: PickerBaseProps) {
+const mapRelation = (r: any): ComboBoxItem => ({
+  id: r.name,
+  label: r.name.replace(/_/g, ' '),
+  description: r.description ?? undefined,
+});
+
+export function RelationPicker({ onValueChange, ...rest }: PickerBaseProps) {
   const { data, isLoading } = useRelationTypesQuery();
   const { createRelationType } = useCreateRelationTypeMutation();
-
-  const items = useMemo(() => {
-    if (overrideItems) return overrideItems;
-    return (data ?? []).map(r => ({
-      id: r.name,
-      label: r.name.replace(/_/g, ' '),
-      description: r.description ?? undefined,
-    }));
-  }, [data, overrideItems]);
 
   const handleCreate = async (name: string) => {
     try {
@@ -199,14 +205,13 @@ export function RelationPicker({ value, onValueChange, placeholder = 'Relation',
   };
 
   return (
-    <ComboBox
-      items={items}
-      value={value}
-      onValueChange={onValueChange}
-      placeholder={placeholder}
-      loading={!overrideItems && isLoading}
-      onCreate={overrideItems ? undefined : handleCreate}
+    <EntityPicker
       {...rest}
+      data={data}
+      isLoading={isLoading}
+      mapItem={mapRelation}
+      onValueChange={onValueChange}
+      onCreate={handleCreate}
     />
   );
 }
