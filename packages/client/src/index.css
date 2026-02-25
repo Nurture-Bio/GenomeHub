@@ -378,7 +378,7 @@
 /* ── Hash-colored chips and filter buttons ────────────── */
 
 .hash-chip {
-  @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full transition-[filter];
+  @apply inline-flex items-center gap-1 px-1.5 py-px rounded-full transition-[filter];
   font-family:         var(--font-sans);
   font-size:           var(--font-size-body);
   transition-duration: var(--t-fast);
@@ -398,9 +398,9 @@
   border-color: var(--color-line);
 }
 .hash-filter-btn[data-active="true"] {
-  background:   var(--hc-bg, var(--color-cyan));
-  color:        var(--hc-fg, var(--color-void));
-  border-color: var(--hc-fg, transparent);
+  background:   var(--color-raised);
+  color:        var(--color-fg);
+  border-color: var(--color-line-2);
 }
 .hash-filter-btn:hover  { filter: brightness(1.12); }
 .hash-filter-btn:active { filter: brightness(0.88); }

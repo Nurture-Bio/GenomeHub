@@ -1,38 +1,24 @@
-import { type ReactNode, type CSSProperties } from 'react';
-import type { ComboBoxItem } from './ComboBox';
-import { hashColor } from '../lib/colors';
-
-export function chipColorStyle(label: string): CSSProperties {
-  const { bg, color } = hashColor(label);
-  return { '--hc-bg': bg, '--hc-fg': color } as CSSProperties;
-}
-
-export interface ChipItem {
-  id: string;
-  label: string;
-}
+import { type ReactNode } from 'react';
+import HashPill from './HashPill';
+import type { HashChipItem } from './HashChipPopover';
 
 export interface ChipEditorProps {
-  items: ChipItem[];
-  onAdd: (id: string) => void;
-  onRemove: (id: string) => void;
-  renderPicker: (props: {
-    value: string;
+  items:         HashChipItem[];
+  onAdd:         (id: string) => void;
+  onRemove:      (id: string) => void;
+  renderPicker:  (props: {
+    value:         string;
     onValueChange: (id: string) => void;
-    items?: ComboBoxItem[];
-    trigger?: ReactNode;
+    trigger?:      ReactNode;
   }) => ReactNode;
-  size?: 'sm' | 'md';
-  colored?: boolean;
-  disabled?: boolean;
-  maxVisible?: number;
-  /** Render each chip label as a link */
-  renderLabel?: (item: ChipItem) => ReactNode;
+  /** Override the label content inside a chip (e.g. to render a Link). */
+  renderLabel?:  (item: HashChipItem) => ReactNode;
+  disabled?:     boolean;
+  maxVisible?:   number;
 }
 
 export default function ChipEditor({
-  items, onAdd, onRemove, renderPicker,
-  colored, disabled, maxVisible, renderLabel,
+  items, onAdd, onRemove, renderPicker, renderLabel, disabled, maxVisible,
 }: ChipEditorProps) {
   const visible = maxVisible && items.length > maxVisible
     ? items.slice(0, maxVisible)
@@ -64,29 +50,14 @@ export default function ChipEditor({
     <div className="group/editor flex gap-1 flex-wrap items-center">
 
       {visible.map(item => (
-        <span
+        <HashPill
           key={item.id}
-          className="group/chip hash-chip"
-          style={colored ? chipColorStyle(item.label) : undefined}
+          label={renderLabel ? '' : item.label}
+          colorKey={item.label}
+          onRemove={!disabled ? () => onRemove(item.id) : undefined}
         >
-          {renderLabel ? renderLabel(item) : (
-            <span className="leading-none">{item.label}</span>
-          )}
-          {!disabled && (
-            <button
-              type="button"
-              aria-label={`Remove ${item.label}`}
-              className="size-3.5 shrink-0 flex items-center justify-center rounded-full
-                         opacity-0 group-hover/chip:opacity-100
-                         transition-opacity duration-fast
-                         text-current hover:bg-black/15
-                         cursor-pointer border-0 bg-transparent leading-none"
-              onClick={() => onRemove(item.id)}
-            >
-              ×
-            </button>
-          )}
-        </span>
+          {renderLabel ? renderLabel(item) : undefined}
+        </HashPill>
       ))}
 
       {overflow > 0 && (

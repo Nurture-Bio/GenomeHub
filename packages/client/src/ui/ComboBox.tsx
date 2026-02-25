@@ -102,11 +102,11 @@ export default function ComboBox({
         <Popover.Content
           sideOffset={4}
           align="start"
-          className="bg-base border border-line shadow-lg rounded-md overflow-hidden z-50 animate-fade-in"
+          className="bg-base border border-line shadow-lg rounded-md overflow-hidden z-50 animate-fade-in flex flex-col"
           style={{ width: 'var(--radix-popover-trigger-width)', minWidth: 200, maxHeight: 300 }}
         >
-          <Command shouldFilter={true}>
-            <div className="border-b border-line px-2 py-1.5">
+          <Command shouldFilter={true} className="flex flex-col min-h-0 flex-1">
+            <div className="border-b border-line px-2 py-1 shrink-0">
               <Command.Input
                 value={search}
                 onValueChange={setSearch}
@@ -115,7 +115,7 @@ export default function ComboBox({
               />
             </div>
 
-            <Command.List className="overflow-y-auto max-h-56">
+            <Command.List className="overflow-y-auto flex-1 min-h-0">
               <Command.Empty className={cx(text({ variant: 'dim' }), 'px-2 py-3 text-center')}>
                 {emptyMessage}
               </Command.Empty>
@@ -125,7 +125,7 @@ export default function ComboBox({
                 <Command.Item
                   value="__clear__"
                   onSelect={() => { onValueChange(''); setOpen(false); }}
-                  className={cx(text({ variant: 'dim' }), 'px-2 py-1.5 cursor-pointer hover:bg-raised transition-colors duration-fast min-h-5.5 flex items-center')}
+                  className={cx(text({ variant: 'dim' }), 'px-2 py-1 cursor-pointer hover:bg-raised transition-colors duration-fast flex items-center')}
                 >
                   {placeholder}
                 </Command.Item>
@@ -160,7 +160,7 @@ export default function ComboBox({
                 <Command.Item
                   value={`__create__${search}`}
                   onSelect={() => { onCreate(search.trim()); setOpen(false); setSearch(''); }}
-                  className={cx(text({ variant: 'dim' }), 'px-2 py-1.5 cursor-pointer hover:bg-raised transition-colors duration-fast min-h-5.5 flex items-center gap-1 border-t border-line')}
+                  className={cx(text({ variant: 'dim' }), 'px-2 py-1 cursor-pointer hover:bg-raised transition-colors duration-fast flex items-center gap-1 border-t border-line')}
                   style={{ color: 'var(--color-cyan)' }}
                 >
                   + Create &ldquo;{search.trim()}&rdquo;
@@ -191,7 +191,7 @@ function ComboBoxOption({ item, selected, onSelect }: { item: ComboBoxItem; sele
       onSelect={handle}
       onClick={handle}
       className={cx(
-        'px-2 py-1.5 cursor-pointer transition-colors duration-fast min-h-5.5 flex items-center gap-2',
+        'px-2 py-1 cursor-pointer transition-colors duration-fast flex items-center gap-2',
         selected ? 'bg-raised' : 'hover:bg-raised',
       )}
     >

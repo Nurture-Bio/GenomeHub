@@ -177,7 +177,6 @@ function FileRow({ file, onDownload, onUpdateTypes, onAddOrganism, onRemoveOrgan
       <td className="py-1.5 pr-3 align-top overflow-hidden">
         {!warmup && (
           <ChipEditor
-            colored
             items={file.organisms.map(o => ({ id: o.id, label: o.displayName }))}
             onAdd={id => onAddOrganism(file.id, id)}
             onRemove={id => onRemoveOrganism(file.id, id)}
@@ -191,7 +190,6 @@ function FileRow({ file, onDownload, onUpdateTypes, onAddOrganism, onRemoveOrgan
       <td className="py-1.5 pr-3 align-top overflow-hidden">
         {!warmup && (
           <ChipEditor
-            colored
             items={file.types.map(t => ({ id: t, label: t }))}
             onAdd={id => onUpdateTypes(file.id, [...file.types, id])}
             onRemove={id => onUpdateTypes(file.id, file.types.filter(t => t !== id))}
@@ -205,7 +203,6 @@ function FileRow({ file, onDownload, onUpdateTypes, onAddOrganism, onRemoveOrgan
       <td className="py-1.5 pr-3 align-top overflow-hidden">
         {!warmup && (
           <ChipEditor
-            colored
             items={file.collections.map(c => ({ id: c.id, label: c.name ?? '' }))}
             onAdd={id => onAddToCollection(id, [file.id])}
             onRemove={id => onRemoveFromCollection(id, [file.id])}
