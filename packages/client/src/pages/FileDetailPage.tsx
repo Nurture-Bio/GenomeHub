@@ -7,7 +7,7 @@ import {
   usePresignedUrl, useDeleteFileMutation,
   useAddFileOrganism, useRemoveFileOrganism,
 } from '../hooks/useGenomicQueries';
-import { detectFormat, FORMAT_META, TEXT_PREVIEW_FORMATS, formatBytes, formatRelativeTime } from '../lib/formats';
+import { detectFormat, FORMAT_META, formatBytes, formatRelativeTime } from '../lib/formats';
 import { Heading, Text, Card, Badge, Button, InlineInput, Input, ChipEditor, HashPill, iconAction } from '../ui';
 import { CollectionPicker, OrganismPicker, FileTypePicker, RelationPicker } from '../ui';
 import LinksList from '../components/LinksList';
@@ -152,7 +152,6 @@ export default function FileDetailPage() {
         <div className="flex items-center gap-2 mt-1">
           <Text variant="dim" className="shrink-0">Organisms:</Text>
           <ChipEditor
-            colored
             items={file.organisms.map(o => ({ id: o.id, label: o.displayName }))}
             onAdd={id => { if (fileId) addFileOrganism(fileId, id); }}
             onRemove={id => { if (fileId) removeFileOrganism(fileId, id); }}
@@ -164,7 +163,6 @@ export default function FileDetailPage() {
         <div className="flex items-center gap-2 mt-1">
           <Text variant="dim" className="shrink-0">Types:</Text>
           <ChipEditor
-            colored
             items={file.types.map(t => ({ id: t, label: t }))}
             onAdd={id => { if (fileId) updateFile(fileId, { types: [...file.types, id] }); }}
             onRemove={id => { if (fileId) updateFile(fileId, { types: file.types.filter(t => t !== id) }); }}
@@ -183,7 +181,7 @@ export default function FileDetailPage() {
       </div>
 
       {/* File preview — lazy loaded, only for text formats */}
-      {file.status === 'ready' && TEXT_PREVIEW_FORMATS.has(fmt) && (
+      {file.status === 'ready' && (
         <Suspense fallback={<div className="skeleton h-32 rounded-md" />}>
           <FilePreview fileId={fileId!} filename={file.filename} />
         </Suspense>

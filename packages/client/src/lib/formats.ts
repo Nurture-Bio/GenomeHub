@@ -3,7 +3,7 @@
  * Format = file extension. Colors are deterministic from the extension string.
  */
 
-export { detectFormat, TEXT_PREVIEW_FORMATS } from '@genome-hub/shared';
+export { detectFormat } from '@genome-hub/shared';
 
 // ── Deterministic color from string ─────────────────────
 

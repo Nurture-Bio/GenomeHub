@@ -3,7 +3,7 @@ import { AppDataSource } from '../app_data.js';
 import { User, GenomicFile, EntityEdge, Organism, Collection, type EdgeRelation } from '../entities/index.js';
 import { createGunzip, constants } from 'zlib';
 import { deleteObject, presignDownloadUrl, fetchS3Head, fetchS3Range } from '../lib/s3.js';
-import { detectFormat, TEXT_PREVIEW_FORMATS } from '@genome-hub/shared';
+import { detectFormat } from '@genome-hub/shared';
 import * as edges from '../lib/edge_service.js';
 import { asyncWrap } from '../lib/async_wrap.js';
 import { organismDisplay } from '../lib/display.js';
@@ -138,10 +138,6 @@ router.get('/:id/preview', asyncWrap(async (req, res) => {
   if (!file) { res.status(404).json({ error: 'not found' }); return; }
 
   const fmt = detectFormat(file.filename);
-  if (!TEXT_PREVIEW_FORMATS.has(fmt)) {
-    res.json({ lines: [], truncated: false, previewable: false, format: fmt, nextStartByte: null });
-    return;
-  }
 
   const isGz     = file.filename.toLowerCase().endsWith('.gz');
   const CHUNK     = 128 * 1024; // 128 KB per page
@@ -155,6 +151,12 @@ router.get('/:id/preview', asyncWrap(async (req, res) => {
       buf = await decompressPartial(compressed);
     } else {
       buf = await fetchS3Range(file.s3Key, startByte, CHUNK);
+    }
+
+    // Binary sniff: if the first 8 KB contains a null byte, it's not text
+    if (buf.slice(0, 8192).includes(0)) {
+      res.json({ lines: [], truncated: false, previewable: false, format: fmt, nextStartByte: null });
+      return;
     }
 
     const isLastChunk = buf.length < CHUNK;

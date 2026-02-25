@@ -1,1 +1,1 @@
-export { detectFormat, TEXT_PREVIEW_FORMATS } from './formats.js';
+export { detectFormat } from './formats.js';
