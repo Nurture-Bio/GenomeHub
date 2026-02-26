@@ -54,13 +54,28 @@ All relationships are stored in a single `entity_edges` table that forms a knowl
 
 ### Engines
 
-GenomeHub can connect to external analysis engines at runtime. An engine is any HTTP service that responds to `GET /api/health` with `{"status":"ok"}`. Engines are stored in PostgreSQL and managed through the Settings page. Add a name and URL, and GenomeHub starts polling it immediately. No redeploy needed.
+GenomeHub can connect to external analysis engines at runtime. An engine is any HTTP service that implements the engine contract (see [`docs/engine-methods-schema.json`](docs/engine-methods-schema.json)). Engines are stored in PostgreSQL and managed through the Settings page. Add a name and URL, and GenomeHub starts polling it immediately. No redeploy needed.
 
-The sidebar shows a green status dot next to each reachable engine. If no engines are configured or none are reachable, the section is hidden. The Settings page shows each engine with its live status, and you can inline-edit the name or URL.
+The sidebar shows a green status dot next to each reachable engine. Clicking an engine opens its method catalog, which GenomeHub renders dynamically from the schema — no hub-side configuration needed for new methods.
 
 In production, engines typically run as sidecar containers in the same ECS Fargate task. They share the task's network namespace (reachable at `localhost`) and IAM role (automatic S3 access). The ALB only routes traffic to GenomeHub on port 3000. Engine containers are marked `essential: false`, so GenomeHub runs normally whether engines are healthy or not.
 
-The only contract an engine must satisfy is `GET /api/health` returning `{"status":"ok"}`. That is the entire integration surface.
+#### Engine contract
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/health` | `GET` | Returns `{"status":"ok"}`. Polled every 30s for sidebar status. |
+| `/api/methods` | `GET` | Returns the method catalog. GenomeHub renders the UI from this. |
+| `/api/methods/:id` | `GET` | Single method descriptor (re-fetched before each dispatch). |
+| `/api/files/upload` | `POST` | Accepts `multipart/form-data` with a `file` field. Returns `{"id":"..."}`. |
+| `/api/methods/:id` | `POST` | Dispatch. Body is `{paramName: value}` JSON. Returns `200` (stream) or `202 {"job_id":"..."}`. |
+| `/api/jobs/:id` | `GET` | Async only. Returns `{status, progress: {pct_complete, rate_per_sec, eta_seconds}, error}`. |
+| `/api/jobs/:id/stream` | `GET` | Async only. Called once on `complete`. Body is the result file stream. |
+| `/api/jobs/:id` | `DELETE` | Cancel request. Engine sets a cancellation flag; GenomeHub fire-and-forgets this. |
+
+**Sync methods** (`async: false` or omitted) return the result stream directly in the `200` body with `Content-Disposition: attachment; filename="result.ext"`. GenomeHub pipes it to S3 with zero heap materialization.
+
+**Async methods** (`async: true`) return `202 {"job_id":"..."}` immediately. GenomeHub polls `GET /api/jobs/:id` every 2 seconds. Progress fields drive the live UI: `pct_complete` (0.0–1.0, or `null` for indeterminate) triggers a spinner or progress bar. On `complete`, GenomeHub fetches the stream and pipes it to S3.
 
 ### Chip coloring
 
@@ -118,15 +133,18 @@ packages/
       hooks/         TanStack Query data-fetching hooks
       ui/            CVA component recipes (Button, Badge, Card, Input, ...)
       lib/           API fetch wrapper, query keys, format detection
-      components/    FilePreview, Breadcrumbs, ConfirmDialog, ...
+      components/    FilePreview, Breadcrumbs, EnginePanel, ...
       stores/        Zustand stores (app state, upload progress)
   server/            Express API
     src/
       entities/      TypeORM models (GenomicFile, Collection, Organism, Engine, ...)
-      routes/        Route modules (12 routers)
-      lib/           S3 helpers, edge service, reference CRUD factory
-      migrations/    Sequential SQL schema migrations (001-012)
+      routes/        Route modules (files, engines, uploads, collections, ...)
+      lib/           S3 helpers (putObject, putObjectStream), edge service
+      migrations/    Sequential SQL schema migrations
   infra/             AWS CDK stack
+concertina/          Vendored UI library (dist only — source at github.com/ryandward/concertina)
+docs/
+  engine-methods-schema.json   JSON Schema for the engine method catalog contract
 ```
 
 ## API reference
@@ -176,6 +194,10 @@ packages/
 | `POST` | `/api/engines` | Register an engine (`{ name, url }`) |
 | `PUT` | `/api/engines/:id` | Update engine name or URL |
 | `DELETE` | `/api/engines/:id` | Remove an engine |
+| `GET` | `/api/engines/:id/methods` | Proxy method catalog from the engine |
+| `POST` | `/api/engines/:id/methods/:methodId` | Dispatch: stream inputs to engine, pipe result to S3, create provenance edges. Returns `{ fileId, filename }` (sync) or `{ jobId }` (async). |
+| `GET` | `/api/engines/jobs/:jobId` | Poll async job status and progress |
+| `DELETE` | `/api/engines/jobs/:jobId` | Cancel an async job |
 
 ### Reference data
 
@@ -201,7 +223,114 @@ Resources: `/api/organisms`, `/api/techniques`, `/api/file-types`, `/api/relatio
 
 ### Supported formats
 
-FASTQ, BAM, CRAM, VCF, BCF, BED, GFF/GFF3, GTF, FASTA, SAM, BigWig, BigBed, JSON. Auto-detected from file extension.
+Any text file. Format is detected from the extension (`.gz` stripped automatically). The preview endpoint reads the first 8 KB and checks for null bytes — binary files return `previewable: false`, everything else gets infinite-scroll line preview.
+
+---
+
+## Streaming Architecture
+
+### Zero-buffer data pipes
+
+GenomeHub is a pipe. Files stream S3 → engine and engine → S3 without accumulating in Node heap.
+
+### S3 → Engine (dispatch)
+
+When a user dispatches a genomic analysis method, the server must forward a file from S3 to the engine without buffering the entire file in RAM. The implementation in `packages/server/src/routes/engines.ts` does this via the Web Streams API:
+
+```
+S3 object (e.g. 50 GB BAM)
+  │
+  └─ s3.send(GetObjectCommand)
+       Body.transformToWebStream()   ← Web ReadableStream, backed by HTTP response body
+         │
+         ▼
+  new ReadableStream({
+    async start(controller) {
+      controller.enqueue(prelude)     ← multipart headers (~200 bytes, TextEncoder)
+      for await chunk of s3Body:
+        controller.enqueue(chunk)     ← S3 SDK chunk, ~16-64 KB each
+      controller.enqueue(epilogue)    ← multipart boundary (~30 bytes)
+      controller.close()
+    }
+  })
+         │
+         ▼
+  fetch(engineUrl, {
+    method: "POST",
+    headers: { "Content-Type": "multipart/form-data; boundary=..." },
+    body: multipartStream,
+    duplex: "half",                  ← streaming request body (Node.js 18+)
+  })
+```
+
+**Server heap usage: O(one S3 chunk) ≈ 16–64 KB, regardless of file size.**
+
+No `Buffer`, no `Blob`, no `FormData`, no `Content-Length`. Chunked transfer encoding is used automatically by Node.js's `fetch` implementation when the request body is a `ReadableStream`. The engine receives a valid `multipart/form-data` POST.
+
+### Engine → S3 (result ingestion)
+
+```
+Engine result (sync 200 body, or async GET /api/jobs/:id/stream)
+  │
+  └─ response.body                ← Web ReadableStream
+       Readable.fromWeb(...)      ← Node.js Readable, zero-copy conversion
+         │
+         ▼
+  @aws-sdk/lib-storage Upload     ← streaming multipart upload, auto part sizing
+    Bucket: genome-hub-files-...
+    Key:    files/{uuid}/{filename}
+    ServerSideEncryption: AES256
+         │
+         ▼
+  fileRepo.create({ ... })        ← GenomicFile record (format from extension)
+  edges.link(result → inputs, "derived_from")
+```
+
+**Server heap usage: O(upload part size) ≈ 5–10 MB, regardless of result size.**
+
+The result file is never materialized in Node memory. `Content-Disposition: attachment; filename="result.ext"` on the engine response determines the stored filename and format.
+
+### Core Stability Engine integration
+
+The Files page virtualizes genomic file metadata using the Core Stability Engine (`concertina/core`). All data processing runs in a dedicated Web Worker; the main thread only handles DOM updates for the ~15–20 visible rows.
+
+```
+TanStack Query (main thread)
+  │  GenomicFile[]
+  ▼
+useGenomicFileStream
+  │  Converts to columnar batches via createRecordBatchStream
+  │  Encodes organisms/collections as parallel list_utf8 columns
+  │  (organism_ids[], organism_names[]) — no JSON.stringify
+  │
+  ▼  ArrayBuffer (transferred, zero-copy)
+DataWorker (off-thread)
+  │  Columnar storage: NumericColumn, Utf8Column, ListUtf8Column
+  │  Schema integrity check: all columns must have identical row counts
+  │  INGEST_ACK → main thread (one batch in flight at a time)
+  │
+  ▼  WINDOW_UPDATE (transferred ArrayBuffer, only visible rows)
+VirtualChamber (main thread)
+  │  buildAccessors(): parses window buffer once per scroll position
+  │  RowProxy.get("organism_ids") → string[]   ← no JSON.parse
+  │  RowProxy.get("organism_names") → string[]
+  │  O(k) zip → { id, displayName }[] for ChipEditor
+  │
+  ▼  ~15–20 pool nodes recycled by CSS transform
+```
+
+**list_utf8 wire format** (used for `types`, `organism_ids`, `organism_names`, `collection_ids`, `collection_names`):
+
+```
+[4]                  u32    totalItems
+[(rowCount+1) × 4]   Uint32 rowOffsets   row i → items[rowOffsets[i]..rowOffsets[i+1])
+[(totalItems+1) × 4] Uint32 itemOffsets  item j → bytes[itemOffsets[j]..itemOffsets[j+1])
+[Σ byte lengths]     Uint8  bytes        UTF-8 string data
+```
+
+`RowProxy.get()` returns `string[]` directly — the DataWorker decodes all UTF-8 before transferring the window buffer. No `JSON.parse` runs on the main thread during rendering.
+
+**INGEST_ACK backpressure** prevents the IPC channel from being flooded: the main thread sends exactly one 500-row batch, then awaits `INGEST_ACK` from the worker before sending the next. For 1M rows (2000 batches × ~150 KB), the IPC queue depth is always 1, never 300 MB.
 
 ---
 
@@ -216,9 +345,11 @@ FASTQ, BAM, CRAM, VCF, BCF, BED, GFF/GFF3, GTF, FASTA, SAM, BigWig, BigBed, JSON
 
 ### Engine integration
 
-- [ ] Analysis triggers: launch engine pipelines from uploaded files
-- [ ] Result ingestion: engine outputs cataloged back into GenomeHub with provenance edges
-- [ ] Preset library: browse and apply engine presets from the GenomeHub UI
+- [x] Analysis triggers: schema-driven method UI, file picker with format filtering, dispatch
+- [x] Result ingestion: engine outputs streamed to S3, cataloged with provenance edges
+- [x] Async jobs: 202 dispatch path with live progress bar, ETA, rate, and cancel
+- [x] Method catalog: engines declare methods via JSON schema, GenomeHub renders UI dynamically
+- [ ] Preset library: save and re-apply parameter sets for common workflows
 
 ### End-to-end vision
 
