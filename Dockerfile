@@ -7,6 +7,7 @@ COPY package*.json ./
 COPY packages/shared/package*.json ./packages/shared/
 COPY packages/client/package*.json  ./packages/client/
 COPY packages/server/package*.json  ./packages/server/
+COPY concertina/ ./concertina/
 RUN npm ci --workspaces --if-present
 
 # ── Build shared package ─────────────────────────────────

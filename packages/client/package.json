@@ -18,7 +18,7 @@
     "@tanstack/react-query-devtools": "^5.91.3",
     "class-variance-authority": "^0.7.0",
     "cmdk": "^1.1.1",
-    "concertina": "^0.13.1",
+    "concertina": "file:../../concertina",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-error-boundary": "^6.1.1",
