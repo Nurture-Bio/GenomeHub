@@ -7,6 +7,7 @@ import { Text, Heading, ComboBox, FilterChip } from '../ui';
 import type { ComboBoxItem } from '../ui';
 import { FORMAT_META } from '../lib/formats';
 import { queryKeys } from '../lib/queryKeys';
+import { apiFetch } from '../lib/api';
 import {
   useEnginesQuery,
   useEngineMethodsQuery,
@@ -80,12 +81,15 @@ function MethodForm({ engineId, method }: { engineId: string; method: EngineMeth
     return Array.from(types).sort().map(t => ({ id: t, label: t }));
   }, [readyFiles]);
 
-  const fileItems: ComboBoxItem[] = readyFiles
+  const filteredFiles = readyFiles
     .filter(f => !fmtFilter || f.format === fmtFilter)
     .filter(f => !orgFilter || f.organisms.some(o => o.id === orgFilter))
     .filter(f => !colFilter || f.collections.some(c => c.id === colFilter))
-    .filter(f => !typeFilter || f.types.includes(typeFilter))
-    .map(f => ({ id: f.id, label: f.filename, group: f.format.toUpperCase() }));
+    .filter(f => !typeFilter || f.types.includes(typeFilter));
+
+  const fileItemsFor = (accept?: string[]): ComboBoxItem[] =>
+    (accept ? filteredFiles.filter(f => accept.includes(f.format)) : filteredFiles)
+      .map(f => ({ id: f.id, label: f.filename, group: f.format.toUpperCase() }));
 
   const allRequiredFilled = method.parameters
     .filter(p => p.required)
@@ -100,6 +104,14 @@ function MethodForm({ engineId, method }: { engineId: string; method: EngineMeth
     } catch {
       // onError in mutation handles the toast
     }
+  };
+
+  const handleCancel = async () => {
+    if (!activeJobId) return;
+    try {
+      await apiFetch(`/api/engines/jobs/${activeJobId}`, { method: 'DELETE' });
+    } catch { /* best-effort */ }
+    setActiveJobId(null);
   };
 
   const isRunning = pending || !!activeJobId;
@@ -134,12 +146,7 @@ function MethodForm({ engineId, method }: { engineId: string; method: EngineMeth
           <Text variant="muted">{p.name.replace(/_/g, ' ')}{p.required ? '' : ' (optional)'}</Text>
           {p.type === 'file' ? (
             <ComboBox
-              items={p.accept
-                ? fileItems.filter(f => {
-                    const ext = f.label.split('.').pop()?.toLowerCase();
-                    return ext && p.accept!.includes(ext);
-                  })
-                : fileItems}
+              items={fileItemsFor(p.accept)}
               value={params[p.name] ?? ''}
               onValueChange={v => setParams(prev => ({ ...prev, [p.name]: v }))}
               placeholder={p.description}
@@ -186,6 +193,13 @@ function MethodForm({ engineId, method }: { engineId: string; method: EngineMeth
               <Text variant="dim">Running...</Text>
             </div>
           )}
+          <button
+            type="button"
+            onClick={handleCancel}
+            className="self-start font-sans text-body text-fg-3 hover:text-red transition-colors duration-fast bg-transparent border-none cursor-pointer p-0 leading-none"
+          >
+            Cancel
+          </button>
         </div>
       ) : (
         <button

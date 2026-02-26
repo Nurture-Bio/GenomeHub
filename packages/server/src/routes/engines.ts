@@ -195,6 +195,14 @@ router.get('/jobs/:jobId', asyncWrap(async (req, res) => {
   res.json(job);
 }));
 
+router.delete('/jobs/:jobId', asyncWrap(async (req, res) => {
+  const job = jobRegistry.get(req.params.jobId);
+  if (!job) { res.status(404).json({ error: 'job not found' }); return; }
+  job.status = 'failed';
+  job.error  = 'Cancelled by user';
+  res.json({ ok: true });
+}));
+
 // ── Method discovery ──────────────────────────────────────
 
 router.get('/:id/methods', asyncWrap(async (req, res) => {
