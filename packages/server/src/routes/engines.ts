@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto';
 import { AppDataSource } from '../app_data.js';
 import { Engine, GenomicFile, User } from '../entities/index.js';
 import { asyncWrap } from '../lib/async_wrap.js';
-import { s3, BUCKET, putObjectStream, buildS3Key } from '../lib/s3.js';
+import { s3, BUCKET, putObjectStream, buildS3Key, headObject } from '../lib/s3.js';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { detectFormat } from '@genome-hub/shared';
 import * as edges from '../lib/edge_service.js';
@@ -106,12 +106,13 @@ async function runAsyncJob(
       contentType,
     );
 
+    const head = await headObject(s3Key);
     const fmt = detectFormat(filename);
     const resultFile = fileRepo.create({
       id:          resultFileId,
       filename,
       s3Key,
-      sizeBytes:   0,
+      sizeBytes:   head.ContentLength ?? 0,
       format:      fmt,
       type:        ['derived'],
       status:      'ready',
@@ -375,12 +376,13 @@ router.post('/:id/methods/:methodId', asyncWrap(async (req, res) => {
   );
 
   // 5. Create GenomicFile record and provenance edges
+  const head = await headObject(s3Key);
   const fmt = detectFormat(filename);
   const resultFile = fileRepo.create({
     id:          resultFileId,
     filename,
     s3Key,
-    sizeBytes:   0,
+    sizeBytes:   head.ContentLength ?? 0,
     format:      fmt,
     type:        ['derived'],
     status:      'ready',

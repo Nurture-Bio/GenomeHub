@@ -18,7 +18,8 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import rateLimit from 'express-rate-limit';
 import { AppDataSource } from './app_data.js';
-import { Technique, Engine } from './entities/index.js';
+import { Technique, Engine, GenomicFile } from './entities/index.js';
+import { headObject } from './lib/s3.js';
 import { resolveUser } from './routes/auth.js';
 // Route modules
 import authRoutes from './routes/auth.js';
@@ -181,11 +182,33 @@ async function seedEngines() {
   console.log(`Seeded engine: SeqChain at ${SEQCHAIN_URL}`);
 }
 
+/** One-time backfill: engine result files stored with sizeBytes=0. */
+async function backfillEngineSizes() {
+  const repo = AppDataSource.getRepository(GenomicFile);
+  const zero = await repo.find({
+    where: { sizeBytes: 0, status: 'ready' },
+  });
+  const derived = zero.filter(f => f.type?.includes('derived'));
+  if (!derived.length) return;
+
+  console.log(`Backfilling sizes for ${derived.length} zero-byte engine result(s)...`);
+  for (const file of derived) {
+    try {
+      const head = await headObject(file.s3Key);
+      if (head.ContentLength && head.ContentLength > 0) {
+        file.sizeBytes = head.ContentLength;
+        await repo.save(file);
+      }
+    } catch { /* S3 object may not exist — leave as-is */ }
+  }
+}
+
 async function main() {
   await AppDataSource.initialize();
   await runSqlMigrations();
   await seedTechniques();
   await seedEngines();
+  await backfillEngineSizes();
   console.log('Database connected');
 
   server.listen(PORT, () => {
