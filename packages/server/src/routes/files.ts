@@ -169,13 +169,16 @@ router.get('/:id/preview', asyncWrap(async (req, res) => {
 
     const LINE_MAX = 500; // chars — prevents multi-MB lines from reaching the client
     const allLines = safeText.split('\n').filter((l, i, arr) => i < arr.length - 1 || l.length > 0);
-    const lines    = allLines.slice(0, PAGE_SIZE).map(l => l.length > LINE_MAX ? l.slice(0, LINE_MAX) + '…' : l);
+    const rawLines = allLines.slice(0, PAGE_SIZE);
+    const anyLong  = rawLines.some(l => l.length > LINE_MAX);
+    const lines    = rawLines.map(l => l.length > LINE_MAX ? l.slice(0, LINE_MAX) + '…' : l);
     const hasMore  = !isLastChunk || allLines.length > PAGE_SIZE;
 
-    // Compute cursor for the next page (byte position after the last line we're returning)
+    // If any line was truncated the file has very long lines (e.g. minified JSON).
+    // Stop pagination — there's nothing useful to show on subsequent pages.
     let nextStartByte: number | null = null;
-    if (hasMore && !isGz) {
-      nextStartByte = startByte + Buffer.byteLength(lines.join('\n') + '\n', 'utf-8');
+    if (hasMore && !isGz && !anyLong) {
+      nextStartByte = startByte + Buffer.byteLength(rawLines.join('\n') + '\n', 'utf-8');
     }
 
     res.json({ lines, truncated: hasMore, previewable: true, format: fmt, nextStartByte });
