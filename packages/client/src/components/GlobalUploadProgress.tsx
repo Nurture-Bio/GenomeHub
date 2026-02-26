@@ -117,9 +117,15 @@ function UploadRow({ upload }: { upload: UploadProgress }) {
 
   return (
     <div className="flex items-center gap-2 px-2.5 py-1 border-t border-line">
-      <Text variant="mono" className="flex-1 min-w-0 truncate">
-        {upload.filename}
-      </Text>
+      {upload.status === 'done' ? (
+        <Link to={`/files/${upload.fileId}`} className="flex-1 min-w-0 truncate no-underline hover:text-cyan transition-colors duration-fast">
+          <Text variant="mono">{upload.filename}</Text>
+        </Link>
+      ) : (
+        <Text variant="mono" className="flex-1 min-w-0 truncate">
+          {upload.filename}
+        </Text>
+      )}
       <Text variant="dim" className="shrink-0 tabular-nums" style={{
         color: upload.status === 'done'  ? 'var(--color-green)'
              : upload.status === 'error' ? 'var(--color-red)'

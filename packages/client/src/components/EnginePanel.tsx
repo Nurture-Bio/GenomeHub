@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { cx } from 'class-variance-authority';
+import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { statusDot, button, input, modalOverlay } from '../ui/recipes';
 import { Text, Heading, ComboBox, FilterChip } from '../ui';
@@ -49,7 +50,11 @@ function MethodForm({ engineId, method }: { engineId: string; method: EngineMeth
     if (jobStatus.status === 'complete') {
       qc.invalidateQueries({ queryKey: queryKeys.files.all });
       qc.invalidateQueries({ queryKey: queryKeys.stats.storage });
-      toast.success(`Result: ${jobStatus.filename ?? 'done'}`);
+      toast.success(
+        jobStatus.fileId
+          ? <Link to={`/files/${jobStatus.fileId}`} className="no-underline hover:underline">{jobStatus.filename ?? 'View result'}</Link>
+          : (jobStatus.filename ?? 'Done'),
+      );
       setActiveJobId(null);
     } else if (jobStatus.status === 'failed') {
       toast.error(jobStatus.error ?? 'Method failed');
