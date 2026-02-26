@@ -164,7 +164,6 @@ router.get('/:id/preview', asyncWrap(async (req, res) => {
 
     // JSON: pretty-print a parsed preview rather than showing raw minified text
     if (fmt === 'json') {
-      const PREVIEW_ITEMS = 20;
       let parsed: unknown;
 
       // Try full parse (works for small files or already-complete chunk)
@@ -181,12 +180,8 @@ router.get('/:id/preview', asyncWrap(async (req, res) => {
       }
 
       if (parsed !== undefined) {
-        const preview  = Array.isArray(parsed) && parsed.length > PREVIEW_ITEMS
-          ? parsed.slice(0, PREVIEW_ITEMS)
-          : parsed;
-        const truncated = Array.isArray(parsed) && parsed.length > PREVIEW_ITEMS;
-        const lines    = JSON.stringify(preview, null, 2).split('\n');
-        res.json({ lines, truncated, previewable: true, format: fmt, nextStartByte: null });
+        const lines = JSON.stringify(parsed, null, 2).split('\n');
+        res.json({ lines, truncated: !isLastChunk, previewable: true, format: fmt, nextStartByte: null });
         return;
       }
       // Unparseable JSON — fall through to normal line handling
