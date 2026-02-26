@@ -1,16 +1,12 @@
 import type { GenomicFile } from '../hooks/useGenomicQueries';
-import type { Ref } from 'react';
 import { useState, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { cx } from 'class-variance-authority';
-import { VirtualChamber } from 'concertina/core';
-import type { RowProxy, RowIndex } from 'concertina/core';
 import {
   useFilesQuery, useDeleteFileMutation, useUpdateFileMutation,
   usePresignedUrl, useAddFilesToCollection, useRemoveFilesFromCollection,
   useAddFileOrganism, useRemoveFileOrganism,
 } from '../hooks/useGenomicQueries';
-import { useGenomicFileStream } from '../hooks/useGenomicFileStream';
 import { useConfirm } from '../hooks/useConfirm';
 import { detectFormat, FORMAT_META, formatBytes, formatRelativeTime } from '../lib/formats';
 import { Button, Badge, Input, Text, Heading, Card, ChipEditor, HashPill, FilterChip, iconAction } from '../ui';
@@ -61,15 +57,12 @@ function SkeletonGridRow() {
   );
 }
 
-// ── VirtualFileRow — rendered inside each pool node ──────────────────────────
-// All data comes from decoded RowProxy scalars — no GenomicFile reference,
-// no main-thread map lookup. The worker's transferred buffer is the only
-// source of truth for visible row data.
+// ── File grid row ─────────────────────────────────────────────────────────────
 
 type OrgItem  = { id: string; displayName: string };
 type ColItem  = { id: string; name: string | null };
 
-interface VirtualFileRowProps {
+interface FileRowProps {
   id:          string;
   filename:    string;
   format:      string;
@@ -89,16 +82,16 @@ interface VirtualFileRowProps {
   onRemoveFromCollection: (collectionId: string, fileIds: string[]) => Promise<void>;
 }
 
-function VirtualFileRow({
+function FileRow({
   id, filename, format, sizeBytes, status, uploadedAt,
   types, organisms, collections,
   selected, onSelect, onDownload,
   onUpdateTypes, onAddOrganism, onRemoveOrganism,
   onAddToCollection, onRemoveFromCollection,
-}: VirtualFileRowProps) {
+}: FileRowProps) {
   return (
     <div
-      className="grid items-center h-full border-b border-line transition-colors duration-fast hover:bg-base px-2"
+      className="grid items-center border-b border-line transition-colors duration-fast hover:bg-base px-2 py-1.5"
       style={{
         gridTemplateColumns: GRID_COLS,
         gap: '0 12px',
@@ -326,9 +319,6 @@ export default function FilesPage() {
     });
   }, [data, search, fmtFilter, orgFilter]);
 
-  // Binary bridge: filtered files → multi-batch columnar binary → Core Stability Engine
-  const { containerRef, store } = useGenomicFileStream(files.length > 0 ? files : undefined);
-
   const allSelected = files.length > 0 && files.every(f => selected.has(f.id));
   const toggleAll   = () => setSelected(allSelected ? new Set() : new Set(files.map(f => f.id)));
   const toggleOne   = useCallback((id: string, sel: boolean) => {
@@ -374,54 +364,6 @@ export default function FilesPage() {
   const handleRemoveFromCollection = useCallback(async (collectionId: string, fileIds: string[]) => {
     await removeFiles(collectionId, fileIds);
   }, [removeFiles]);
-
-  // Pool node renderer — all data decoded from the worker's transferred buffer.
-  // No GenomicFile reference, no main-thread map, no JSON.parse.
-  // list_utf8 columns are decoded by the DataWorker; RowProxy.get() returns
-  // string[] directly. Organisms and collections are stored as parallel
-  // id/name lists and zipped here in O(k) where k = visible items per row.
-  const renderRow = useCallback((proxy: RowProxy, _rowIndex: RowIndex) => {
-    const id              = proxy.get('id')               as string;
-    const filename        = proxy.get('filename')         as string;
-    const format          = proxy.get('format')           as string;
-    const sizeBytes       = proxy.get('sizeBytes')        as number;
-    const status          = proxy.get('status')           as string;
-    const uploadedAt      = proxy.get('uploadedAt')       as string;
-    const types           = proxy.get('types')            as string[];
-    const organismIds     = proxy.get('organism_ids')     as string[];
-    const organismNames   = proxy.get('organism_names')   as string[];
-    const collectionIds   = proxy.get('collection_ids')   as string[];
-    const collectionNames = proxy.get('collection_names') as string[];
-
-    const organisms: OrgItem[]   = organismIds.map((oid, i) => ({ id: oid, displayName: organismNames[i] ?? '' }));
-    const collections: ColItem[] = collectionIds.map((cid, i) => ({ id: cid, name: collectionNames[i] ?? '' }));
-
-    return (
-      <VirtualFileRow
-        id={id}
-        filename={filename}
-        format={format}
-        sizeBytes={sizeBytes}
-        status={status}
-        uploadedAt={uploadedAt}
-        types={types}
-        organisms={organisms}
-        collections={collections}
-        selected={selected.has(id)}
-        onSelect={toggleOne}
-        onDownload={handleDownload}
-        onUpdateTypes={handleUpdateTypes}
-        onAddOrganism={addFileOrganism}
-        onRemoveOrganism={removeFileOrganism}
-        onAddToCollection={handleAddToCollection}
-        onRemoveFromCollection={handleRemoveFromCollection}
-      />
-    );
-  }, [
-    selected, toggleOne, handleDownload, handleUpdateTypes,
-    addFileOrganism, removeFileOrganism,
-    handleAddToCollection, handleRemoveFromCollection,
-  ]);
 
   const emptyMessage = search || fmtFilter || filterType || orgFilter || filterCollectionId
     ? 'No files match your filters.'
@@ -480,7 +422,7 @@ export default function FilesPage() {
         <FilterChip label="All organisms" items={orgItems} value={orgFilter} onValueChange={setOrgFilter} />
       </div>
 
-      {/* Desktop — CSS Grid virtual table, hidden below md */}
+      {/* Desktop — CSS Grid table, hidden below md */}
       <div className="hidden md:flex flex-col flex-1 min-h-0 border border-line rounded-md bg-base overflow-hidden">
         {/* Sticky header row */}
         <div className="shrink-0 border-b border-line bg-raised px-2 py-1.5">
@@ -510,13 +452,30 @@ export default function FilesPage() {
             <Text variant="body" className="text-fg-3">{emptyMessage}</Text>
           </div>
         ) : (
-          <VirtualChamber
-            containerRef={containerRef}
-            store={store}
-            renderRow={renderRow}
-            className="flex-1"
-            style={{ scrollbarGutter: 'stable' }}
-          />
+          <div className="flex-1 overflow-auto min-h-0" style={{ scrollbarGutter: 'stable' }}>
+            {files.map(f => (
+              <FileRow
+                key={f.id}
+                id={f.id}
+                filename={f.filename}
+                format={f.format}
+                sizeBytes={f.sizeBytes}
+                status={f.status}
+                uploadedAt={f.uploadedAt}
+                types={f.types}
+                organisms={f.organisms}
+                collections={f.collections}
+                selected={selected.has(f.id)}
+                onSelect={toggleOne}
+                onDownload={handleDownload}
+                onUpdateTypes={handleUpdateTypes}
+                onAddOrganism={addFileOrganism}
+                onRemoveOrganism={removeFileOrganism}
+                onAddToCollection={handleAddToCollection}
+                onRemoveFromCollection={handleRemoveFromCollection}
+              />
+            ))}
+          </div>
         )}
       </div>
 
