@@ -48,21 +48,6 @@
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.0"
   },
-  "peerDependencies": {
-    "react": ">=18.0.0",
-    "react-dom": ">=18.0.0"
-  },
-  "devDependencies": {
-    "@testing-library/jest-dom": "^6.9.1",
-    "@testing-library/react": "^16.3.2",
-    "@types/react": "^19.0.0",
-    "jsdom": "^28.1.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "tsup": "^8.0.0",
-    "typescript": "^5.0.0",
-    "vitest": "^4.0.18"
-  },
   "keywords": [
     "radix",
     "accordion",
