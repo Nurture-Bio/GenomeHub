@@ -3,6 +3,7 @@ import { useInfiniteFilePreview } from '../hooks/useGenomicQueries';
 import type { FilePreviewPage } from '../hooks/useGenomicQueries';
 import { usePresignedUrl } from '../hooks/useGenomicQueries';
 import { useJsonDuckDb } from '../hooks/useJsonDuckDb';
+import type { ColumnInfo } from '../hooks/useJsonDuckDb';
 import { Text, Badge } from '../ui';
 import { input } from '../ui/recipes';
 
@@ -11,16 +12,79 @@ interface FilePreviewProps {
   filename: string;
 }
 
+// ── STRUCT field expansion ───────────────────────────────
+// Parse "STRUCT(field1 TYPE1, "field2" TYPE2, ...)" into flat filter rows.
+// Depth-aware split handles nested types without regex hacks.
+
+function parseStructFields(typeStr: string): ColumnInfo[] {
+  const inner = typeStr.match(/^STRUCT\((.+)\)$/s)?.[1];
+  if (!inner) return [];
+
+  const parts: string[] = [];
+  let depth = 0, start = 0;
+  for (let i = 0; i < inner.length; i++) {
+    if (inner[i] === '(') depth++;
+    else if (inner[i] === ')') depth--;
+    else if (inner[i] === ',' && depth === 0) {
+      parts.push(inner.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  parts.push(inner.slice(start).trim());
+
+  return parts.flatMap(part => {
+    const m = part.match(/^"?(\w+)"?\s+(.+)$/);
+    return m ? [{ name: m[1], type: m[2] }] : [];
+  });
+}
+
+// Expand top-level columns: STRUCT → sub-fields with "parent.field" paths.
+// Non-STRUCT columns pass through as-is.
+interface FilterRow {
+  path:       string;   // SQL path: "chrom" or "tags.off_targets"
+  label:      string;   // Display name
+  type:       string;   // DuckDB type (short)
+  placeholder: string;
+}
+
+function buildFilterRows(columns: ColumnInfo[]): FilterRow[] {
+  const rows: FilterRow[] = [];
+  for (const col of columns) {
+    if (col.type.startsWith('STRUCT(')) {
+      const sub = parseStructFields(col.type);
+      for (const f of sub) {
+        rows.push({
+          path:        `${col.name}.${f.name}`,
+          label:       `${col.name}.${f.name}`,
+          type:        f.type,
+          placeholder: `${col.name}.${f.name} = …`,
+        });
+      }
+    } else {
+      rows.push({
+        path:        col.name,
+        label:       col.name,
+        type:        col.type,
+        placeholder: `${col.name} = …`,
+      });
+    }
+  }
+  return rows;
+}
+
 // ── DuckDB JSON preview ──────────────────────────────────
 
 function JsonDuckDbPreview({ fileId }: { fileId: string }) {
-  const { getUrl }                      = usePresignedUrl();
-  const [filters, setFilters]           = useState<Record<string, string>>({});
-  const [result, setResult]             = useState<{ rows: Record<string, unknown>[]; filteredCount: number; error?: string } | null>(null);
-  const [queryError, setQueryError]     = useState<string | null>(null);
+  const { getUrl }                  = usePresignedUrl();
+  const [filters, setFilters]       = useState<Record<string, string>>({});
+  const [result, setResult]         = useState<{ rows: Record<string, unknown>[]; filteredCount: number; error?: string } | null>(null);
+  const [queryError, setQueryError] = useState<string | null>(null);
+  const debounceRef                 = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const getFileUrl = useCallback(() => getUrl(fileId), [getUrl, fileId]);
   const { status, columns, totalRows, error, query } = useJsonDuckDb(fileId, getFileUrl);
+
+  const filterRows = useMemo(() => buildFilterRows(columns), [columns]);
 
   // Run initial query once table is ready
   useEffect(() => {
@@ -29,17 +93,24 @@ function JsonDuckDbPreview({ fileId }: { fileId: string }) {
     }
   }, [status, query]);
 
-  const handleFilterChange = useCallback((key: string, val: string) => {
-    setFilters(prev => {
-      const next = { ...prev, [key]: val };
+  const runQuery = useCallback((next: Record<string, string>) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
       query(next).then(r => {
         if (!r) return;
         if (r.error) setQueryError(r.error);
         else { setResult(r); setQueryError(null); }
       });
+    }, 300);
+  }, [query]);
+
+  const handleFilterChange = useCallback((path: string, val: string) => {
+    setFilters(prev => {
+      const next = { ...prev, [path]: val };
+      runQuery(next);
       return next;
     });
-  }, [query]);
+  }, [runQuery]);
 
   const preview = useMemo(
     () => result ? JSON.stringify(result.rows, null, 2) : '',
@@ -48,7 +119,6 @@ function JsonDuckDbPreview({ fileId }: { fileId: string }) {
 
   const isFiltered = Object.values(filters).some(v => v.trim());
 
-  // ── Loading states ──
   if (status === 'idle')    return <div className="skeleton h-32 rounded-md" />;
   if (status === 'loading') return <StatusRow>Initialising DuckDB…</StatusRow>;
   if (status === 'error')   return <StatusRow error>{error}</StatusRow>;
@@ -64,25 +134,27 @@ function JsonDuckDbPreview({ fileId }: { fileId: string }) {
             : totalRows.toLocaleString()
           } rows
         </Badge>
-        {result && result.rows.length === 1000 && (
-          <Badge variant="count" color="dim">showing first 1 000</Badge>
+        {result?.rows.length === 1000 && (
+          <Badge variant="count" color="dim">first 1 000</Badge>
         )}
       </div>
 
-      {/* Schema-driven filter inputs */}
-      <div className="flex flex-col gap-1">
-        {columns.map(col => (
-          <div key={col.name} className="flex items-baseline gap-2">
-            <Text variant="dim" className="shrink-0 w-40 truncate font-mono text-fg-3">
-              {col.name}
-              <span className="text-fg-4 text-[0.7rem] ml-1">{col.type}</span>
-            </Text>
+      {/* Schema-driven filter grid */}
+      <div
+        className="grid gap-x-3 gap-y-0.5"
+        style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}
+      >
+        {filterRows.map(row => (
+          <div key={row.path} className="flex flex-col gap-0.5">
+            <span className="font-mono leading-none" style={{ fontSize: '0.65rem', color: 'var(--color-fg-3)' }}>
+              {row.label}
+              <span style={{ color: 'var(--color-fg-4)', marginLeft: 4 }}>{row.type}</span>
+            </span>
             <input
               className={input({ variant: 'surface', size: 'sm' })}
-              style={{ flex: 1 }}
-              placeholder={`e.g. ${col.name} = 'value'`}
-              value={filters[col.name] ?? ''}
-              onChange={e => handleFilterChange(col.name, e.target.value)}
+              placeholder={row.placeholder}
+              value={filters[row.path] ?? ''}
+              onChange={e => handleFilterChange(row.path, e.target.value)}
               spellCheck={false}
             />
           </div>
@@ -90,7 +162,9 @@ function JsonDuckDbPreview({ fileId }: { fileId: string }) {
       </div>
 
       {queryError && (
-        <Text variant="dim" className="text-red font-mono text-sm">{queryError}</Text>
+        <Text variant="dim" className="font-mono" style={{ color: 'var(--color-red)', fontSize: '0.75rem' }}>
+          {queryError}
+        </Text>
       )}
 
       {/* Results */}
@@ -110,7 +184,7 @@ function StatusRow({ children, error }: { children: React.ReactNode; error?: boo
   return (
     <div className="flex items-center gap-1.5 py-2">
       {!error && <div className="size-3 rounded-full border border-cyan border-t-transparent animate-spin shrink-0" />}
-      <Text variant="dim" className={error ? 'text-red' : ''}>{children}</Text>
+      <Text variant="dim" style={error ? { color: 'var(--color-red)' } : undefined}>{children}</Text>
     </div>
   );
 }

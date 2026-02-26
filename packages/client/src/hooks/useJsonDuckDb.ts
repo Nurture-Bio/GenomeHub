@@ -115,8 +115,9 @@ export function useJsonDuckDb(
     try {
       const rows = await _conn.query(`SELECT * FROM result ${where} LIMIT 1000`);
       const cnt  = await _conn.query(`SELECT COUNT(*)::INTEGER AS n FROM result ${where}`);
+      const bigIntReplacer = (_: string, v: unknown) => typeof v === 'bigint' ? Number(v) : v;
       return {
-        rows:          rows.toArray().map((r: unknown) => JSON.parse(JSON.stringify(r))),
+        rows:          rows.toArray().map((r: unknown) => JSON.parse(JSON.stringify(r, bigIntReplacer))),
         filteredCount: Number((cnt.toArray()[0] as Record<string, unknown>).n),
       };
     } catch (e) {
