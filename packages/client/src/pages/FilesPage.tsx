@@ -1,23 +1,30 @@
-import type { GenomicFile } from "../hooks/useGenomicQueries";
-import { useState, useMemo } from 'react';
+import type { GenomicFile } from '../hooks/useGenomicQueries';
+import type { Ref } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { cx } from 'class-variance-authority';
-import { Gigbag, Vamp, Hum, useVamp } from 'concertina';
+import { VirtualChamber } from 'concertina/core';
+import type { RowProxy, RowIndex } from 'concertina/core';
 import {
   useFilesQuery, useDeleteFileMutation, useUpdateFileMutation,
   usePresignedUrl, useAddFilesToCollection, useRemoveFilesFromCollection,
   useAddFileOrganism, useRemoveFileOrganism,
 } from '../hooks/useGenomicQueries';
+import { useGenomicFileStream } from '../hooks/useGenomicFileStream';
 import { useConfirm } from '../hooks/useConfirm';
 import { detectFormat, FORMAT_META, formatBytes, formatRelativeTime } from '../lib/formats';
 import { Button, Badge, Input, Text, Heading, Card, ChipEditor, HashPill, FilterChip, iconAction } from '../ui';
 import { CollectionPicker, OrganismPicker, FileTypePicker } from '../ui';
 
-// ── Format icon ──────────────────────────────────────────
+// ── Grid layout constants ─────────────────────────────────────────────────────
+
+const GRID_COLS = '28px 1fr 80px 112px 144px 112px 176px 32px';
+
+// ── Format icon ──────────────────────────────────────────────────────────────
 
 function FormatIcon({ filename, format, className }: { filename: string; format?: string; className?: string }) {
-  const fmt   = format ?? detectFormat(filename);
-  const meta  = FORMAT_META[fmt] ?? FORMAT_META['other'];
+  const fmt  = format ?? detectFormat(filename);
+  const meta = FORMAT_META[fmt] ?? FORMAT_META['other'];
   return (
     <div
       className={cx('format-icon shrink-0 font-mono font-bold', className)}
@@ -28,64 +35,193 @@ function FormatIcon({ filename, format, className }: { filename: string; format?
   );
 }
 
-// ── Stub rows for Vamp warmup ────────────────────────────
+// ── Desktop skeleton grid row ─────────────────────────────────────────────────
 
-const STUB_FILES: GenomicFile[] = [
-  'sequence_data_001.fastq.gz',
-  'genome_assembly.fa.gz',
-  'gene_annotations.gff3',
-  'variants_filtered.vcf.gz',
-  'methylation_calls.bedGraph',
-  'rna_counts_matrix.tsv',
-  'aligned_reads.bam',
-  'peak_calls.narrowPeak',
-].map((filename, i) => ({
-  id: `__stub_${i}`, filename, s3Key: '',
-  sizeBytes: 8_600_000, format: detectFormat(filename),
-  types: [], md5: null, status: 'ready' as const,
-  uploadedAt: new Date(0).toISOString(),
-  description: null, tags: [], organisms: [], collections: [], uploadedBy: null,
-}));
+function SkeletonGridRow() {
+  return (
+    <div
+      className="grid items-center border-b border-line px-2"
+      style={{ gridTemplateColumns: GRID_COLS, gap: '0 12px', height: 52 }}
+    >
+      <div className="skeleton skel-check" />
+      <div className="flex items-center gap-2 min-w-0">
+        <div className="skeleton skel-format-icon shrink-0" />
+        <div className="flex flex-col gap-1 flex-1 min-w-0">
+          <div className="skeleton h-[0.875rem] w-3/4" />
+          <div className="skeleton h-[0.75rem] w-1/4" />
+        </div>
+      </div>
+      <div className="skeleton h-5 w-12 rounded-full" />
+      <div className="skeleton h-[0.875rem] w-20" />
+      <div className="skeleton h-5 w-16 rounded-full" />
+      <div className="skeleton h-5 w-12 rounded-full" />
+      <div className="skeleton h-5 w-16 rounded-full" />
+      <div />
+    </div>
+  );
+}
 
-// ── Mobile file card ────────────────────────────────────
+// ── VirtualFileRow — rendered inside each pool node ──────────────────────────
+// All data comes from decoded RowProxy scalars — no GenomicFile reference,
+// no main-thread map lookup. The worker's transferred buffer is the only
+// source of truth for visible row data.
+
+type OrgItem  = { id: string; displayName: string };
+type ColItem  = { id: string; name: string | null };
+
+interface VirtualFileRowProps {
+  id:          string;
+  filename:    string;
+  format:      string;
+  sizeBytes:   number;
+  status:      string;
+  uploadedAt:  string;
+  types:       string[];
+  organisms:   OrgItem[];
+  collections: ColItem[];
+  selected:    boolean;
+  onSelect:             (id: string, sel: boolean) => void;
+  onDownload:           (id: string) => void;
+  onUpdateTypes:        (id: string, types: string[]) => void;
+  onAddOrganism:        (fileId: string, orgId: string) => void;
+  onRemoveOrganism:     (fileId: string, orgId: string) => void;
+  onAddToCollection:    (collectionId: string, fileIds: string[]) => Promise<void>;
+  onRemoveFromCollection: (collectionId: string, fileIds: string[]) => Promise<void>;
+}
+
+function VirtualFileRow({
+  id, filename, format, sizeBytes, status, uploadedAt,
+  types, organisms, collections,
+  selected, onSelect, onDownload,
+  onUpdateTypes, onAddOrganism, onRemoveOrganism,
+  onAddToCollection, onRemoveFromCollection,
+}: VirtualFileRowProps) {
+  return (
+    <div
+      className="grid items-center h-full border-b border-line transition-colors duration-fast hover:bg-base px-2"
+      style={{
+        gridTemplateColumns: GRID_COLS,
+        gap: '0 12px',
+        background: selected ? 'var(--color-raised)' : undefined,
+      }}
+    >
+      {/* Checkbox */}
+      <input
+        type="checkbox"
+        checked={selected}
+        onChange={e => onSelect(id, e.target.checked)}
+        className="accent-cyan cursor-pointer"
+      />
+
+      {/* File: icon + name + size */}
+      <div className="flex items-start gap-2 min-w-0">
+        <FormatIcon filename={filename} format={format} />
+        <div className="min-w-0 flex-1">
+          <Link to={`/files/${id}`} className="no-underline">
+            <span className="font-mono text-sm truncate block hover:text-cyan transition-colors duration-fast tabular-nums">
+              {filename}
+            </span>
+          </Link>
+          <span className="text-sm" style={{ color: 'var(--color-fg-2)' }}>
+            {formatBytes(sizeBytes)}
+          </span>
+        </div>
+      </div>
+
+      {/* Status */}
+      <div>
+        {status === 'ready'   && <Badge variant="status" color="green">ready</Badge>}
+        {status === 'pending' && <Badge variant="status" color="yellow">uploading</Badge>}
+        {status === 'error'   && <Badge variant="status" color="red">error</Badge>}
+      </div>
+
+      {/* Time */}
+      <span className="text-sm whitespace-nowrap" style={{ color: 'var(--color-fg-2)' }}>
+        {formatRelativeTime(uploadedAt)}
+      </span>
+
+      {/* Organism */}
+      <ChipEditor
+        items={organisms.map(o => ({ id: o.id, label: o.displayName }))}
+        onAdd={orgId => onAddOrganism(id, orgId)}
+        onRemove={orgId => onRemoveOrganism(id, orgId)}
+        renderPicker={p => <OrganismPicker {...p} variant="surface" size="sm" className="w-32" />}
+        maxVisible={2}
+      />
+
+      {/* Type */}
+      <ChipEditor
+        items={types.map(t => ({ id: t, label: t }))}
+        onAdd={t => onUpdateTypes(id, [...types, t])}
+        onRemove={t => onUpdateTypes(id, types.filter(x => x !== t))}
+        renderPicker={p => <FileTypePicker {...p} variant="surface" size="sm" className="w-28" />}
+        maxVisible={2}
+      />
+
+      {/* Collections */}
+      <ChipEditor
+        items={collections.map(c => ({ id: c.id, label: c.name ?? '' }))}
+        onAdd={colId => onAddToCollection(colId, [id])}
+        onRemove={colId => onRemoveFromCollection(colId, [id])}
+        renderPicker={p => <CollectionPicker {...p} variant="surface" size="sm" className="w-32" />}
+        renderLabel={item => (
+          <Link to={`/collections/${item.id}`} className="no-underline hover:opacity-80">
+            {item.label}
+          </Link>
+        )}
+        maxVisible={2}
+      />
+
+      {/* Download */}
+      <button
+        onClick={() => onDownload(id)}
+        className={iconAction({ color: 'dim', reveal: true })}
+        title="Download"
+      >
+        ↓
+      </button>
+    </div>
+  );
+}
+
+// ── Mobile file card ──────────────────────────────────────────────────────────
 
 interface FileCardProps {
   file: GenomicFile;
+  loading?: boolean;
   onDownload: (id: string) => void;
   selected: boolean;
   onSelect: (id: string, sel: boolean) => void;
 }
 
-function FileCard({ file, onDownload, selected, onSelect }: FileCardProps) {
-  const fmt    = file.format;
-  const meta   = FORMAT_META[fmt] ?? FORMAT_META['other'];
-  const warmup = useVamp();
+function FileCard({ file, loading = false, onDownload, selected, onSelect }: FileCardProps) {
+  const fmt  = file.format;
+  const meta = FORMAT_META[fmt] ?? FORMAT_META['other'];
 
   return (
     <Card
       className="p-2.5 flex flex-col gap-1.5"
       style={{ background: selected ? 'var(--color-raised)' : undefined }}
     >
-      {/* Top row: checkbox + format icon + filename shimmer */}
       <div className="flex items-center gap-2">
         <input
           type="checkbox"
           checked={selected}
           onChange={e => onSelect(file.id, e.target.checked)}
           className="accent-cyan cursor-pointer shrink-0"
-          disabled={warmup}
+          disabled={loading}
         />
-        {warmup
+        {loading
           ? <div className="skeleton skel-format-icon shrink-0" />
           : <HashPill label={meta.label} colorKey={fmt} />
         }
-        <Hum className="font-mono text-sm truncate flex-1 min-w-0 tabular-nums">
-          {file.filename}
-        </Hum>
+        {loading
+          ? <div className="skeleton h-[0.875rem] flex-1" />
+          : <span className="font-mono text-sm truncate flex-1 min-w-0 tabular-nums">{file.filename}</span>
+        }
       </div>
 
-      {/* Metadata + actions — only when loaded */}
-      {!warmup && (
+      {!loading && (
         <>
           <div className="flex items-center gap-2 flex-wrap pl-5.5">
             <Text variant="dim">{formatBytes(file.sizeBytes)}</Text>
@@ -105,134 +241,26 @@ function FileCard({ file, onDownload, selected, onSelect }: FileCardProps) {
   );
 }
 
-// ── File row (desktop table) ────────────────────────────
+// ── Stub files for loading skeleton ──────────────────────────────────────────
 
-interface FileRowProps {
-  file: GenomicFile;
-  onDownload: (id: string) => void;
-  onUpdateTypes: (id: string, types: string[]) => void;
-  onAddOrganism: (fileId: string, orgId: string) => void;
-  onRemoveOrganism: (fileId: string, orgId: string) => void;
-  onAddToCollection: (collectionId: string, fileIds: string[]) => Promise<void>;
-  onRemoveFromCollection: (collectionId: string, fileIds: string[]) => Promise<void>;
-  selected: boolean;
-  onSelect: (id: string, sel: boolean) => void;
-}
+const STUB_FILES: GenomicFile[] = [
+  'sequence_data_001.fastq.gz',
+  'genome_assembly.fa.gz',
+  'gene_annotations.gff3',
+  'variants_filtered.vcf.gz',
+  'methylation_calls.bedGraph',
+  'rna_counts_matrix.tsv',
+  'aligned_reads.bam',
+  'peak_calls.narrowPeak',
+].map((filename, i) => ({
+  id: `__stub_${i}`, filename, s3Key: '',
+  sizeBytes: 8_600_000, format: detectFormat(filename),
+  types: [], md5: null, status: 'ready' as const,
+  uploadedAt: new Date(0).toISOString(),
+  description: null, tags: [], organisms: [], collections: [], uploadedBy: null,
+}));
 
-function FileRow({ file, onDownload, onUpdateTypes, onAddOrganism, onRemoveOrganism, onAddToCollection, onRemoveFromCollection, selected, onSelect }: FileRowProps) {
-  const warmup = useVamp();
-
-  return (
-    <tr
-      className="border-b border-line transition-colors duration-fast hover:bg-base group"
-      style={{ background: selected ? 'var(--color-raised)' : undefined }}
-    >
-      {/* Checkbox */}
-      <td className="pl-3 pr-1 py-2 w-6 align-top">
-        <input
-          type="checkbox"
-          checked={selected}
-          onChange={e => onSelect(file.id, e.target.checked)}
-          className="accent-cyan cursor-pointer"
-          disabled={warmup}
-        />
-      </td>
-
-      {/* File: icon + name + size */}
-      <td className="py-2 pr-3 align-top min-w-0">
-        <div className="flex items-start gap-2">
-          {warmup
-            ? <div className="skeleton skel-format-icon shrink-0" />
-            : <FormatIcon filename={file.filename} format={file.format} />
-          }
-          <div className="min-w-0 flex-1">
-            <Link to={`/files/${file.id}`} className="no-underline">
-              <Hum className="font-mono text-sm truncate block hover:text-cyan transition-colors duration-fast tabular-nums">
-                {file.filename}
-              </Hum>
-            </Link>
-            <Hum className="text-sm">{formatBytes(file.sizeBytes)}</Hum>
-          </div>
-        </div>
-      </td>
-
-      {/* Status */}
-      <td className="py-2 pr-2 align-top">
-        {warmup
-          ? <Hum className="text-body">ready</Hum>
-          : <>
-              {file.status === 'ready'   && <Badge variant="status" color="green">ready</Badge>}
-              {file.status === 'pending' && <Badge variant="status" color="yellow">uploading</Badge>}
-              {file.status === 'error'   && <Badge variant="status" color="red">error</Badge>}
-            </>
-        }
-      </td>
-
-      {/* Time */}
-      <td className="py-2 pr-3 align-top whitespace-nowrap">
-        <Hum className="text-body whitespace-nowrap">{formatRelativeTime(file.uploadedAt)}</Hum>
-      </td>
-
-      {/* Organism — ChipEditor */}
-      <td className="py-1.5 pr-3 align-top overflow-hidden">
-        {!warmup && (
-          <ChipEditor
-            items={file.organisms.map(o => ({ id: o.id, label: o.displayName }))}
-            onAdd={id => onAddOrganism(file.id, id)}
-            onRemove={id => onRemoveOrganism(file.id, id)}
-            renderPicker={p => <OrganismPicker {...p} variant="surface" size="sm" className="w-32" />}
-            maxVisible={2}
-          />
-        )}
-      </td>
-
-      {/* Type — ChipEditor */}
-      <td className="py-1.5 pr-3 align-top overflow-hidden">
-        {!warmup && (
-          <ChipEditor
-            items={file.types.map(t => ({ id: t, label: t }))}
-            onAdd={id => onUpdateTypes(file.id, [...file.types, id])}
-            onRemove={id => onUpdateTypes(file.id, file.types.filter(t => t !== id))}
-            renderPicker={p => <FileTypePicker {...p} variant="surface" size="sm" className="w-28" />}
-            maxVisible={2}
-          />
-        )}
-      </td>
-
-      {/* Collections */}
-      <td className="py-1.5 pr-3 align-top overflow-hidden">
-        {!warmup && (
-          <ChipEditor
-            items={file.collections.map(c => ({ id: c.id, label: c.name ?? '' }))}
-            onAdd={id => onAddToCollection(id, [file.id])}
-            onRemove={id => onRemoveFromCollection(id, [file.id])}
-            renderPicker={p => <CollectionPicker {...p} variant="surface" size="sm" className="w-32" />}
-            renderLabel={item => (
-              <Link to={`/collections/${item.id}`} className="no-underline hover:opacity-80">
-                {item.label}
-              </Link>
-            )}
-          />
-        )}
-      </td>
-
-      {/* Download */}
-      <td className="py-2 pr-3 align-top">
-        {!warmup && (
-          <button
-            onClick={() => onDownload(file.id)}
-            className={iconAction({ color: 'dim', reveal: true })}
-            title="Download"
-          >
-            ↓
-          </button>
-        )}
-      </td>
-    </tr>
-  );
-}
-
-// ── FilesPage ─────────────────────────────────────────────
+// ── FilesPage ─────────────────────────────────────────────────────────────────
 
 export default function FilesPage() {
   const [filterCollectionId, setFilterCollectionId] = useState('');
@@ -251,7 +279,7 @@ export default function FilesPage() {
   const { getUrl } = usePresignedUrl();
   const { confirm } = useConfirm();
 
-  // Derive format and type filter items from actual data
+  // Derive filter items from actual data
   const formatItems = useMemo(() => {
     if (!data) return [];
     const fmts = new Set(data.map(f => f.format));
@@ -298,20 +326,23 @@ export default function FilesPage() {
     });
   }, [data, search, fmtFilter, orgFilter]);
 
-  const allSelected   = files.length > 0 && files.every(f => selected.has(f.id));
-  const toggleAll     = () => setSelected(allSelected ? new Set() : new Set(files.map(f => f.id)));
-  const toggleOne     = (id: string, sel: boolean) => {
+  // Binary bridge: filtered files → multi-batch columnar binary → Core Stability Engine
+  const { containerRef, store } = useGenomicFileStream(files.length > 0 ? files : undefined);
+
+  const allSelected = files.length > 0 && files.every(f => selected.has(f.id));
+  const toggleAll   = () => setSelected(allSelected ? new Set() : new Set(files.map(f => f.id)));
+  const toggleOne   = useCallback((id: string, sel: boolean) => {
     setSelected(prev => {
       const next = new Set(prev);
       sel ? next.add(id) : next.delete(id);
       return next;
     });
-  };
+  }, []);
 
-  const handleDownload = async (id: string) => {
+  const handleDownload = useCallback(async (id: string) => {
     const url = await getUrl(id);
     window.open(url, '_blank');
-  };
+  }, [getUrl]);
 
   const handleBulkDelete = async () => {
     const ok = await confirm({
@@ -332,17 +363,69 @@ export default function FilesPage() {
     setAddToColId(null);
   };
 
-  const handleUpdateTypes = async (fileId: string, types: string[]) => {
+  const handleUpdateTypes = useCallback(async (fileId: string, types: string[]) => {
     await updateFile(fileId, { types });
-  };
+  }, [updateFile]);
 
-  const handleAddToCollection = async (collectionId: string, fileIds: string[]) => {
+  const handleAddToCollection = useCallback(async (collectionId: string, fileIds: string[]) => {
     await addFiles(collectionId, fileIds);
-  };
+  }, [addFiles]);
 
-  const handleRemoveFromCollection = async (collectionId: string, fileIds: string[]) => {
+  const handleRemoveFromCollection = useCallback(async (collectionId: string, fileIds: string[]) => {
     await removeFiles(collectionId, fileIds);
-  };
+  }, [removeFiles]);
+
+  // Pool node renderer — all data decoded from the worker's transferred buffer.
+  // No GenomicFile reference, no main-thread map, no JSON.parse.
+  // list_utf8 columns are decoded by the DataWorker; RowProxy.get() returns
+  // string[] directly. Organisms and collections are stored as parallel
+  // id/name lists and zipped here in O(k) where k = visible items per row.
+  const renderRow = useCallback((proxy: RowProxy, _rowIndex: RowIndex) => {
+    const id              = proxy.get('id')               as string;
+    const filename        = proxy.get('filename')         as string;
+    const format          = proxy.get('format')           as string;
+    const sizeBytes       = proxy.get('sizeBytes')        as number;
+    const status          = proxy.get('status')           as string;
+    const uploadedAt      = proxy.get('uploadedAt')       as string;
+    const types           = proxy.get('types')            as string[];
+    const organismIds     = proxy.get('organism_ids')     as string[];
+    const organismNames   = proxy.get('organism_names')   as string[];
+    const collectionIds   = proxy.get('collection_ids')   as string[];
+    const collectionNames = proxy.get('collection_names') as string[];
+
+    const organisms: OrgItem[]   = organismIds.map((oid, i) => ({ id: oid, displayName: organismNames[i] ?? '' }));
+    const collections: ColItem[] = collectionIds.map((cid, i) => ({ id: cid, name: collectionNames[i] ?? '' }));
+
+    return (
+      <VirtualFileRow
+        id={id}
+        filename={filename}
+        format={format}
+        sizeBytes={sizeBytes}
+        status={status}
+        uploadedAt={uploadedAt}
+        types={types}
+        organisms={organisms}
+        collections={collections}
+        selected={selected.has(id)}
+        onSelect={toggleOne}
+        onDownload={handleDownload}
+        onUpdateTypes={handleUpdateTypes}
+        onAddOrganism={addFileOrganism}
+        onRemoveOrganism={removeFileOrganism}
+        onAddToCollection={handleAddToCollection}
+        onRemoveFromCollection={handleRemoveFromCollection}
+      />
+    );
+  }, [
+    selected, toggleOne, handleDownload, handleUpdateTypes,
+    addFileOrganism, removeFileOrganism,
+    handleAddToCollection, handleRemoveFromCollection,
+  ]);
+
+  const emptyMessage = search || fmtFilter || filterType || orgFilter || filterCollectionId
+    ? 'No files match your filters.'
+    : 'No files yet. Upload some to get started.';
 
   return (
     <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 h-full min-h-0">
@@ -391,91 +474,73 @@ export default function FilesPage() {
           onChange={e => setSearch(e.target.value)}
           className="w-full md:w-64"
         />
-
         <FilterChip label="All collections" items={colItems} value={filterCollectionId} onValueChange={setFilterCollectionId} />
         <FilterChip label="All types" items={typeItems} value={filterType} onValueChange={setFilterType} />
         <FilterChip label="All formats" items={formatItems} value={fmtFilter} onValueChange={setFmtFilter} />
         <FilterChip label="All organisms" items={orgItems} value={orgFilter} onValueChange={setOrgFilter} />
       </div>
 
-      {/* Desktop table — hidden below md */}
-      <div className="hidden md:block flex-1 overflow-auto min-h-0 border border-line rounded-md bg-base" style={{ scrollbarGutter: 'stable' }}>
-        <Gigbag className="w-full">
-        <table className="w-full border-collapse text-left table-fixed">
-          <thead className="sticky top-0 bg-raised z-10">
-            <tr className="border-b border-line">
-              <th className="pl-3 pr-1 py-1.5 w-7">
-                <input
-                  type="checkbox"
-                  checked={allSelected}
-                  onChange={toggleAll}
-                  className="accent-cyan cursor-pointer"
-                />
-              </th>
-              <th className="py-1.5 pr-3"><Text variant="muted">File</Text></th>
-              <th className="py-1.5 pr-2 w-20"><Text variant="muted">Status</Text></th>
-              <th className="py-1.5 pr-3 w-28"><Text variant="muted">Uploaded</Text></th>
-              <th className="py-1.5 pr-3 w-36"><Text variant="muted">Organism</Text></th>
-              <th className="py-1.5 pr-3 w-28"><Text variant="muted">Type</Text></th>
-              <th className="py-1.5 pr-3 w-44"><Text variant="muted">Collections</Text></th>
-              <th className="w-8" />
-            </tr>
-          </thead>
-          <Vamp loading={isLoading}>
-            <tbody>
-              {!isLoading && files.length === 0
-                ? (
-                  <tr>
-                    <td colSpan={8} className="py-12 text-center">
-                      <Text variant="body" className="text-fg-3">
-                        {search || fmtFilter || filterType || orgFilter || filterCollectionId ? 'No files match your filters.' : 'No files yet. Upload some to get started.'}
-                      </Text>
-                    </td>
-                  </tr>
-                )
-                : (isLoading ? STUB_FILES : files).map(f => (
-                  <FileRow
-                    key={f.id}
-                    file={f}
-                    selected={selected.has(f.id)}
-                    onSelect={toggleOne}
-                    onDownload={handleDownload}
-                    onUpdateTypes={handleUpdateTypes}
-                    onAddOrganism={addFileOrganism}
-                    onRemoveOrganism={removeFileOrganism}
-                    onAddToCollection={handleAddToCollection}
-                    onRemoveFromCollection={handleRemoveFromCollection}
-                  />
-                ))
-              }
-            </tbody>
-          </Vamp>
-        </table>
-        </Gigbag>
+      {/* Desktop — CSS Grid virtual table, hidden below md */}
+      <div className="hidden md:flex flex-col flex-1 min-h-0 border border-line rounded-md bg-base overflow-hidden">
+        {/* Sticky header row */}
+        <div className="shrink-0 border-b border-line bg-raised px-2 py-1.5">
+          <div className="grid items-center" style={{ gridTemplateColumns: GRID_COLS, gap: '0 12px' }}>
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={toggleAll}
+              className="accent-cyan cursor-pointer"
+            />
+            <Text variant="muted">File</Text>
+            <Text variant="muted">Status</Text>
+            <Text variant="muted">Uploaded</Text>
+            <Text variant="muted">Organism</Text>
+            <Text variant="muted">Type</Text>
+            <Text variant="muted">Collections</Text>
+            <div />
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="flex-1 overflow-auto min-h-0">
+            {STUB_FILES.map((_, i) => <SkeletonGridRow key={i} />)}
+          </div>
+        ) : files.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center">
+            <Text variant="body" className="text-fg-3">{emptyMessage}</Text>
+          </div>
+        ) : (
+          <VirtualChamber
+            containerRef={containerRef}
+            store={store}
+            renderRow={renderRow}
+            className="flex-1"
+            style={{ scrollbarGutter: 'stable' }}
+          />
+        )}
       </div>
 
       {/* Mobile cards — visible below md */}
-      <Vamp loading={isLoading}>
-        <div className="flex flex-col gap-1.5 md:hidden flex-1 overflow-auto min-h-0">
-          {!isLoading && files.length > 0 && (
-            <label className="flex items-center gap-2 px-1 py-0.5">
-              <input
-                type="checkbox"
-                checked={allSelected}
-                onChange={toggleAll}
-                className="accent-cyan cursor-pointer"
-              />
-              <Text variant="dim">Select all</Text>
-            </label>
-          )}
+      <div className="flex flex-col gap-1.5 md:hidden flex-1 overflow-auto min-h-0">
+        {!isLoading && files.length > 0 && (
+          <label className="flex items-center gap-2 px-1 py-0.5">
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={toggleAll}
+              className="accent-cyan cursor-pointer"
+            />
+            <Text variant="dim">Select all</Text>
+          </label>
+        )}
 
-          {!isLoading && files.length === 0
-            ? (
-              <Text variant="body" className="py-8 text-center text-fg-3">
-                {search || fmtFilter || filterType || orgFilter || filterCollectionId ? 'No files match your filters.' : 'No files yet. Upload some to get started.'}
-              </Text>
-            )
-            : (isLoading ? STUB_FILES.slice(0, 4) : files).map(f => (
+        {isLoading
+          ? STUB_FILES.slice(0, 4).map(f => (
+            <FileCard key={f.id} file={f} loading onDownload={handleDownload} selected={false} onSelect={toggleOne} />
+          ))
+          : files.length === 0
+            ? <Text variant="body" className="py-8 text-center text-fg-3">{emptyMessage}</Text>
+            : files.map(f => (
               <FileCard
                 key={f.id}
                 file={f}
@@ -484,9 +549,8 @@ export default function FilesPage() {
                 onDownload={handleDownload}
               />
             ))
-          }
-        </div>
-      </Vamp>
+        }
+      </div>
     </div>
   );
 }
