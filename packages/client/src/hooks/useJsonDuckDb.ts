@@ -19,37 +19,66 @@ export interface QueryResult {
 export type DuckDbStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 // ── Module-level singleton ────────────────────────────────
-// DuckDB instance and loaded table persist across component mounts.
-// Re-fetch only when the file ID changes.
 
 let _db:           duckdb.AsyncDuckDB | null = null;
 let _conn:         duckdb.AsyncDuckDBConnection | null = null;
 let _loadedFileId: string | null = null;
 let _bootPromise:  Promise<void> | null = null;
+let _loadPromise:  Promise<void> | null = null;
 
 async function ensureDb(): Promise<void> {
   if (_db && _conn) return;
   if (_bootPromise) { await _bootPromise; return; }
 
   _bootPromise = (async () => {
-    const bundle = await duckdb.selectBundle({
-      mvp: { mainModule: duckdb_wasm_mvp, mainWorker: duckdb_worker_mvp },
-      eh:  { mainModule: duckdb_wasm_eh,  mainWorker: duckdb_worker_eh  },
-    });
-    const worker  = new Worker(bundle.mainWorker!);
-    _db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), worker);
-    await _db.instantiate(bundle.mainModule, bundle.pthreadWorker);
-    _conn = await _db.connect();
+    try {
+      const bundle = await duckdb.selectBundle({
+        mvp: { mainModule: duckdb_wasm_mvp, mainWorker: duckdb_worker_mvp },
+        eh:  { mainModule: duckdb_wasm_eh,  mainWorker: duckdb_worker_eh  },
+      });
+      const worker = new Worker(bundle.mainWorker!);
+      _db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), worker);
+      await _db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+      _conn = await _db.connect();
+    } catch (e) {
+      // Reset so the next call can retry rather than re-throwing a stale rejection
+      _bootPromise = null;
+      _db = null;
+      _conn = null;
+      throw e;
+    }
   })();
 
   await _bootPromise;
 }
 
+async function ensureTable(fileId: string, getUrl: () => Promise<string>): Promise<void> {
+  if (_loadedFileId === fileId) return;
+  // Gate concurrent loads — only one DROP+CREATE in flight at a time
+  if (_loadPromise) { await _loadPromise; return; }
+
+  _loadPromise = (async () => {
+    try {
+      await _conn!.query(`DROP TABLE IF EXISTS result`);
+      const url = await getUrl();
+      await _conn!.query(`
+        CREATE TABLE result AS
+        SELECT * FROM read_json_auto('${url}', maximum_object_size=104857600)
+      `);
+      _loadedFileId = fileId;
+    } finally {
+      _loadPromise = null;
+    }
+  })();
+
+  await _loadPromise;
+}
+
 // ── Hook ─────────────────────────────────────────────────
 
 export function useJsonDuckDb(
-  fileId:  string | null,
-  getUrl:  (() => Promise<string>) | null,
+  fileId: string | null,
+  getUrl: (() => Promise<string>) | null,
 ) {
   const [status,    setStatus]    = useState<DuckDbStatus>('idle');
   const [columns,   setColumns]   = useState<ColumnInfo[]>([]);
@@ -58,7 +87,8 @@ export function useJsonDuckDb(
 
   useEffect(() => {
     if (!fileId || !getUrl) return;
-    const fn = getUrl; // capture before async context — TypeScript narrowing holds here
+    const id = fileId; // capture before async context — TypeScript narrowing holds here
+    const fn = getUrl;
     let cancelled = false;
 
     async function load() {
@@ -67,21 +97,13 @@ export function useJsonDuckDb(
         await ensureDb();
         if (cancelled) return;
 
-        if (_loadedFileId !== fileId) {
-          // Drop stale table and load fresh data via DuckDB's HTTP bridge
-          await _conn!.query(`DROP TABLE IF EXISTS result`);
-          const url = await fn();
-          if (cancelled) return;
+        await ensureTable(id, fn);
+        if (cancelled) return;
 
-          await _conn!.query(`
-            CREATE TABLE result AS
-            SELECT * FROM read_json_auto('${url}', maximum_object_size=104857600)
-          `);
-          _loadedFileId = fileId;
-        }
-
-        const desc  = await _conn!.query(`DESCRIBE result`);
-        const count = await _conn!.query(`SELECT COUNT(*)::INTEGER AS n FROM result`);
+        const [desc, count] = await Promise.all([
+          _conn!.query(`DESCRIBE result`),
+          _conn!.query(`SELECT COUNT(*)::INTEGER AS n FROM result`),
+        ]);
 
         const cols: ColumnInfo[] = desc.toArray().map((r: unknown) => {
           const row = r as Record<string, unknown>;
@@ -113,8 +135,10 @@ export function useJsonDuckDb(
     const where = conditions.length ? `WHERE ${conditions.map(c => `(${c})`).join(' AND ')}` : '';
 
     try {
-      const rows = await _conn.query(`SELECT * FROM result ${where} LIMIT 1000`);
-      const cnt  = await _conn.query(`SELECT COUNT(*)::INTEGER AS n FROM result ${where}`);
+      const [rows, cnt] = await Promise.all([
+        _conn.query(`SELECT * FROM result ${where} LIMIT 1000`),
+        _conn.query(`SELECT COUNT(*)::INTEGER AS n FROM result ${where}`),
+      ]);
       const bigIntReplacer = (_: string, v: unknown) => typeof v === 'bigint' ? Number(v) : v;
       return {
         rows:          rows.toArray().map((r: unknown) => JSON.parse(JSON.stringify(r, bigIntReplacer))),

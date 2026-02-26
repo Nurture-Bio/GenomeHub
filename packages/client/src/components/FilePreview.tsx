@@ -80,6 +80,7 @@ function JsonDuckDbPreview({ fileId }: { fileId: string }) {
   const [result, setResult]         = useState<{ rows: Record<string, unknown>[]; filteredCount: number; error?: string } | null>(null);
   const [queryError, setQueryError] = useState<string | null>(null);
   const debounceRef                 = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const filtersRef                  = useRef<Record<string, string>>({});
 
   const getFileUrl = useCallback(() => getUrl(fileId), [getUrl, fileId]);
   const { status, columns, totalRows, error, query } = useJsonDuckDb(fileId, getFileUrl);
@@ -104,12 +105,16 @@ function JsonDuckDbPreview({ fileId }: { fileId: string }) {
     }, 300);
   }, [query]);
 
+  // Debounce cleanup on unmount
+  useEffect(() => () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+  }, []);
+
   const handleFilterChange = useCallback((path: string, val: string) => {
-    setFilters(prev => {
-      const next = { ...prev, [path]: val };
-      runQuery(next);
-      return next;
-    });
+    const next = { ...filtersRef.current, [path]: val };
+    filtersRef.current = next;
+    setFilters(next);
+    runQuery(next);
   }, [runQuery]);
 
   const preview = useMemo(
@@ -134,7 +139,7 @@ function JsonDuckDbPreview({ fileId }: { fileId: string }) {
             : totalRows.toLocaleString()
           } rows
         </Badge>
-        {result?.rows.length === 1000 && (
+        {result && result.filteredCount > 1000 && (
           <Badge variant="count" color="dim">first 1 000</Badge>
         )}
       </div>
