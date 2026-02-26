@@ -1,6 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;700&display=swap');
 @import "tailwindcss";
-@import "concertina/styles.css";
 
 @theme {
   /* ═══════════════════════════════════════════════════════
@@ -152,8 +151,6 @@
   --concertina-warmup-line-color:     var(--color-raised);
   --concertina-warmup-line-highlight: var(--color-elevated);
   --concertina-warmup-line-radius:    var(--radius-sm);
-  --concertina-glide-duration:        var(--t-fast);
-
   /* Shared layout constants */
   --format-icon-size: 28px;
   --target-min-icon:  14px;
@@ -608,6 +605,40 @@
   font-size: calc(var(--format-icon-size) * 0.28);
   letter-spacing: -0.02em;
 }
+/* Concertina shimmer primitives — inlined from concertina/styles.css
+   (concertina/styles.css no longer imported; only the subset used here) */
+
+@keyframes concertina-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Structural placeholder shimmer line.
+   height: 1lh resolves to the element's computed line-height,
+   so it matches text it replaces exactly. */
+.concertina-warmup-line {
+  height: 1lh;
+  border-radius: var(--concertina-warmup-line-radius, var(--radius-sm));
+  background: linear-gradient(
+    90deg,
+    var(--concertina-warmup-line-color, var(--color-raised)) 25%,
+    var(--concertina-warmup-line-highlight, var(--color-elevated)) 50%,
+    var(--concertina-warmup-line-color, var(--color-raised)) 75%
+  );
+  background-size: 200% 100%;
+  animation: concertina-shimmer 1.5s ease-in-out infinite;
+}
+
+/* Inert ghost inside a warmup-line sizes the shimmer to content width. */
+.concertina-warmup-line > [inert] {
+  visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .concertina-warmup-line { animation-duration: 0s !important; }
+  .skeleton              { animation-duration: 0s !important; }
+}
+
 /* Shimmer placeholders for fixed-size icon elements.
    Compose with .skeleton for the shimmer background. */
 .skel-format-icon {

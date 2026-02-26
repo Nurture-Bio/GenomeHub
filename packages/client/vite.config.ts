@@ -15,4 +15,11 @@ export default defineConfig({
     outDir: '../../dist/client',
     emptyOutDir: true,
   },
+  // Prevent esbuild pre-bundling from rewriting import.meta.url inside
+  // concertina/core — the DataWorker is resolved via:
+  //   new Worker(new URL('./data-worker.js', import.meta.url))
+  // That URL must stay relative to dist/core/index.js on disk.
+  optimizeDeps: {
+    exclude: ['concertina'],
+  },
 });

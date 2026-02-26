@@ -7,7 +7,6 @@ import {
   useAddCollectionOrganism, useRemoveCollectionOrganism,
   useAddCollectionTechnique, useRemoveCollectionTechnique,
 } from '../hooks/useGenomicQueries';
-import { Glide } from 'concertina';
 import { detectFormat, FORMAT_META, formatBytes } from '../lib/formats';
 import { Heading, Text, Badge, InlineInput, Input, ChipEditor, HashPill, iconAction } from '../ui';
 import { TechniquePicker, OrganismPicker, FileTypePicker } from '../ui';
@@ -144,7 +143,8 @@ export default function CollectionDetailPage() {
         </div>
 
         {/* Add files panel */}
-        <Glide show={showAddPanel}>
+        <div className="collapse-container" data-expanded={showAddPanel ? 'true' : 'false'}>
+          <div className="collapse-inner">
           <div className="border border-line rounded-md p-2.5 mb-2 bg-raised">
             <div className="flex items-center gap-2 mb-2">
               <Input
@@ -200,7 +200,8 @@ export default function CollectionDetailPage() {
               )}
             </div>
           </div>
-        </Glide>
+          </div>
+        </div>
 
         {/* Existing files */}
         {collection.files.length === 0 && !showAddPanel ? (

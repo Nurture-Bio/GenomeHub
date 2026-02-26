@@ -1,7 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { cx } from 'class-variance-authority';
-import { Gigbag } from 'concertina';
 import {
   useCollectionsQuery, useCreateCollectionMutation,
   useUpdateCollectionMutation, useDeleteCollectionMutation,
@@ -132,7 +131,6 @@ export default function CollectionsPage() {
 
       {/* Desktop table */}
       <div className="hidden md:block flex-1 overflow-auto min-h-0 border border-line rounded-md bg-base" style={{ scrollbarGutter: 'stable' }}>
-        <Gigbag className="w-full">
         <table className="w-full border-collapse text-left table-fixed">
           <thead className="sticky top-0 bg-raised z-10">
             <tr className="border-b border-line">
@@ -244,7 +242,6 @@ export default function CollectionsPage() {
               )}
           </tbody>
         </table>
-        </Gigbag>
       </div>
 
       {/* Mobile cards */}
