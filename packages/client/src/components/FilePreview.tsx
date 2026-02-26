@@ -1,103 +1,105 @@
 import { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { useInfiniteFilePreview } from '../hooks/useGenomicQueries';
 import type { FilePreviewPage } from '../hooks/useGenomicQueries';
-import { Text, Badge, FilterChip } from '../ui';
+import { usePresignedUrl } from '../hooks/useGenomicQueries';
+import { useJsonDuckDb } from '../hooks/useJsonDuckDb';
+import { Text, Badge } from '../ui';
+import { input } from '../ui/recipes';
 
 interface FilePreviewProps {
-  fileId: string;
+  fileId:   string;
   filename: string;
 }
 
-// ── JSON record filter helpers ───────────────────────────
+// ── DuckDB JSON preview ──────────────────────────────────
 
-type AnyRecord = Record<string, unknown>;
+function JsonDuckDbPreview({ fileId }: { fileId: string }) {
+  const { getUrl }                      = usePresignedUrl();
+  const [fileUrl, setFileUrl]           = useState<string | null>(null);
+  const [filters, setFilters]           = useState<Record<string, string>>({});
+  const [result, setResult]             = useState<{ rows: Record<string, unknown>[]; filteredCount: number; error?: string } | null>(null);
+  const [queryError, setQueryError]     = useState<string | null>(null);
 
-function getField(record: AnyRecord, path: string): unknown {
-  const dot = path.indexOf('.');
-  if (dot === -1) return record[path];
-  const head = path.slice(0, dot);
-  const tail  = path.slice(dot + 1);
-  const nested = record[head];
-  if (nested == null || typeof nested !== 'object' || Array.isArray(nested)) return undefined;
-  return getField(nested as AnyRecord, tail);
-}
+  const { status, columns, totalRows, error, query } = useJsonDuckDb(fileUrl);
 
-interface FilterableField {
-  path:   string;
-  label:  string;
-  values: string[];
-}
+  // Fetch presigned URL once on mount
+  useEffect(() => {
+    getUrl(fileId).then(setFileUrl).catch(() => void 0);
+  }, [fileId, getUrl]);
 
-function buildFilterableFields(records: AnyRecord[]): FilterableField[] {
-  if (!records.length) return [];
-  const paths: string[] = [];
-
-  for (const [key, val] of Object.entries(records[0])) {
-    if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
-      for (const sub of Object.keys(val as AnyRecord)) paths.push(`${key}.${sub}`);
-    } else {
-      paths.push(key);
+  // Run initial query once table is ready
+  useEffect(() => {
+    if (status === 'ready') {
+      query({}).then(r => { if (r) setResult(r); });
     }
-  }
+  }, [status, query]);
 
-  const result: FilterableField[] = [];
-  for (const path of paths) {
-    const raw = records.map(r => {
-      const v = getField(r, path);
-      return v == null ? null : String(v);
+  const handleFilterChange = useCallback((key: string, val: string) => {
+    setFilters(prev => {
+      const next = { ...prev, [key]: val };
+      query(next).then(r => {
+        if (!r) return;
+        if (r.error) setQueryError(r.error);
+        else { setResult(r); setQueryError(null); }
+      });
+      return next;
     });
-    const unique = [...new Set(raw.filter((v): v is string => v !== null))].sort();
-    if (unique.length < 2 || unique.length > 15) continue;
-    const label = path.split('.').pop()!;
-    result.push({ path, label, values: unique });
-  }
-  return result;
-}
+  }, [query]);
 
-// ── JSON array preview with filters ─────────────────────
-
-function JsonArrayPreview({ records, truncated }: { records: AnyRecord[]; truncated: boolean }) {
-  const fields = useMemo(() => buildFilterableFields(records), [records]);
-  const [filters, setFilters] = useState<Record<string, string>>({});
-
-  const filtered = useMemo(() =>
-    records.filter(r =>
-      Object.entries(filters).every(([path, val]) => {
-        if (!val) return true;
-        const v = getField(r, path);
-        return v != null && String(v) === val;
-      })
-    ),
-    [records, filters],
+  const preview = useMemo(
+    () => result ? JSON.stringify(result.rows, null, 2) : '',
+    [result],
   );
 
-  const preview = useMemo(() => JSON.stringify(filtered, null, 2), [filtered]);
-  const activeFilters = Object.values(filters).filter(Boolean).length;
+  const isFiltered = Object.values(filters).some(v => v.trim());
+
+  // ── Loading states ──
+  if (!fileUrl || status === 'idle')    return <div className="skeleton h-32 rounded-md" />;
+  if (status === 'fetching')            return <StatusRow>Fetching file…</StatusRow>;
+  if (status === 'loading')             return <StatusRow>Initialising DuckDB…</StatusRow>;
+  if (status === 'error')               return <StatusRow error>{error}</StatusRow>;
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1.5">
+      {/* Header */}
       <div className="flex items-center gap-2 flex-wrap">
         <Text variant="muted">Preview</Text>
         <Badge variant="count" color="dim">
-          {activeFilters > 0 ? `${filtered.length} / ${records.length}` : records.length} records
-          {truncated ? ' · first 128 KB' : ''}
+          {isFiltered && result
+            ? `${result.filteredCount.toLocaleString()} / ${totalRows.toLocaleString()}`
+            : totalRows.toLocaleString()
+          } rows
         </Badge>
+        {result && result.rows.length === 1000 && (
+          <Badge variant="count" color="dim">showing first 1 000</Badge>
+        )}
       </div>
 
-      {fields.length > 0 && (
-        <div className="flex gap-1 flex-wrap">
-          {fields.map(f => (
-            <FilterChip
-              key={f.path}
-              label={`Any ${f.label}`}
-              items={f.values.map(v => ({ id: v, label: v }))}
-              value={filters[f.path] ?? ''}
-              onValueChange={v => setFilters(prev => ({ ...prev, [f.path]: v }))}
+      {/* Schema-driven filter inputs */}
+      <div className="flex flex-col gap-1">
+        {columns.map(col => (
+          <div key={col.name} className="flex items-baseline gap-2">
+            <Text variant="dim" className="shrink-0 w-40 truncate font-mono text-fg-3">
+              {col.name}
+              <span className="text-fg-4 text-[0.7rem] ml-1">{col.type}</span>
+            </Text>
+            <input
+              className={input({ variant: 'surface', size: 'sm' })}
+              style={{ flex: 1 }}
+              placeholder={`e.g. ${col.name} = 'value'`}
+              value={filters[col.name] ?? ''}
+              onChange={e => handleFilterChange(col.name, e.target.value)}
+              spellCheck={false}
             />
-          ))}
-        </div>
+          </div>
+        ))}
+      </div>
+
+      {queryError && (
+        <Text variant="dim" className="text-red font-mono text-sm">{queryError}</Text>
       )}
 
+      {/* Results */}
       <div
         className="overflow-auto rounded-md border border-line"
         style={{ background: 'var(--color-void)', maxHeight: 400 }}
@@ -110,10 +112,19 @@ function JsonArrayPreview({ records, truncated }: { records: AnyRecord[]; trunca
   );
 }
 
+function StatusRow({ children, error }: { children: React.ReactNode; error?: boolean }) {
+  return (
+    <div className="flex items-center gap-1.5 py-2">
+      {!error && <div className="size-3 rounded-full border border-cyan border-t-transparent animate-spin shrink-0" />}
+      <Text variant="dim" className={error ? 'text-red' : ''}>{children}</Text>
+    </div>
+  );
+}
+
 // ── Plain text preview with infinite scroll ──────────────
 
 interface TextPreviewProps {
-  pages:             FilePreviewPage[];
+  pages:              FilePreviewPage[];
   isFetchingNextPage: boolean;
   hasNextPage:        boolean;
   fetchNextPage:      () => void;
@@ -170,25 +181,26 @@ function TextPreview({ pages, isFetchingNextPage, hasNextPage, fetchNextPage }: 
 
 // ── Main preview component ───────────────────────────────
 
-export default function FilePreview({ fileId }: FilePreviewProps) {
+export default function FilePreview({ fileId, filename }: FilePreviewProps) {
+  const isJson = filename.toLowerCase().endsWith('.json');
+
   const {
     data,
     isLoading,
     isFetchingNextPage,
     hasNextPage,
     fetchNextPage,
-  } = useInfiniteFilePreview(fileId);
+  } = useInfiniteFilePreview(!isJson ? fileId : undefined);
+
+  if (isJson) {
+    return <JsonDuckDbPreview fileId={fileId} />;
+  }
 
   if (isLoading) return <div className="skeleton h-32 rounded-md" />;
 
   const firstPage = data?.pages[0];
-  if (!firstPage?.previewable) return null;
+  if (!firstPage?.previewable || !firstPage.lines.length) return null;
 
-  if (firstPage.records) {
-    return <JsonArrayPreview records={firstPage.records} truncated={firstPage.truncated} />;
-  }
-
-  if (!firstPage.lines.length) return null;
   return (
     <TextPreview
       pages={data!.pages}

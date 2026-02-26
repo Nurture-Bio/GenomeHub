@@ -180,12 +180,6 @@ router.get('/:id/preview', asyncWrap(async (req, res) => {
       }
 
       if (parsed !== undefined) {
-        // Arrays: send raw records so the client can filter interactively
-        if (Array.isArray(parsed)) {
-          res.json({ records: parsed, truncated: !isLastChunk, previewable: true, format: fmt, nextStartByte: null });
-          return;
-        }
-        // Non-array JSON: pretty-print as lines
         const lines = JSON.stringify(parsed, null, 2).split('\n');
         res.json({ lines, truncated: !isLastChunk, previewable: true, format: fmt, nextStartByte: null });
         return;
