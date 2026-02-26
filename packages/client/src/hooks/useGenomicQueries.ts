@@ -847,6 +847,7 @@ export function useRemoveProvenance() {
 
 export interface FilePreviewPage {
   lines:         string[];
+  records?:      Record<string, unknown>[];
   truncated:     boolean;
   previewable:   boolean;
   format:        string;
