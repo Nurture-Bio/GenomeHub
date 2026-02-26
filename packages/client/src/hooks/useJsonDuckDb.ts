@@ -1,5 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import * as duckdb from '@duckdb/duckdb-wasm';
+import duckdb_wasm_mvp from '@duckdb/duckdb-wasm/dist/duckdb-mvp.wasm?url';
+import duckdb_worker_mvp from '@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.js?url';
+import duckdb_wasm_eh from '@duckdb/duckdb-wasm/dist/duckdb-eh.wasm?url';
+import duckdb_worker_eh from '@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js?url';
 
 export interface ColumnInfo {
   name: string;
@@ -28,8 +32,10 @@ async function ensureDb(): Promise<void> {
   if (_bootPromise) { await _bootPromise; return; }
 
   _bootPromise = (async () => {
-    const bundles = duckdb.getJsDelivrBundles();
-    const bundle  = await duckdb.selectBundle(bundles);
+    const bundle = await duckdb.selectBundle({
+      mvp: { mainModule: duckdb_wasm_mvp, mainWorker: duckdb_worker_mvp },
+      eh:  { mainModule: duckdb_wasm_eh,  mainWorker: duckdb_worker_eh  },
+    });
     const worker  = new Worker(bundle.mainWorker!);
     _db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), worker);
     await _db.instantiate(bundle.mainModule, bundle.pthreadWorker);
