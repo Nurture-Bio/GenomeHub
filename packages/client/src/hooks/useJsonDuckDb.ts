@@ -52,6 +52,7 @@ export function useJsonDuckDb(
 
   useEffect(() => {
     if (!fileId || !getUrl) return;
+    const fn = getUrl; // capture before async context — TypeScript narrowing holds here
     let cancelled = false;
 
     async function load() {
@@ -63,7 +64,7 @@ export function useJsonDuckDb(
         if (_loadedFileId !== fileId) {
           // Drop stale table and load fresh data via DuckDB's HTTP bridge
           await _conn!.query(`DROP TABLE IF EXISTS result`);
-          const url = await getUrl!();
+          const url = await fn();
           if (cancelled) return;
 
           await _conn!.query(`
