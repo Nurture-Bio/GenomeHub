@@ -20,6 +20,11 @@
         "type": "string",
         "description": "What this method does, shown below the name"
       },
+      "async": {
+        "type": "boolean",
+        "description": "If true, the engine returns 202 { job_id } instead of streaming the result immediately. GenomeHub polls GET /api/jobs/:job_id for progress, then fetches GET /api/jobs/:job_id/stream on completion. Default false.",
+        "default": false
+      },
       "parameters": {
         "type": "array",
         "items": {
@@ -75,6 +80,7 @@
   "examples": [
     {
       "id": "overlay",
+      "async": false,
       "name": "Spatial Overlay",
       "description": "Spatial join of two region sets with tag merge.",
       "parameters": [
@@ -132,6 +138,7 @@
     },
     {
       "id": "crispr_guides",
+      "async": true,
       "name": "CRISPR Guide Design",
       "description": "Design and score CRISPR guides for a genome.",
       "parameters": [

@@ -1013,8 +1013,21 @@ export interface EngineMethod {
   id:          string;
   name:        string;
   description: string;
+  async?:      boolean;
   parameters:  EngineMethodParam[];
   returns:     { type: string; description: string };
+}
+
+export interface EngineJobStatus {
+  status:   'queued' | 'running' | 'complete' | 'failed';
+  progress: {
+    pct_complete: number | null;
+    rate_per_sec: number | null;
+    eta_seconds:  number | null;
+  };
+  error:     string | null;
+  fileId?:   string;
+  filename?: string;
 }
 
 export function useEnginesQuery() {
@@ -1086,6 +1099,19 @@ export function useEngineMethodsQuery(engineId?: string) {
   });
 }
 
+export function useEngineJobQuery(jobId?: string) {
+  return useQuery({
+    queryKey: queryKeys.engines.job(jobId!),
+    queryFn: () => fetchApi<EngineJobStatus>(`/api/engines/jobs/${jobId}`),
+    enabled: !!jobId,
+    staleTime: 0,
+    refetchInterval: (query) => {
+      const s = query.state.data?.status;
+      return s === 'complete' || s === 'failed' ? false : 2000;
+    },
+  });
+}
+
 export function useRunMethodMutation() {
   const qc = useQueryClient();
   const mutation = useMutation({
@@ -1094,7 +1120,7 @@ export function useRunMethodMutation() {
       methodId: string;
       params: Record<string, string>;
     }) =>
-      mutateApi<{ fileId: string; filename: string }>(
+      mutateApi<{ fileId?: string; filename?: string; jobId?: string }>(
         `/api/engines/${engineId}/methods/${methodId}`,
         {
           method: 'POST',
@@ -1103,9 +1129,13 @@ export function useRunMethodMutation() {
         },
       ),
     onSuccess: (result) => {
-      qc.invalidateQueries({ queryKey: queryKeys.files.all });
-      qc.invalidateQueries({ queryKey: queryKeys.stats.storage });
-      toast.success(`Result: ${result?.filename ?? 'done'}`);
+      if (result?.fileId) {
+        // Sync result — already done, show immediately
+        qc.invalidateQueries({ queryKey: queryKeys.files.all });
+        qc.invalidateQueries({ queryKey: queryKeys.stats.storage });
+        toast.success(`Result: ${result.filename ?? 'done'}`);
+      }
+      // Async result (jobId) — EnginePanel watches job completion
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : 'Method failed'),
   });

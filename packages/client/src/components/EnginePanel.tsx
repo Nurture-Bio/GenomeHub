@@ -1,22 +1,35 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { cx } from 'class-variance-authority';
+import { useQueryClient } from '@tanstack/react-query';
 import { statusDot, button, input, modalOverlay } from '../ui/recipes';
 import { Text, Heading, ComboBox, FilterChip } from '../ui';
 import type { ComboBoxItem } from '../ui';
 import { FORMAT_META } from '../lib/formats';
+import { queryKeys } from '../lib/queryKeys';
 import {
   useEnginesQuery,
   useEngineMethodsQuery,
   useRunMethodMutation,
+  useEngineJobQuery,
   useFilesQuery,
   useCollectionsQuery,
 } from '../hooks/useGenomicQueries';
 import type { EngineMethod, EngineStatus } from '../hooks/useGenomicQueries';
+import { toast } from 'sonner';
+
+// ── Progress helpers ──────────────────────────────────────
+
+function formatEta(seconds: number): string {
+  if (seconds < 60)   return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+}
 
 // ── Schema-driven method form ─────────────────────────────
 
 function MethodForm({ engineId, method }: { engineId: string; method: EngineMethod }) {
+  const qc = useQueryClient();
   const { data: files } = useFilesQuery();
   const { data: collections } = useCollectionsQuery();
   const { runMethod, pending } = useRunMethodMutation();
@@ -25,6 +38,23 @@ function MethodForm({ engineId, method }: { engineId: string; method: EngineMeth
   const [orgFilter,  setOrgFilter]  = useState('');
   const [colFilter,  setColFilter]  = useState('');
   const [typeFilter, setTypeFilter] = useState('');
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+
+  const { data: jobStatus } = useEngineJobQuery(activeJobId ?? undefined);
+
+  // Watch for job completion or failure
+  useEffect(() => {
+    if (!jobStatus) return;
+    if (jobStatus.status === 'complete') {
+      qc.invalidateQueries({ queryKey: queryKeys.files.all });
+      qc.invalidateQueries({ queryKey: queryKeys.stats.storage });
+      toast.success(`Result: ${jobStatus.filename ?? 'done'}`);
+      setActiveJobId(null);
+    } else if (jobStatus.status === 'failed') {
+      toast.error(jobStatus.error ?? 'Method failed');
+      setActiveJobId(null);
+    }
+  }, [jobStatus, qc]);
 
   const hasFileParams = method.parameters.some(p => p.type === 'file');
 
@@ -61,9 +91,19 @@ function MethodForm({ engineId, method }: { engineId: string; method: EngineMeth
     .filter(p => p.required)
     .every(p => params[p.name]);
 
-  const handleRun = () => {
-    runMethod({ engineId, methodId: method.id, params });
+  const handleRun = async () => {
+    try {
+      const result = await runMethod({ engineId, methodId: method.id, params });
+      if (result?.jobId) {
+        setActiveJobId(result.jobId);
+      }
+    } catch {
+      // onError in mutation handles the toast
+    }
   };
+
+  const isRunning = pending || !!activeJobId;
+  const progress  = jobStatus?.progress ?? null;
 
   return (
     <div className="flex flex-col gap-2 py-2 border-t border-line">
@@ -116,13 +156,46 @@ function MethodForm({ engineId, method }: { engineId: string; method: EngineMeth
         </div>
       ))}
 
-      <button
-        className={cx(button({ intent: 'primary', size: 'sm', pending }), 'mt-1')}
-        disabled={!allRequiredFilled || pending}
-        onClick={handleRun}
-      >
-        {pending ? 'Running...' : 'Run'}
-      </button>
+      {/* Run button / progress area */}
+      {activeJobId && progress ? (
+        <div className="mt-1 flex flex-col gap-1.5">
+          {progress.pct_complete !== null ? (
+            <>
+              {/* Progress bar */}
+              <div className="h-1 rounded-full bg-raised overflow-hidden">
+                <div
+                  className="h-full bg-cyan rounded-full transition-[width] duration-500 ease-out"
+                  style={{ width: `${Math.round(progress.pct_complete * 100)}%` }}
+                />
+              </div>
+              {/* Live stats */}
+              <div className="flex gap-2.5 font-mono">
+                <Text variant="dim">{Math.round(progress.pct_complete * 100)}%</Text>
+                {progress.eta_seconds !== null && (
+                  <Text variant="dim">ETA {formatEta(progress.eta_seconds)}</Text>
+                )}
+                {progress.rate_per_sec !== null && (
+                  <Text variant="dim">{progress.rate_per_sec.toFixed(1)}/s</Text>
+                )}
+              </div>
+            </>
+          ) : (
+            /* Indeterminate spinner while pct_complete is null */
+            <div className="flex items-center gap-1.5">
+              <div className="size-3 rounded-full border border-cyan border-t-transparent animate-spin shrink-0" />
+              <Text variant="dim">Running...</Text>
+            </div>
+          )}
+        </div>
+      ) : (
+        <button
+          className={cx(button({ intent: 'primary', size: 'sm', pending: isRunning }), 'mt-1')}
+          disabled={!allRequiredFilled || isRunning}
+          onClick={handleRun}
+        >
+          {isRunning ? 'Running...' : 'Run'}
+        </button>
+      )}
     </div>
   );
 }

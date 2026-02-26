@@ -7,6 +7,7 @@
  * @module
  */
 
+import type { Readable } from 'stream';
 import {
   S3Client,
   CreateMultipartUploadCommand,
@@ -14,15 +15,12 @@ import {
   AbortMultipartUploadCommand,
   DeleteObjectCommand,
   HeadObjectCommand,
-} from '@aws-sdk/client-s3';
-import {
-  getSignedUrl,
-} from '@aws-sdk/s3-request-presigner';
-import {
   UploadPartCommand,
   GetObjectCommand,
   PutObjectCommand,
 } from '@aws-sdk/client-s3';
+import { Upload } from '@aws-sdk/lib-storage';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 // ─── Client ────────────────────────────────────────────────
 
@@ -177,7 +175,7 @@ export async function getObject(s3Key: string): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-// ─── Put object ─────────────────────────────────────────────
+// ─── Put object (buffered) ──────────────────────────────────
 
 export async function putObject(
   s3Key:       string,
@@ -185,12 +183,35 @@ export async function putObject(
   contentType: string,
 ): Promise<void> {
   await s3.send(new PutObjectCommand({
-    Bucket:              BUCKET,
-    Key:                 s3Key,
-    Body:                body,
-    ContentType:         contentType,
+    Bucket:               BUCKET,
+    Key:                  s3Key,
+    Body:                 body,
+    ContentType:          contentType,
     ServerSideEncryption: 'AES256',
   }));
+}
+
+// ─── Put object (streaming) ─────────────────────────────────
+// Uses @aws-sdk/lib-storage Upload for streaming multipart.
+// Zero materialization in Node heap — the stream is piped
+// directly from the caller to S3.
+
+export async function putObjectStream(
+  s3Key:       string,
+  body:        Readable,
+  contentType: string,
+): Promise<void> {
+  const upload = new Upload({
+    client: s3,
+    params: {
+      Bucket:               BUCKET,
+      Key:                  s3Key,
+      Body:                 body,
+      ContentType:          contentType,
+      ServerSideEncryption: 'AES256',
+    },
+  });
+  await upload.done();
 }
 
 // ─── S3 key builder ────────────────────────────────────────
