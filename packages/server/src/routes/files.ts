@@ -162,6 +162,36 @@ router.get('/:id/preview', asyncWrap(async (req, res) => {
     const isLastChunk = buf.length < CHUNK;
     const text = buf.toString('utf-8');
 
+    // JSON: pretty-print a parsed preview rather than showing raw minified text
+    if (fmt === 'json') {
+      const PREVIEW_ITEMS = 20;
+      let parsed: unknown;
+
+      // Try full parse (works for small files or already-complete chunk)
+      try { parsed = JSON.parse(text); } catch { /* try partial */ }
+
+      // For truncated minified arrays, recover everything up to the last complete element
+      if (parsed === undefined) {
+        const lastClose = text.lastIndexOf('},');
+        if (lastClose > 0) {
+          const prefix = (text.trimStart().startsWith('[') ? '' : '[')
+            + text.slice(0, lastClose + 1) + ']';
+          try { parsed = JSON.parse(prefix); } catch { /* give up */ }
+        }
+      }
+
+      if (parsed !== undefined) {
+        const preview  = Array.isArray(parsed) && parsed.length > PREVIEW_ITEMS
+          ? parsed.slice(0, PREVIEW_ITEMS)
+          : parsed;
+        const truncated = Array.isArray(parsed) && parsed.length > PREVIEW_ITEMS;
+        const lines    = JSON.stringify(preview, null, 2).split('\n');
+        res.json({ lines, truncated, previewable: true, format: fmt, nextStartByte: null });
+        return;
+      }
+      // Unparseable JSON — fall through to normal line handling
+    }
+
     // Drop the potentially partial last line unless we're at EOF
     const safeText = (!isLastChunk && text.includes('\n'))
       ? text.slice(0, text.lastIndexOf('\n') + 1)
