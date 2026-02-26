@@ -167,8 +167,9 @@ router.get('/:id/preview', asyncWrap(async (req, res) => {
       ? text.slice(0, text.lastIndexOf('\n') + 1)
       : text;
 
+    const LINE_MAX = 500; // chars — prevents multi-MB lines from reaching the client
     const allLines = safeText.split('\n').filter((l, i, arr) => i < arr.length - 1 || l.length > 0);
-    const lines    = allLines.slice(0, PAGE_SIZE);
+    const lines    = allLines.slice(0, PAGE_SIZE).map(l => l.length > LINE_MAX ? l.slice(0, LINE_MAX) + '…' : l);
     const hasMore  = !isLastChunk || allLines.length > PAGE_SIZE;
 
     // Compute cursor for the next page (byte position after the last line we're returning)
