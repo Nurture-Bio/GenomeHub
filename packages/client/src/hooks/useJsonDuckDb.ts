@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import * as duckdb from '@duckdb/duckdb-wasm';
 
 export interface ColumnInfo {
@@ -12,51 +12,69 @@ export interface QueryResult {
   error?:        string;
 }
 
-export type DuckDbStatus = 'idle' | 'fetching' | 'loading' | 'ready' | 'error';
+export type DuckDbStatus = 'idle' | 'loading' | 'ready' | 'error';
 
-export function useJsonDuckDb(fileUrl: string | null) {
+// ── Module-level singleton ────────────────────────────────
+// DuckDB instance and loaded table persist across component mounts.
+// Re-fetch only when the file ID changes.
+
+let _db:           duckdb.AsyncDuckDB | null = null;
+let _conn:         duckdb.AsyncDuckDBConnection | null = null;
+let _loadedFileId: string | null = null;
+let _bootPromise:  Promise<void> | null = null;
+
+async function ensureDb(): Promise<void> {
+  if (_db && _conn) return;
+  if (_bootPromise) { await _bootPromise; return; }
+
+  _bootPromise = (async () => {
+    const bundles = duckdb.getJsDelivrBundles();
+    const bundle  = await duckdb.selectBundle(bundles);
+    const worker  = new Worker(bundle.mainWorker!);
+    _db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), worker);
+    await _db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+    _conn = await _db.connect();
+  })();
+
+  await _bootPromise;
+}
+
+// ── Hook ─────────────────────────────────────────────────
+
+export function useJsonDuckDb(
+  fileId:  string | null,
+  getUrl:  (() => Promise<string>) | null,
+) {
   const [status,    setStatus]    = useState<DuckDbStatus>('idle');
   const [columns,   setColumns]   = useState<ColumnInfo[]>([]);
   const [totalRows, setTotalRows] = useState(0);
   const [error,     setError]     = useState<string | null>(null);
 
-  const dbRef   = useRef<duckdb.AsyncDuckDB | null>(null);
-  const connRef = useRef<duckdb.AsyncDuckDBConnection | null>(null);
-
   useEffect(() => {
-    if (!fileUrl) return;
-
+    if (!fileId || !getUrl) return;
     let cancelled = false;
 
-    async function init() {
+    async function load() {
+      setStatus('loading');
       try {
-        // 1. Fetch the file
-        setStatus('fetching');
-        const response = await fetch(fileUrl!);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const text = await response.text();
+        await ensureDb();
         if (cancelled) return;
 
-        // 2. Boot DuckDB
-        setStatus('loading');
-        const bundles = duckdb.getJsDelivrBundles();
-        const bundle  = await duckdb.selectBundle(bundles);
-        const worker  = new Worker(bundle.mainWorker!);
-        const db      = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), worker);
-        await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
-        if (cancelled) { db.terminate(); return; }
+        if (_loadedFileId !== fileId) {
+          // Drop stale table and load fresh data via DuckDB's HTTP bridge
+          await _conn!.query(`DROP TABLE IF EXISTS result`);
+          const url = await getUrl!();
+          if (cancelled) return;
 
-        dbRef.current  = db;
-        const conn     = await db.connect();
-        connRef.current = conn;
+          await _conn!.query(`
+            CREATE TABLE result AS
+            SELECT * FROM read_json_auto('${url}', maximum_object_size=104857600)
+          `);
+          _loadedFileId = fileId;
+        }
 
-        // 3. Register file + create table
-        await db.registerFileText('data.json', text);
-        await conn.query(`CREATE TABLE result AS SELECT * FROM read_json_auto('data.json')`);
-
-        // 4. Describe schema + row count
-        const desc  = await conn.query(`DESCRIBE result`);
-        const count = await conn.query(`SELECT COUNT(*)::INTEGER AS n FROM result`);
+        const desc  = await _conn!.query(`DESCRIBE result`);
+        const count = await _conn!.query(`SELECT COUNT(*)::INTEGER AS n FROM result`);
 
         const cols: ColumnInfo[] = desc.toArray().map((r: unknown) => {
           const row = r as Record<string, unknown>;
@@ -77,27 +95,19 @@ export function useJsonDuckDb(fileUrl: string | null) {
       }
     }
 
-    init();
-
-    return () => {
-      cancelled = true;
-      connRef.current?.close().catch(() => void 0);
-      dbRef.current?.terminate();
-      dbRef.current  = null;
-      connRef.current = null;
-    };
-  }, [fileUrl]);
+    load();
+    return () => { cancelled = true; };
+  }, [fileId, getUrl]);
 
   const query = useCallback(async (fragments: Record<string, string>): Promise<QueryResult | null> => {
-    const conn = connRef.current;
-    if (!conn) return null;
+    if (!_conn) return null;
 
     const conditions = Object.values(fragments).filter(v => v.trim());
     const where = conditions.length ? `WHERE ${conditions.map(c => `(${c})`).join(' AND ')}` : '';
 
     try {
-      const rows = await conn.query(`SELECT * FROM result ${where} LIMIT 1000`);
-      const cnt  = await conn.query(`SELECT COUNT(*)::INTEGER AS n FROM result ${where}`);
+      const rows = await _conn.query(`SELECT * FROM result ${where} LIMIT 1000`);
+      const cnt  = await _conn.query(`SELECT COUNT(*)::INTEGER AS n FROM result ${where}`);
       return {
         rows:          rows.toArray().map((r: unknown) => JSON.parse(JSON.stringify(r))),
         filteredCount: Number((cnt.toArray()[0] as Record<string, unknown>).n),

@@ -15,17 +15,12 @@ interface FilePreviewProps {
 
 function JsonDuckDbPreview({ fileId }: { fileId: string }) {
   const { getUrl }                      = usePresignedUrl();
-  const [fileUrl, setFileUrl]           = useState<string | null>(null);
   const [filters, setFilters]           = useState<Record<string, string>>({});
   const [result, setResult]             = useState<{ rows: Record<string, unknown>[]; filteredCount: number; error?: string } | null>(null);
   const [queryError, setQueryError]     = useState<string | null>(null);
 
-  const { status, columns, totalRows, error, query } = useJsonDuckDb(fileUrl);
-
-  // Fetch presigned URL once on mount
-  useEffect(() => {
-    getUrl(fileId).then(setFileUrl).catch(() => void 0);
-  }, [fileId, getUrl]);
+  const getFileUrl = useCallback(() => getUrl(fileId), [getUrl, fileId]);
+  const { status, columns, totalRows, error, query } = useJsonDuckDb(fileId, getFileUrl);
 
   // Run initial query once table is ready
   useEffect(() => {
@@ -54,10 +49,9 @@ function JsonDuckDbPreview({ fileId }: { fileId: string }) {
   const isFiltered = Object.values(filters).some(v => v.trim());
 
   // ── Loading states ──
-  if (!fileUrl || status === 'idle')    return <div className="skeleton h-32 rounded-md" />;
-  if (status === 'fetching')            return <StatusRow>Fetching file…</StatusRow>;
-  if (status === 'loading')             return <StatusRow>Initialising DuckDB…</StatusRow>;
-  if (status === 'error')               return <StatusRow error>{error}</StatusRow>;
+  if (status === 'idle')    return <div className="skeleton h-32 rounded-md" />;
+  if (status === 'loading') return <StatusRow>Initialising DuckDB…</StatusRow>;
+  if (status === 'error')   return <StatusRow error>{error}</StatusRow>;
 
   return (
     <div className="flex flex-col gap-1.5">
