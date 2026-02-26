@@ -41,11 +41,14 @@ function parseResultMeta(
 // In-memory — jobs are tracked within the server process lifetime.
 
 interface EngineJob {
-  status:   'queued' | 'running' | 'complete' | 'failed';
-  progress: { pct_complete: number | null; rate_per_sec: number | null; eta_seconds: number | null };
-  error:    string | null;
-  fileId?:  string;
-  filename?: string;
+  status:       'queued' | 'running' | 'complete' | 'failed';
+  progress:     { pct_complete: number | null; rate_per_sec: number | null; eta_seconds: number | null };
+  error:        string | null;
+  fileId?:      string;
+  filename?:    string;
+  // Kept for cancel forwarding — not exposed to the client
+  engineJobId?: string;
+  engineUrl?:   string;
 }
 
 const jobRegistry = new Map<string, EngineJob>();
@@ -198,6 +201,13 @@ router.get('/jobs/:jobId', asyncWrap(async (req, res) => {
 router.delete('/jobs/:jobId', asyncWrap(async (req, res) => {
   const job = jobRegistry.get(req.params.jobId);
   if (!job) { res.status(404).json({ error: 'job not found' }); return; }
+
+  // Forward cancel to the engine so it can stop cooperatively
+  if (job.engineUrl && job.engineJobId) {
+    fetch(`${job.engineUrl}/api/jobs/${job.engineJobId}`, { method: 'DELETE' })
+      .catch(() => { /* best-effort */ });
+  }
+
   job.status = 'failed';
   job.error  = 'Cancelled by user';
   res.json({ ok: true });
@@ -338,9 +348,11 @@ router.post('/:id/methods/:methodId', asyncWrap(async (req, res) => {
     const hubJobId = randomUUID();
 
     jobRegistry.set(hubJobId, {
-      status:   'queued',
-      progress: { pct_complete: null, rate_per_sec: null, eta_seconds: null },
-      error:    null,
+      status:      'queued',
+      progress:    { pct_complete: null, rate_per_sec: null, eta_seconds: null },
+      error:       null,
+      engineJobId,
+      engineUrl:   engine.url,
     });
 
     // Fire and forget — client polls GET /api/engines/jobs/:jobId
