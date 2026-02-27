@@ -29,13 +29,13 @@ function EditableRow({ id, index, name, description, onSave, onDelete }: Editabl
   return (
     <tr className="border-b border-line group hover:bg-base transition-colors duration-fast stagger-item"
       style={{ '--i': Math.min(index ?? 0, 15) } as React.CSSProperties}>
-      <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
+      <td className="tbl-cell overflow-hidden">
         <InlineInput value={name} fullWidth className="font-semibold" onCommit={val => onSave(id, { name: val })} />
       </td>
-      <td className="py-1.5 pr-3 overflow-hidden">
+      <td className="tbl-cell overflow-hidden">
         <InlineInput value={description ?? ''} placeholder="add description" fullWidth onCommit={val => onSave(id, { description: val })} />
       </td>
-      <td className="py-1.5 pr-2.5 w-8">
+      <td className="tbl-cell-end w-8">
         <button onClick={() => onDelete(id, name)}
           className={iconAction({ color: 'danger', reveal: true })} title="Delete">×</button>
       </td>
@@ -65,19 +65,19 @@ function AddRow({ placeholder, onAdd }: { placeholder: string; onAdd: (name: str
 
   return (
     <tr className="text-fg-3">
-      <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
+      <td className="tbl-cell overflow-hidden">
         <input ref={nameRef} value={name} onChange={e => setName(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') commit(); }}
           placeholder={placeholder}
           className={cx(inlineInput({ font: 'body' }), 'font-semibold w-full')} />
       </td>
-      <td className="py-1.5 pr-3 overflow-hidden">
+      <td className="tbl-cell overflow-hidden">
         <input value={desc} onChange={e => setDesc(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') commit(); }}
           placeholder="description"
           className={cx(inlineInput({ font: 'body' }), 'w-full')} />
       </td>
-      <td className="py-1.5 pr-2.5 w-8">
+      <td className="tbl-cell-end w-8">
         <span className={`inline-flex items-center gap-1 transition-opacity duration-fast ${hasInput ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
           <button disabled={pending} onClick={commit}
             className={iconAction({ color: 'accent' })} title="Add">✓</button>
@@ -101,9 +101,9 @@ function SectionTable({ title, subtitle, children }: { title: string; subtitle: 
       <div className="border border-line rounded-md bg-base overflow-hidden">
         <table className="w-full border-collapse text-left table-fixed">
           <thead>
-            <tr className="border-b border-line bg-raised">
-              <th className="py-1.5 pr-3 pl-2.5 w-44"><Text variant="muted">Name</Text></th>
-              <th className="py-1.5 pr-3 pl-2.5"><Text variant="muted">Description</Text></th>
+            <tr className="border-b border-line surface-header">
+              <th className="tbl-cell w-44"><Text variant="muted">Name</Text></th>
+              <th className="tbl-cell"><Text variant="muted">Description</Text></th>
               <th className="w-8" />
             </tr>
           </thead>
@@ -130,16 +130,16 @@ function EngineRow({ id, index, name, url, status, onSave, onDelete }: EngineRow
   return (
     <tr className="border-b border-line group hover:bg-base transition-colors duration-fast stagger-item"
       style={{ '--i': Math.min(index ?? 0, 15) } as React.CSSProperties}>
-      <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
+      <td className="tbl-cell overflow-hidden">
         <div className="flex items-center gap-1.5">
           <div className={statusDot({ status: status === 'ok' ? 'connected' : 'disconnected', size: 'sm' })} />
           <InlineInput value={name} fullWidth className="font-semibold" onCommit={val => onSave(id, { name: val })} />
         </div>
       </td>
-      <td className="py-1.5 pr-3 overflow-hidden">
+      <td className="tbl-cell overflow-hidden">
         <InlineInput value={url} fullWidth onCommit={val => onSave(id, { url: val })} />
       </td>
-      <td className="py-1.5 pr-2.5 w-8">
+      <td className="tbl-cell-end w-8">
         <button onClick={() => onDelete(id, name)}
           className={iconAction({ color: 'danger', reveal: true })} title="Delete">×</button>
       </td>
@@ -167,19 +167,19 @@ function EngineAddRow({ onAdd }: { onAdd: (name: string, url: string) => Promise
 
   return (
     <tr className="text-fg-3">
-      <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
+      <td className="tbl-cell overflow-hidden">
         <input ref={nameRef} value={name} onChange={e => setName(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') commit(); }}
           placeholder="+ new engine"
           className={cx(inlineInput({ font: 'body' }), 'font-semibold w-full')} />
       </td>
-      <td className="py-1.5 pr-3 overflow-hidden">
+      <td className="tbl-cell overflow-hidden">
         <input value={url} onChange={e => setUrl(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') commit(); }}
           placeholder="http://localhost:8001"
           className={cx(inlineInput({ font: 'body' }), 'w-full')} />
       </td>
-      <td className="py-1.5 pr-2.5 w-8">
+      <td className="tbl-cell-end w-8">
         <span className={`inline-flex items-center gap-1 transition-opacity duration-fast ${hasInput ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
           <button disabled={pending} onClick={commit}
             className={iconAction({ color: 'accent' })} title="Add">✓</button>
@@ -201,9 +201,9 @@ function EngineTable({ children }: { children: React.ReactNode }) {
       <div className="border border-line rounded-md bg-base overflow-hidden">
         <table className="w-full border-collapse text-left table-fixed">
           <thead>
-            <tr className="border-b border-line bg-raised">
-              <th className="py-1.5 pr-3 pl-2.5 w-44"><Text variant="muted">Name</Text></th>
-              <th className="py-1.5 pr-3 pl-2.5"><Text variant="muted">URL</Text></th>
+            <tr className="border-b border-line surface-header">
+              <th className="tbl-cell w-44"><Text variant="muted">Name</Text></th>
+              <th className="tbl-cell"><Text variant="muted">URL</Text></th>
               <th className="w-8" />
             </tr>
           </thead>
@@ -278,9 +278,9 @@ export default function SettingsPage() {
   }, [createEngine]);
 
   return (
-    <div className="flex flex-col gap-4 md:gap-5 p-2 md:p-3 max-w-2xl mx-auto w-full animate-page-enter">
+    <div className="flex flex-col gap-4 md:gap-5 p-2 md:p-5 max-w-2xl mx-auto w-full animate-page-enter">
       <div>
-        <Heading level="heading">Settings</Heading>
+        <Heading level="title">Settings</Heading>
         <Text variant="dim">Manage reference data used across GenomeHub</Text>
       </div>
 

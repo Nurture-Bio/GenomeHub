@@ -17,15 +17,18 @@ import CollectionDetailPage from './pages/CollectionDetailPage';
 import FileDetailPage       from './pages/FileDetailPage';
 import SettingsPage         from './pages/SettingsPage';
 
+import { lazy, Suspense } from 'react';
 import PageErrorBoundary    from './components/PageErrorBoundary';
 import Breadcrumbs          from './components/Breadcrumbs';
 import GlobalUploadProgress from './components/GlobalUploadProgress';
 import ConfirmDialog        from './components/ConfirmDialog';
 import EnginePanel          from './components/EnginePanel';
 
+const DevTablePage = lazy(() => import('./pages/DevTablePage'));
+
 // ── Hub icon ─────────────────────────────────────────────
 const GenomicIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+  <svg width="28" height="28" viewBox="0 0 24 24" fill="none"
     style={{ color: 'var(--color-cyan)' }}>
     {/* Center node */}
     <circle cx="12" cy="12" r="3.5" fill="currentColor" />
@@ -48,21 +51,21 @@ const GenomicIcon = () => (
 
 const icons: Record<string, ReactNode> = {
   dashboard: (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
       strokeWidth="2" strokeLinecap="round">
       <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
       <rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" />
     </svg>
   ),
   files: (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
       strokeWidth="2" strokeLinecap="round">
       <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
       <polyline points="14 2 14 8 20 8" />
     </svg>
   ),
   upload: (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
       strokeWidth="2" strokeLinecap="round">
       <polyline points="16 16 12 12 8 16" />
       <line x1="12" y1="12" x2="12" y2="21" />
@@ -70,7 +73,7 @@ const icons: Record<string, ReactNode> = {
     </svg>
   ),
   organisms: (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
       strokeWidth="2" strokeLinecap="round">
       <circle cx="12" cy="12" r="10" />
       <path d="M2 12h20" />
@@ -78,14 +81,14 @@ const icons: Record<string, ReactNode> = {
     </svg>
   ),
   collections: (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
       strokeWidth="2" strokeLinecap="round">
       <path d="M9 3h6v7l4 9H5l4-9V3z" />
       <path d="M9 3h6" />
     </svg>
   ),
   settings: (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
       strokeWidth="2" strokeLinecap="round">
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
@@ -106,16 +109,16 @@ const NAV_ITEMS: { to: string; label: string; icon: string; end?: boolean }[] = 
 
 function SidebarBrand() {
   return (
-    <div className="flex items-center gap-2 px-3 py-3 border-b border-line shrink-0">
-      <GenomicIcon />
-      <Heading as="span" level="subheading" className="font-bold">GenomeHub</Heading>
+    <div className="flex items-center gap-2.5 px-4 py-4 border-b border-line shrink-0">
+      <span className="logo-glow"><GenomicIcon /></span>
+      <Heading as="span" level="subheading" className="font-display font-bold tracking-tight">GenomeHub</Heading>
     </div>
   );
 }
 
 function SidebarNav({ onNavClick }: { onNavClick?: () => void }) {
   return (
-    <nav className="flex flex-col gap-0.5 p-1.5 flex-1">
+    <nav className="flex flex-col gap-1 p-2 flex-1">
       {NAV_ITEMS.map(item => (
         <NavLink
           key={item.to}
@@ -125,8 +128,8 @@ function SidebarNav({ onNavClick }: { onNavClick?: () => void }) {
           className={({ isActive }) =>
             cx(
               navLink({ active: isActive }),
-              'rounded-sm gap-2 w-full text-left border-none cursor-pointer bg-transparent no-underline min-h-5.5',
-              isActive && 'bg-base'
+              'rounded-sm gap-2.5 w-full text-left border-none cursor-pointer bg-transparent no-underline min-h-5.5',
+              isActive && 'bg-cyan/[0.06]'
             )
           }
         >
@@ -140,7 +143,7 @@ function SidebarNav({ onNavClick }: { onNavClick?: () => void }) {
 
 function SidebarFooter({ user, logout }: { user: { name: string; email: string; picture?: string | null }; logout: () => void }) {
   return (
-    <div className="px-3 py-2 border-t border-line flex items-center gap-2">
+    <div className="px-4 py-3 border-t border-line flex items-center gap-2.5">
       {user.picture ? (
         <img
           src={user.picture}
@@ -187,18 +190,23 @@ export default function App() {
   const { user, loading, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  // Dev route — no auth, no server, just mock data
+  if (window.location.pathname === '/dev/table') {
+    return <Suspense fallback={null}><DevTablePage /></Suspense>;
+  }
+
   if (loading) {
     return (
       <div className="flex flex-col md:flex-row h-full" style={{ background: 'var(--color-void)' }}>
         {/* Skeleton sidebar */}
-        <aside className="hidden md:flex flex-col shrink-0 border-r border-line" style={{ width: 200, background: 'var(--color-void)' }}>
+        <aside className="hidden md:flex flex-col shrink-0 sidebar-surface grain-overlay" style={{ width: 260 }}>
           <SidebarBrand />
-          <nav className="flex flex-col gap-1.5 p-1.5 flex-1">
+          <nav className="flex flex-col gap-1.5 p-2 flex-1">
             {NAV_ITEMS.map(item => (
               <div key={item.to} className="skeleton h-5.5 rounded-sm" />
             ))}
           </nav>
-          <div className="px-3 py-2 border-t border-line flex items-center gap-2">
+          <div className="px-4 py-3 border-t border-line flex items-center gap-2.5">
             <div className="skeleton w-6 h-6 rounded-full shrink-0" />
             <div className="flex flex-col gap-1 flex-1 min-w-0">
               <div className="skeleton h-[1lh] w-3/4" />
@@ -207,7 +215,7 @@ export default function App() {
           </div>
         </aside>
         {/* Skeleton main area */}
-        <main className="flex-1 p-2 md:p-3">
+        <main className="flex-1 p-2 md:p-5">
           <div className="flex flex-col gap-2">
             <div className="skeleton h-[1lh] w-32 rounded-sm" />
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
@@ -231,8 +239,8 @@ export default function App() {
         className="flex md:hidden items-center gap-2 px-3 py-2 border-b border-line shrink-0"
         style={{ background: 'var(--color-void)' }}
       >
-        <GenomicIcon />
-        <Heading as="span" level="subheading" className="font-bold flex-1">GenomeHub</Heading>
+        <span className="logo-glow"><GenomicIcon /></span>
+        <Heading as="span" level="subheading" className="font-display font-bold tracking-tight flex-1">GenomeHub</Heading>
         <button
           onClick={() => setMobileMenuOpen(true)}
           className={cx(iconAction({ color: 'dim' }), 'flex items-center justify-center min-h-5.5 min-w-5.5')}
@@ -250,10 +258,10 @@ export default function App() {
       {/* Mobile drawer — Radix Dialog gives us focus trap + escape key for free */}
       <Dialog.Root open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
         <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 bg-black/50 z-20 animate-fade-in" />
+          <Dialog.Overlay className="fixed inset-0 bg-black/50 z-overlay animate-fade-in" />
           <Dialog.Content
-            className="fixed inset-y-0 left-0 z-30 flex flex-col border-r border-line animate-slide-in-left"
-            style={{ width: 200, background: 'var(--color-void)' }}
+            className="fixed inset-y-0 left-0 z-modal flex flex-col animate-slide-in-left sidebar-surface grain-overlay"
+            style={{ width: 260 }}
             aria-label="Navigation"
           >
             <SidebarBrand />
@@ -266,8 +274,8 @@ export default function App() {
 
       {/* Desktop sidebar — static, in normal flex flow */}
       <aside
-        className="hidden md:flex flex-col shrink-0 border-r border-line"
-        style={{ width: 200, background: 'var(--color-void)' }}
+        className="hidden md:flex flex-col shrink-0 sidebar-surface grain-overlay"
+        style={{ width: 260 }}
       >
         <SidebarBrand />
         <SidebarNav />

@@ -9,9 +9,9 @@ import { useCountUp } from '../hooks/useCountUp';
 function StatCard({ label, value, sub }: { label: string; value: number | null; sub?: string }) {
   const animated = useCountUp(value ?? 0);
   return (
-    <div className="bg-base border border-line rounded-md p-2.5 flex flex-col gap-0.5">
+    <div className="stat-card-surface p-3 flex flex-col gap-0.5">
       <Text variant="muted">{label}</Text>
-      <Heading level="heading" className="tabular-nums">
+      <Heading level="display" className="tabular-nums">
         {value === null ? <span className="skeleton h-[1lh] w-10 inline-block align-middle rounded-sm" /> : animated.toLocaleString()}
       </Heading>
       {sub && <Text variant="dim">{sub}</Text>}
@@ -22,9 +22,9 @@ function StatCard({ label, value, sub }: { label: string; value: number | null; 
 function StorageStatCard({ label, bytes }: { label: string; bytes: number | null }) {
   const animated = useCountUp(bytes ?? 0);
   return (
-    <div className="bg-base border border-line rounded-md p-2.5 flex flex-col gap-0.5">
+    <div className="stat-card-surface p-3 flex flex-col gap-0.5">
       <Text variant="muted">{label}</Text>
-      <Heading level="heading" className="tabular-nums">
+      <Heading level="display" className="tabular-nums">
         {bytes === null ? <span className="skeleton h-[1lh] w-16 inline-block align-middle rounded-sm" /> : formatBytes(animated)}
       </Heading>
     </div>
@@ -63,8 +63,8 @@ export default function DashboardPage() {
   const { data: collections, isLoading: colLoading, isError: colError } = useCollectionsQuery();
 
   return (
-    <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 animate-page-enter">
-      <Heading level="heading">Dashboard</Heading>
+    <div className="flex flex-col gap-3 md:gap-4 p-2 md:p-5 animate-page-enter">
+      <Heading level="title">Dashboard</Heading>
 
       {/* Top stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
@@ -93,7 +93,7 @@ export default function DashboardPage() {
 
       {/* Storage by format */}
       {!statsLoading && stats && stats.byFormat.length > 0 && (
-        <div className="bg-base border border-line rounded-md p-2.5 flex flex-col gap-2">
+        <div className="bg-base border border-line rounded-md p-3 flex flex-col gap-2">
           <Text variant="muted">Storage by Format</Text>
           <FormatBar items={stats.byFormat} />
 

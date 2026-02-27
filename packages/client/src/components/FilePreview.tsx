@@ -1,81 +1,37 @@
-import { useRef, useEffect, useCallback, useState, useMemo } from 'react';
+import { useRef, useEffect, useCallback, useState } from 'react';
 import { useInfiniteFilePreview } from '../hooks/useGenomicQueries';
 import type { FilePreviewPage } from '../hooks/useGenomicQueries';
 import { usePresignedUrl } from '../hooks/useGenomicQueries';
 import { useJsonDuckDb } from '../hooks/useJsonDuckDb';
-import type { ColumnInfo } from '../hooks/useJsonDuckDb';
+import { isNumericType } from '../hooks/useJsonDuckDb';
+import type { SortSpec } from '../hooks/useJsonDuckDb';
+import DataTable from './DataTable';
 import { Text, Badge } from '../ui';
-import { input } from '../ui/recipes';
 
 interface FilePreviewProps {
   fileId:   string;
   filename: string;
 }
 
-// ── STRUCT field expansion ───────────────────────────────
-// Parse "STRUCT(field1 TYPE1, "field2" TYPE2, ...)" into flat filter rows.
-// Depth-aware split handles nested types without regex hacks.
+// ── Filter expression builder ────────────────────────────
 
-function parseStructFields(typeStr: string): ColumnInfo[] {
-  const inner = typeStr.match(/^STRUCT\((.+)\)$/s)?.[1];
-  if (!inner) return [];
+function buildFilterExpression(raw: string, colType: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
 
-  const parts: string[] = [];
-  let depth = 0, start = 0;
-  for (let i = 0; i < inner.length; i++) {
-    if (inner[i] === '(') depth++;
-    else if (inner[i] === ')') depth--;
-    else if (inner[i] === ',' && depth === 0) {
-      parts.push(inner.slice(start, i).trim());
-      start = i + 1;
-    }
+  // Already has a SQL operator prefix — pass through (power-user)
+  if (/^(=|!=|<>|>=?|<=?|BETWEEN|LIKE|ILIKE|NOT|IN\s*\()/i.test(trimmed)) {
+    return trimmed;
   }
-  parts.push(inner.slice(start).trim());
 
-  return parts.flatMap(part => {
-    const m = part.match(/^"?(\w+)"?\s+(.+)$/);
-    return m ? [{ name: m[1], type: m[2] }] : [];
-  });
-}
+  // Boolean select already emits "= true" / "= false"
+  if (colType.toUpperCase() === 'BOOLEAN') return trimmed;
 
-// Expand top-level columns: STRUCT → sub-fields with "parent.field" paths.
-// Non-STRUCT columns pass through as-is.
-interface FilterRow {
-  path:       string;   // SQL path: "chrom" or "tags.off_targets"
-  label:      string;   // Display name
-  type:       string;   // DuckDB type (short)
-  placeholder: string;
-}
+  // Numeric range slider already emits "BETWEEN x AND y"
+  if (isNumericType(colType)) return trimmed;
 
-function typeHint(type: string): string {
-  if (type.includes('VARCHAR')) return `= 'value'`;
-  if (type.includes('BOOLEAN')) return `= true`;
-  return `= 0`;
-}
-
-function buildFilterRows(columns: ColumnInfo[]): FilterRow[] {
-  const rows: FilterRow[] = [];
-  for (const col of columns) {
-    if (col.type.startsWith('STRUCT(')) {
-      const sub = parseStructFields(col.type);
-      for (const f of sub) {
-        rows.push({
-          path:        `${col.name}.${f.name}`,
-          label:       `${col.name}.${f.name}`,
-          type:        f.type,
-          placeholder: typeHint(f.type),
-        });
-      }
-    } else {
-      rows.push({
-        path:        col.name,
-        label:       col.name,
-        type:        col.type,
-        placeholder: typeHint(col.type),
-      });
-    }
-  }
-  return rows;
+  // Default for strings: case-insensitive LIKE
+  return `ILIKE '%${trimmed.replace(/'/g, "''")}%'`;
 }
 
 // ── DuckDB JSON preview ──────────────────────────────────
@@ -83,35 +39,76 @@ function buildFilterRows(columns: ColumnInfo[]): FilterRow[] {
 function JsonDuckDbPreview({ fileId }: { fileId: string }) {
   const { getUrl }                  = usePresignedUrl();
   const [filters, setFilters]       = useState<Record<string, string>>({});
+  const [sort, setSort]             = useState<SortSpec | null>(null);
   const [result, setResult]         = useState<{ rows: Record<string, unknown>[]; filteredCount: number; error?: string } | null>(null);
   const [queryError, setQueryError] = useState<string | null>(null);
+  const [isQuerying, setIsQuerying] = useState(false);
   const debounceRef                 = useRef<ReturnType<typeof setTimeout> | null>(null);
   const filtersRef                  = useRef<Record<string, string>>({});
+  const sortRef                     = useRef<SortSpec | null>(null);
 
   const getFileUrl = useCallback(() => getUrl(fileId), [getUrl, fileId]);
-  const { status, columns, totalRows, error, query } = useJsonDuckDb(fileId, getFileUrl);
-
-  const filterRows = useMemo(() => buildFilterRows(columns), [columns]);
+  const { status, columns, totalRows, columnStats, columnCardinality, error, query } = useJsonDuckDb(fileId, getFileUrl);
 
   // Run initial query once table is ready
   useEffect(() => {
     if (status === 'ready') {
-      query({}).then(r => { if (r) setResult(r); });
+      setIsQuerying(true);
+      query({ filters: {} }).then(r => {
+        if (r) { setResult(r); setQueryError(r.error ?? null); }
+        setIsQuerying(false);
+      });
     }
   }, [status, query]);
 
-  const runQuery = useCallback((next: Record<string, string>) => {
+  // Build SQL filter map from raw inputs
+  const buildSqlFilters = useCallback((raw: Record<string, string>): Record<string, string> => {
+    const sql: Record<string, string> = {};
+    for (const [path, value] of Object.entries(raw)) {
+      if (!value.trim()) continue;
+      // Find the column type for this path
+      const col = columns.find(c => c.name === path)
+        ?? columns.find(c => path.startsWith(c.name + '.'));
+      const colType = col?.type ?? 'VARCHAR';
+      // For struct sub-fields, use the sub-field type if we can find it
+      let effectiveType = colType;
+      if (path.includes('.') && colType.startsWith('STRUCT(')) {
+        const field = path.split('.').pop()!;
+        const match = colType.match(new RegExp(`"?${field}"?\\s+(\\S+)`));
+        if (match) effectiveType = match[1].replace(/[,)]/g, '');
+      }
+      sql[path] = buildFilterExpression(value, effectiveType);
+    }
+    return sql;
+  }, [columns]);
+
+  const runQueryDebounced = useCallback((rawFilters: Record<string, string>, currentSort: SortSpec | null) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      query(next).then(r => {
+      setIsQuerying(true);
+      const sqlFilters = buildSqlFilters(rawFilters);
+      query({ filters: sqlFilters, sort: currentSort }).then(r => {
         if (!r) return;
-        if (r.error) setQueryError(r.error);
+        if (r.error) { setQueryError(r.error); }
         else { setResult(r); setQueryError(null); }
+        setIsQuerying(false);
       });
     }, 300);
-  }, [query]);
+  }, [query, buildSqlFilters]);
 
-  // Debounce cleanup on unmount
+  const runQueryImmediate = useCallback((rawFilters: Record<string, string>, currentSort: SortSpec | null) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setIsQuerying(true);
+    const sqlFilters = buildSqlFilters(rawFilters);
+    query({ filters: sqlFilters, sort: currentSort }).then(r => {
+      if (!r) return;
+      if (r.error) { setQueryError(r.error); }
+      else { setResult(r); setQueryError(null); }
+      setIsQuerying(false);
+    });
+  }, [query, buildSqlFilters]);
+
+  // Cleanup debounce on unmount
   useEffect(() => () => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
   }, []);
@@ -120,13 +117,14 @@ function JsonDuckDbPreview({ fileId }: { fileId: string }) {
     const next = { ...filtersRef.current, [path]: val };
     filtersRef.current = next;
     setFilters(next);
-    runQuery(next);
-  }, [runQuery]);
+    runQueryDebounced(next, sortRef.current);
+  }, [runQueryDebounced]);
 
-  const preview = useMemo(
-    () => result ? JSON.stringify(result.rows, null, 2) : '',
-    [result],
-  );
+  const handleSortChange = useCallback((newSort: SortSpec | null) => {
+    sortRef.current = newSort;
+    setSort(newSort);
+    runQueryImmediate(filtersRef.current, newSort);
+  }, [runQueryImmediate]);
 
   const isFiltered = Object.values(filters).some(v => v.trim());
 
@@ -150,43 +148,27 @@ function JsonDuckDbPreview({ fileId }: { fileId: string }) {
         )}
       </div>
 
-      {/* Schema-driven filter grid */}
-      <div
-        className="grid gap-x-3 gap-y-0.5"
-        style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}
-      >
-        {filterRows.map(row => (
-          <div key={row.path} className="flex flex-col gap-0.5">
-            <span className="font-mono leading-none" style={{ fontSize: '0.65rem', color: 'var(--color-fg-3)' }}>
-              {row.label}
-              <span style={{ color: 'var(--color-fg-4)', marginLeft: 4 }}>{row.type}</span>
-            </span>
-            <input
-              className={input({ variant: 'surface', size: 'sm' })}
-              placeholder={row.placeholder}
-              value={filters[row.path] ?? ''}
-              onChange={e => handleFilterChange(row.path, e.target.value)}
-              spellCheck={false}
-            />
-          </div>
-        ))}
-      </div>
-
       {queryError && (
         <Text variant="dim" className="font-mono" style={{ color: 'var(--color-red)', fontSize: '0.75rem' }}>
           {queryError}
         </Text>
       )}
 
-      {/* Results */}
-      <div
-        className="overflow-auto rounded-md border border-line"
-        style={{ background: 'var(--color-void)', maxHeight: 400 }}
-      >
-        <pre className="font-mono text-body text-fg-2 p-2 m-0 leading-relaxed">
-          <code>{preview}</code>
-        </pre>
-      </div>
+      {/* Data table */}
+      <DataTable
+        columns={columns}
+        columnStats={columnStats}
+        columnCardinality={columnCardinality}
+        rows={result?.rows ?? []}
+        totalRows={totalRows}
+        filteredCount={result?.filteredCount ?? 0}
+        isQuerying={isQuerying}
+        error={queryError}
+        filters={filters}
+        onFilterChange={handleFilterChange}
+        sort={sort}
+        onSortChange={handleSortChange}
+      />
     </div>
   );
 }

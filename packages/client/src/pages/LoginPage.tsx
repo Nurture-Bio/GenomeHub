@@ -5,7 +5,7 @@ import { Text, Heading } from '../ui';
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
 const GenomicIcon = () => (
-  <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+  <svg width="48" height="48" viewBox="0 0 24 24" fill="none"
     style={{ color: 'var(--color-cyan)' }}>
     <path d="M7 3c0 0 1 2 5 2s5 2 5 2" stroke="currentColor" strokeWidth="2"
       strokeLinecap="round" />
@@ -80,35 +80,33 @@ export default function LoginPage() {
   }, [login]);
 
   return (
-    <div className="flex items-center justify-center h-full"
-      style={{ background: 'var(--color-void)' }}>
-      <div className="flex flex-col items-center gap-4 p-6 rounded-lg border border-line"
-        style={{ background: 'var(--color-base)', width: 340 }}>
-        <GenomicIcon />
+    <div className="flex items-center justify-center h-full login-bg">
+      <div className="flex flex-col items-center gap-4 p-8 rounded-lg border border-line card-surface"
+        style={{ width: 380 }}>
+        <span className="logo-glow"><GenomicIcon /></span>
         <div className="text-center">
-          <Heading as="div" level="subheading" className="font-bold">
+          <Heading as="div" level="heading" className="font-bold">
             GenomeHub
           </Heading>
-          <Text variant="dim">Genomic data management for nurture.bio</Text>
+          <Text variant="dim" className="text-lg">Genomic data management for nurture.bio</Text>
         </div>
 
         <button
           onClick={handleSignIn}
           disabled={pending}
-          className="flex items-center gap-3 px-4 py-2.5 rounded-md border border-line cursor-pointer transition-colors duration-fast"
-          style={{ background: 'var(--color-raised)' }}
+          className="flex items-center gap-3 px-4 py-2.5 rounded-md btn-primary cursor-pointer w-full justify-center"
         >
           <GoogleIcon />
-          <Text variant="body">
+          <span className="font-sans text-body font-bold">
             {pending ? 'Signing in...' : 'Sign in with Google'}
-          </Text>
+          </span>
         </button>
 
         {error && (
           <Text variant="error">{error}</Text>
         )}
 
-        <Text variant="dim">Restricted to nurture.bio accounts</Text>
+        <Text variant="caption" className="text-xs">Restricted to nurture.bio accounts</Text>
       </div>
     </div>
   );

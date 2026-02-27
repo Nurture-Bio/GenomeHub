@@ -16,6 +16,7 @@ import { CollectionPicker, OrganismPicker, FileTypePicker } from '../ui';
 // ── Grid layout constants ─────────────────────────────────────────────────────
 
 const GRID_COLS = '28px 1fr 80px 112px 144px 112px 176px 32px';
+const GRID_GAP  = '0 12px';
 
 // ── Format icon ──────────────────────────────────────────────────────────────
 
@@ -37,8 +38,8 @@ function FormatIcon({ filename, format, className }: { filename: string; format?
 function SkeletonGridRow() {
   return (
     <div
-      className="grid items-center border-b border-line px-2"
-      style={{ gridTemplateColumns: GRID_COLS, gap: '0 12px', height: 52 }}
+      className="grid items-center border-b border-line tbl-row"
+      style={{ gridTemplateColumns: GRID_COLS, gap: GRID_GAP }}
     >
       <div className="skeleton skel-check" />
       <div className="flex items-center gap-2 min-w-0">
@@ -93,10 +94,10 @@ function FileRow({
 }: FileRowProps) {
   return (
     <div
-      className="grid items-center border-b border-line transition-colors duration-fast hover:bg-base px-2 py-1.5 stagger-item"
+      className="grid items-center border-b border-line transition-colors duration-fast hover:bg-base tbl-row stagger-item"
       style={{
         gridTemplateColumns: GRID_COLS,
-        gap: '0 12px',
+        gap: GRID_GAP,
         background: selected ? 'var(--color-raised)' : undefined,
         '--i': Math.min(index ?? 0, 15),
       } as React.CSSProperties}
@@ -373,11 +374,11 @@ export default function FilesPage() {
     : 'No files yet. Upload some to get started.';
 
   return (
-    <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 h-full min-h-0 animate-page-enter">
+    <div className="flex flex-col gap-3 md:gap-4 p-2 md:p-5 h-full min-h-0 animate-page-enter">
       {/* Header */}
       <div className="flex items-center gap-2 md:gap-3 shrink-0">
         <div className="flex-1 min-w-0">
-          <Heading level="heading">Files</Heading>
+          <Heading level="title">Files</Heading>
           <Text variant="dim">
             {data ? `${data.length.toLocaleString()} files` : isError ? '—' : <span className="skeleton h-[1lh] w-12 inline-block align-middle rounded-sm" />}
           </Text>
@@ -428,7 +429,7 @@ export default function FilesPage() {
       {/* Desktop — CSS Grid table, hidden below md */}
       <div className="hidden md:flex flex-col flex-1 min-h-0 border border-line rounded-md bg-base overflow-hidden">
         {/* Sticky header row */}
-        <div className="shrink-0 border-b border-line bg-raised px-2 py-1.5">
+        <div className="shrink-0 border-b border-line bg-raised tbl-row">
           <div className="grid items-center" style={{ gridTemplateColumns: GRID_COLS, gap: '0 12px' }}>
             <input
               type="checkbox"

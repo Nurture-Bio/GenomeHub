@@ -313,7 +313,7 @@ export default function EnginePanel() {
   if (!running?.length) return null;
   return (
     <>
-      <div className="flex flex-col gap-0.5 px-3 py-1.5 border-t border-line">
+      <div className="flex flex-col gap-0.5 px-4 py-2 border-t border-line">
         <Text variant="muted">Engines</Text>
         {running.map(e => (
           <button

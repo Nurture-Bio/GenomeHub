@@ -63,7 +63,7 @@ export default function CollectionDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col gap-3 p-2 md:p-3">
+      <div className="flex flex-col gap-3 p-2 md:p-5">
         <div className="skeleton h-[1lh] w-3/4 text-heading" />
         <div className="skeleton h-[1lh] w-1/3" />
         <div className="flex flex-col gap-1">
@@ -79,7 +79,7 @@ export default function CollectionDetailPage() {
 
   if (!collection) {
     return (
-      <div className="flex flex-col gap-3 p-2 md:p-3">
+      <div className="flex flex-col gap-3 p-2 md:p-5">
         <Heading level="heading">Collection not found</Heading>
         <Text variant="dim">The collection may have been deleted.</Text>
       </div>
@@ -87,7 +87,7 @@ export default function CollectionDetailPage() {
   }
 
   return (
-    <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 animate-page-enter">
+    <div className="flex flex-col gap-3 md:gap-4 p-2 md:p-5 animate-page-enter">
       {/* Header — inline editable */}
       <div>
         <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -210,11 +210,11 @@ export default function CollectionDetailPage() {
           <div className="border border-line rounded-md bg-base overflow-hidden">
             <table className="w-full border-collapse text-left">
               <thead>
-                <tr className="border-b border-line bg-raised">
-                  <th className="py-1.5 pl-2.5 pr-3"><Text variant="muted">File</Text></th>
-                  <th className="py-1.5 pr-3 w-24"><Text variant="muted">Type</Text></th>
-                  <th className="py-1.5 pr-3 text-right w-20"><Text variant="muted">Size</Text></th>
-                  <th className="py-1.5 pr-3 w-20"><Text variant="muted">Status</Text></th>
+                <tr className="border-b border-line surface-header">
+                  <th className="tbl-cell"><Text variant="muted">File</Text></th>
+                  <th className="tbl-cell w-24"><Text variant="muted">Type</Text></th>
+                  <th className="tbl-cell text-right w-20"><Text variant="muted">Size</Text></th>
+                  <th className="tbl-cell w-20"><Text variant="muted">Status</Text></th>
                   <th className="w-6" />
                 </tr>
               </thead>
@@ -225,7 +225,7 @@ export default function CollectionDetailPage() {
                   return (
                     <tr key={file.id} className="border-b border-line hover:bg-base transition-colors duration-fast group stagger-item"
                       style={{ '--i': Math.min(i, 15) } as React.CSSProperties}>
-                      <td className="py-1.5 pl-2.5 pr-3">
+                      <td className="tbl-cell">
                         <div className="flex items-center gap-2">
                           <HashPill label={meta.label} colorKey={fmt} />
                           <Link to={`/files/${file.id}`} className="no-underline">
@@ -235,20 +235,20 @@ export default function CollectionDetailPage() {
                           </Link>
                         </div>
                       </td>
-                      <td className="py-1.5 pr-3">
+                      <td className="tbl-cell">
                         <div className="flex gap-0.5 flex-wrap">
                           {file.types.map(t => <HashPill key={t} label={t} />)}
                         </div>
                       </td>
-                      <td className="py-1.5 pr-3 text-right">
+                      <td className="tbl-cell text-right">
                         <Text variant="dim" className="tabular-nums">{formatBytes(file.sizeBytes)}</Text>
                       </td>
-                      <td className="py-1.5 pr-3">
+                      <td className="tbl-cell">
                         {file.status === 'ready' && <Badge variant="status" color="green">ready</Badge>}
                         {file.status === 'pending' && <Badge variant="status" color="yellow">uploading</Badge>}
                         {file.status === 'error' && <Badge variant="status" color="red">error</Badge>}
                       </td>
-                      <td className="py-1.5 pr-2.5">
+                      <td className="tbl-cell-end">
                         <button
                           onClick={() => handleRemoveFile(file.id)}
                           disabled={removePending}

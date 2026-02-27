@@ -288,9 +288,9 @@ export default function UploadPage() {
   const errorUploads   = [...uploads.values()].filter(u => u.status === 'error');
 
   return (
-    <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 max-w-3xl mx-auto w-full animate-page-enter">
+    <div className="flex flex-col gap-3 md:gap-4 p-2 md:p-5 max-w-3xl mx-auto w-full animate-page-enter">
       <div>
-        <Heading level="heading">Upload Files</Heading>
+        <Heading level="title">Upload Files</Heading>
         <Text variant="dim">Files are uploaded directly to S3 via multipart presigned URLs</Text>
       </div>
 

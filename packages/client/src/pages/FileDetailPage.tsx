@@ -100,7 +100,7 @@ export default function FileDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col gap-3 p-2 md:p-3">
+      <div className="flex flex-col gap-3 p-2 md:p-5">
         <div className="skeleton h-[1lh] w-64 rounded-sm" />
         <div className="skeleton h-[1lh] w-48 rounded-sm" />
         <div className="skeleton h-32 rounded-md" />
@@ -110,7 +110,7 @@ export default function FileDetailPage() {
 
   if (!file) {
     return (
-      <div className="flex flex-col gap-3 p-2 md:p-3">
+      <div className="flex flex-col gap-3 p-2 md:p-5">
         <Heading level="heading">File not found</Heading>
         <Text variant="dim">The file may have been deleted.</Text>
       </div>
@@ -121,7 +121,7 @@ export default function FileDetailPage() {
   const meta = FORMAT_META[fmt];
 
   return (
-    <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 animate-page-enter">
+    <div className="flex flex-col gap-3 md:gap-4 p-2 md:p-5 animate-page-enter">
       {/* Header */}
       <div>
         <div className="flex items-center gap-2 mb-1 flex-wrap">

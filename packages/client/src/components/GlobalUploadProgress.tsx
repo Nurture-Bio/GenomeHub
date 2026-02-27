@@ -106,7 +106,7 @@ export default function GlobalUploadProgress() {
         </div>
       </Toast.Root>
 
-      <Toast.Viewport className="fixed bottom-3 right-3 z-50 flex flex-col gap-2 outline-none list-none m-0 p-0" />
+      <Toast.Viewport className="fixed bottom-3 right-3 z-toast flex flex-col gap-2 outline-none list-none m-0 p-0" />
     </Toast.Provider>
   );
 }

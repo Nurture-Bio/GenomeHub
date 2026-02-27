@@ -49,7 +49,7 @@ export default function Breadcrumbs() {
   const needsTruncation = crumbs.length > 2;
 
   return (
-    <nav className="flex items-center gap-1 px-2 md:px-3 pt-2 pb-0 min-w-0">
+    <nav className="flex items-center gap-1 px-2 md:px-5 pt-3 pb-0 min-w-0">
       {crumbs.map((crumb, i) => {
         const isFirst = i === 0;
         const isLast = i === crumbs.length - 1;

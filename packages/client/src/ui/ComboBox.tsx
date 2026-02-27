@@ -102,7 +102,7 @@ export default function ComboBox({
         <Popover.Content
           sideOffset={4}
           align="start"
-          className="bg-base border border-line shadow-lg rounded-md overflow-hidden z-50 animate-fade-in flex flex-col"
+          className="bg-base border border-line shadow-lg rounded-md overflow-hidden z-popover animate-fade-in flex flex-col"
           style={{ width: 'var(--radix-popover-trigger-width)', minWidth: 200, maxHeight: 300 }}
         >
           <Command shouldFilter={true} className="flex flex-col min-h-0 flex-1">

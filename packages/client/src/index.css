@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @theme {
@@ -8,22 +8,28 @@
 
   --spacing: 0.5rem;
 
-  /* ── Typography — DM Sans only, 2 sizes ──────────────── */
+  /* ── Typography — Outfit display + DM Sans body ─────── */
 
   --font-size-*: initial;
-  --font-size-sm:   0.75rem;      /* 12px */
-  --font-size-body: 0.875rem;     /* 14px */
-  --font-size-heading: 1.125rem;  /* 18px */
+  --font-size-xs:      0.6875rem;    /* 11px — captions, fine print */
+  --font-size-sm:      0.75rem;      /* 12px — overlines, labels */
+  --font-size-body:    0.875rem;     /* 14px — body text */
+  --font-size-lg:      1.0625rem;    /* 17px — subheadings */
+  --font-size-heading: 1.3125rem;    /* 21px — section headings */
+  --font-size-title:   1.625rem;     /* 26px — page titles */
+  --font-size-display: 2.25rem;      /* 36px — stat numbers, hero */
 
   --font-sans: 'DM Sans', system-ui, sans-serif;
+  --font-display: 'Outfit', 'DM Sans', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 
   /* ── Surfaces — Midnight Navy (hue 250) ──────────────── */
 
-  --color-void:     oklch(0.120 0.020 250);
-  --color-base:     oklch(0.160 0.024 250);
-  --color-raised:   oklch(0.200 0.028 250);
-  --color-elevated: oklch(0.240 0.032 250);
+  --color-void:     oklch(0.100 0.020 250);
+  --color-base:     oklch(0.150 0.024 250);
+  --color-raised:   oklch(0.205 0.028 250);
+  --color-elevated: oklch(0.260 0.032 250);
+  --color-sidebar:  oklch(0.130 0.025 250);
 
   /* ── Accent — Electric Cyan (hue 195) ────────────────── */
 
@@ -51,8 +57,11 @@
 
   /* ── Glows ───────────────────────────────────────────── */
 
-  --glow-cyan:   0 0 24px oklch(0.750 0.180 195 / 0.25);
-  --glow-violet: 0 0 24px oklch(0.620 0.150 280 / 0.20);
+  --glow-cyan:      0 0 24px oklch(0.750 0.180 195 / 0.25);
+  --glow-cyan-sm:   0 0 12px oklch(0.750 0.180 195 / 0.20);
+  --glow-violet:    0 0 24px oklch(0.620 0.150 280 / 0.20);
+  --glow-violet-sm: 0 0 12px oklch(0.620 0.150 280 / 0.15);
+  --glow-focus:     0 0 0 2px oklch(0.750 0.180 195 / 0.50), 0 0 16px oklch(0.750 0.180 195 / 0.15);
 
   /* ── Semantic ────────────────────────────────────────── */
 
@@ -123,13 +132,16 @@
   --container-terminal: 680px;
   --container-embed:    600px;
   --container-message:  704px;
-  --container-sidebar:  224px;
+  --container-sidebar:  280px;
 
   /* ── Z-index ─────────────────────────────────────────── */
 
-  --z-index-dropdown: 2;
-  --z-index-modal: 3;
-  --z-index-tooltip: 4;
+  --z-index-sticky:   10;
+  --z-index-dropdown: 20;
+  --z-index-overlay:  30;
+  --z-index-modal:    40;
+  --z-index-popover:  50;
+  --z-index-toast:    60;
 
   /* ── Animations ──────────────────────────────────────── */
 
@@ -149,7 +161,7 @@
 /* ── Shared layout constants ─────────────────────────── */
 :root {
   --format-icon-size: 28px;
-  --target-min-icon:  14px;
+  --target-min-icon:  18px;
 }
 
 /* ── Base styles ──────────────────────────────────────── */
@@ -176,9 +188,18 @@
   /* ── Global motion defaults ───────────────────────────── */
 
   button, a, [role="button"], input, select, textarea {
-    transition-property: color, background-color, border-color, opacity, box-shadow;
+    transition-property: color, background-color, border-color, opacity, box-shadow, transform;
     transition-duration: var(--t-fast);
     transition-timing-function: var(--ease-out);
+  }
+
+  :focus-visible {
+    outline: none;
+    box-shadow: var(--glow-focus);
+  }
+
+  button:active:not(:disabled), [role="button"]:active:not(:disabled) {
+    transform: scale(0.98);
   }
 
   /* ── Scrollbar ───────────────────────────────────────── */
@@ -212,6 +233,11 @@
 @layer components {
   .pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
   .pixelated { image-rendering: pixelated; }
+
+  /* ── Table cell padding (single source of truth) ───── */
+  .tbl-cell     { @apply py-1.5 pl-2.5 pr-3; }
+  .tbl-cell-end { @apply py-1.5 pr-2.5; }
+  .tbl-row      { @apply px-2 py-1.5; }
 
   .range-thumb::-webkit-slider-thumb {
     -webkit-appearance: none;
@@ -252,6 +278,24 @@
   .range-thumb::-moz-range-track {
     background: transparent;
     height: 0;
+  }
+
+  /* ── Dual-handle range slider z-index ──────────────── */
+  .range-low { z-index: 3; }
+  .range-high { z-index: 4; }
+  .range-low:active, .range-low:focus { z-index: 5; }
+  .range-high:active, .range-high:focus { z-index: 5; }
+
+  /* ── DataTable resize handle active ────────────────── */
+  .dt-resize-active {
+    background: var(--color-cyan) !important;
+    opacity: 1 !important;
+    box-shadow: var(--glow-cyan-sm);
+  }
+
+  /* ── Heatmap cell transition ───────────────────────── */
+  .dt-heat {
+    transition: background var(--t-fast) var(--ease-out);
   }
 }
 
@@ -374,6 +418,99 @@
   opacity: var(--opacity-1);
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='grain'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23grain)'/%3E%3C/svg%3E");
   background-size: 512px 512px;
+}
+
+/* ── Input focus glow ────────────────────────────────── */
+
+.input-focus-glow:focus {
+  border-color: var(--color-cyan);
+  box-shadow: 0 0 0 1px oklch(0.750 0.180 195 / 0.15), var(--glow-cyan-sm);
+}
+
+/* ── Primary button gradient ─────────────────────────── */
+
+.btn-primary {
+  background: linear-gradient(180deg, oklch(0.790 0.180 195), oklch(0.720 0.180 195));
+  color: var(--color-void);
+  border: none;
+  font-weight: 700;
+}
+.btn-primary:hover {
+  background: linear-gradient(180deg, oklch(0.830 0.180 195), oklch(0.760 0.180 195));
+  box-shadow: var(--glow-cyan);
+}
+.btn-primary:active {
+  background: linear-gradient(180deg, oklch(0.700 0.180 195), oklch(0.680 0.180 195));
+}
+
+/* ── Nav active indicator ────────────────────────────── */
+
+.nav-active-indicator {
+  position: relative;
+}
+.nav-active-indicator::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--color-cyan);
+  box-shadow: var(--glow-cyan-sm);
+}
+
+/* ── Logo glow ───────────────────────────────────────── */
+
+.logo-glow {
+  filter: drop-shadow(0 0 8px oklch(0.750 0.180 195 / 0.30));
+}
+
+/* ── Login background ────────────────────────────────── */
+
+.login-bg {
+  background: radial-gradient(
+    ellipse at 50% 40%,
+    oklch(0.140 0.040 195) 0%,
+    var(--color-void) 70%
+  );
+}
+
+/* ── Gradient surfaces ───────────────────────────────── */
+
+.sidebar-surface {
+  background: linear-gradient(
+    180deg,
+    oklch(0.145 0.028 250) 0%,
+    oklch(0.115 0.022 250) 100%
+  );
+  border-right: 1px solid oklch(0.280 0.025 250 / 0.5);
+}
+
+.stat-card-surface {
+  background: linear-gradient(
+    135deg,
+    oklch(0.175 0.028 250) 0%,
+    oklch(0.150 0.022 250) 100%
+  );
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+}
+
+.surface-header {
+  background: linear-gradient(
+    180deg,
+    var(--color-elevated),
+    var(--color-raised)
+  );
+}
+
+.card-surface {
+  background: linear-gradient(
+    180deg,
+    oklch(0.168 0.026 250) 0%,
+    oklch(0.148 0.023 250) 100%
+  );
 }
 
 /* ── Hash-colored chips and filter buttons ────────────── */

@@ -15,22 +15,22 @@ import { TechniquePicker, OrganismPicker, FileTypePicker } from '../ui';
 function SkeletonRow() {
   return (
     <tr className="border-b border-line">
-      <td className="py-1.5 pl-2.5 pr-3">
+      <td className="tbl-cell">
         <div className="flex flex-col gap-1">
           <div className="skeleton h-[1lh] w-3/4" />
           <div className="skeleton h-[1lh] w-1/3" />
         </div>
       </td>
-      <td className="py-1.5 pl-2.5 pr-3">
+      <td className="tbl-cell">
         <div className="skeleton h-[1lh] w-1/3 rounded-full" />
       </td>
-      <td className="py-1.5 pl-2.5 pr-3">
+      <td className="tbl-cell">
         <div className="skeleton h-[1lh] w-1/3 rounded-full" />
       </td>
-      <td className="py-1.5 pl-2.5 pr-3">
+      <td className="tbl-cell">
         <div className="skeleton h-[1lh] w-1/3 rounded-full" />
       </td>
-      <td className="py-1.5 pl-2.5 pr-3 text-right">
+      <td className="tbl-cell text-right">
         <div className="skeleton h-[1lh] w-1/3 ml-auto" />
       </td>
       <td />
@@ -115,9 +115,9 @@ export default function CollectionsPage() {
   }, [newOrgId, organisms]);
 
   return (
-    <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 h-full min-h-0 animate-page-enter">
+    <div className="flex flex-col gap-3 md:gap-4 p-2 md:p-5 h-full min-h-0 animate-page-enter">
       <div className="shrink-0">
-        <Heading level="heading">Collections</Heading>
+        <Heading level="title">Collections</Heading>
         <Text variant="dim">
           {data ? `${data.length} collection${data.length !== 1 ? 's' : ''}` : isError ? '—' : <span className="skeleton h-[1lh] w-20 inline-block align-middle rounded-sm" />}
         </Text>
@@ -132,13 +132,13 @@ export default function CollectionsPage() {
       {/* Desktop table */}
       <div className="hidden md:block flex-1 overflow-auto min-h-0 border border-line rounded-md bg-base" style={{ scrollbarGutter: 'stable' }}>
         <table className="w-full border-collapse text-left table-fixed">
-          <thead className="sticky top-0 bg-raised z-10">
+          <thead className="sticky top-0 bg-raised z-sticky">
             <tr className="border-b border-line">
-              <th className="py-1.5 pr-3 pl-2.5"><Text variant="muted">Name</Text></th>
-              <th className="py-1.5 pr-3 pl-2.5 w-36"><Text variant="muted">Technique</Text></th>
-              <th className="py-1.5 pr-3 pl-2.5 w-40"><Text variant="muted">Organism</Text></th>
-              <th className="py-1.5 pr-3 pl-2.5 w-32"><Text variant="muted">Type</Text></th>
-              <th className="py-1.5 pr-3 pl-2.5 w-16 text-right"><Text variant="muted">Files</Text></th>
+              <th className="tbl-cell"><Text variant="muted">Name</Text></th>
+              <th className="tbl-cell w-36"><Text variant="muted">Technique</Text></th>
+              <th className="tbl-cell w-40"><Text variant="muted">Organism</Text></th>
+              <th className="tbl-cell w-32"><Text variant="muted">Type</Text></th>
+              <th className="tbl-cell w-16 text-right"><Text variant="muted">Files</Text></th>
               <th className="w-8" />
             </tr>
           </thead>
@@ -159,13 +159,13 @@ export default function CollectionsPage() {
                   {filtered.map((c, i) => (
                     <tr key={c.id} className="border-b border-line hover:bg-base transition-colors duration-fast group stagger-item"
                       style={{ '--i': Math.min(i, 15) } as React.CSSProperties}>
-                      <td className="py-1.5 pl-2.5 pr-3">
+                      <td className="tbl-cell">
                         <Link to={`/collections/${c.id}`} className="no-underline">
                           <Text variant="body" className="hover:text-cyan transition-colors duration-fast">{c.name}</Text>
                           {c.description && <Text variant="dim" className="truncate max-w-xs block">{c.description}</Text>}
                         </Link>
                       </td>
-                      <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
+                      <td className="tbl-cell overflow-hidden">
                         <ChipEditor
                           items={c.techniques.map(t => ({ id: t.id, label: t.name }))}
                           onAdd={id => addCollectionTechnique(c.id, id)}
@@ -174,7 +174,7 @@ export default function CollectionsPage() {
                           maxVisible={2}
                         />
                       </td>
-                      <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
+                      <td className="tbl-cell overflow-hidden">
                         <ChipEditor
                           items={c.organisms.map(o => ({ id: o.id, label: o.displayName }))}
                           onAdd={id => addCollectionOrganism(c.id, id)}
@@ -183,7 +183,7 @@ export default function CollectionsPage() {
                           maxVisible={2}
                         />
                       </td>
-                      <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
+                      <td className="tbl-cell overflow-hidden">
                         <ChipEditor
                           items={c.types.map(t => ({ id: t, label: t }))}
                           onAdd={id => updateCollection(c.id, { types: [...c.types, id] })}
@@ -192,10 +192,10 @@ export default function CollectionsPage() {
                           maxVisible={2}
                         />
                       </td>
-                      <td className="py-1.5 pl-2.5 pr-3 text-right">
+                      <td className="tbl-cell text-right">
                         <Text variant="dim" className="tabular-nums">{c.fileCount}</Text>
                       </td>
-                      <td className="py-1.5 pr-2.5 w-6">
+                      <td className="tbl-cell-end w-6">
                         <button onClick={() => confirmDelete(c.id, c.name)}
                           className={iconAction({ color: 'danger', reveal: true })}
                           title="Delete collection">×</button>
@@ -205,13 +205,13 @@ export default function CollectionsPage() {
 
                   {/* Inline add row */}
                   <tr className="text-fg-3">
-                    <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
+                    <td className="tbl-cell overflow-hidden">
                       <input ref={nameRef} value={newName} onChange={e => setNewName(e.target.value)}
                         onKeyDown={e => { if (e.key === 'Enter') handleCreate(); }}
                         placeholder="+ collection name"
                         className={cx(inlineInput({ font: 'body' }), 'w-full')} />
                     </td>
-                    <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
+                    <td className="tbl-cell overflow-hidden">
                       <ChipEditor
                         items={newTechItems}
                         onAdd={setNewTechId}
@@ -220,7 +220,7 @@ export default function CollectionsPage() {
                         maxVisible={1}
                       />
                     </td>
-                    <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
+                    <td className="tbl-cell overflow-hidden">
                       <ChipEditor
                         items={newOrgItems}
                         onAdd={setNewOrgId}
@@ -230,7 +230,7 @@ export default function CollectionsPage() {
                       />
                     </td>
                     <td colSpan={2} />
-                    <td className="py-1.5 pr-2.5">
+                    <td className="tbl-cell-end">
                       <span className={`inline-flex items-center gap-1 transition-opacity duration-fast ${ready ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                         <button disabled={createPending} onClick={handleCreate}
                           className={iconAction({ color: 'accent' })} title="Add">✓</button>
