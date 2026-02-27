@@ -17,21 +17,21 @@ function SkeletonRow() {
     <tr className="border-b border-line">
       <td className="py-1.5 pl-2.5 pr-3">
         <div className="flex flex-col gap-1">
-          <div className="concertina-warmup-line concertina-warmup-line-long" />
-          <div className="concertina-warmup-line concertina-warmup-line-short" />
+          <div className="skeleton h-[1lh] w-3/4" />
+          <div className="skeleton h-[1lh] w-1/3" />
         </div>
       </td>
       <td className="py-1.5 pl-2.5 pr-3">
-        <div className="concertina-warmup-line concertina-warmup-line-short rounded-full" />
+        <div className="skeleton h-[1lh] w-1/3 rounded-full" />
       </td>
       <td className="py-1.5 pl-2.5 pr-3">
-        <div className="concertina-warmup-line concertina-warmup-line-short rounded-full" />
+        <div className="skeleton h-[1lh] w-1/3 rounded-full" />
       </td>
       <td className="py-1.5 pl-2.5 pr-3">
-        <div className="concertina-warmup-line concertina-warmup-line-short rounded-full" />
+        <div className="skeleton h-[1lh] w-1/3 rounded-full" />
       </td>
       <td className="py-1.5 pl-2.5 pr-3 text-right">
-        <div className="concertina-warmup-line concertina-warmup-line-short ml-auto" />
+        <div className="skeleton h-[1lh] w-1/3 ml-auto" />
       </td>
       <td />
     </tr>
@@ -39,7 +39,7 @@ function SkeletonRow() {
 }
 
 export default function CollectionsPage() {
-  const { data, isLoading } = useCollectionsQuery();
+  const { data, isLoading, isError } = useCollectionsQuery();
   const { createCollection, pending: createPending } = useCreateCollectionMutation();
   const { updateCollection } = useUpdateCollectionMutation();
   const { deleteCollection } = useDeleteCollectionMutation();
@@ -115,11 +115,11 @@ export default function CollectionsPage() {
   }, [newOrgId, organisms]);
 
   return (
-    <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 h-full min-h-0">
+    <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 h-full min-h-0 animate-page-enter">
       <div className="shrink-0">
         <Heading level="heading">Collections</Heading>
         <Text variant="dim">
-          {data ? `${data.length} collection${data.length !== 1 ? 's' : ''}` : 'Loading...'}
+          {data ? `${data.length} collection${data.length !== 1 ? 's' : ''}` : isError ? '—' : <span className="skeleton h-[1lh] w-20 inline-block align-middle rounded-sm" />}
         </Text>
       </div>
 
@@ -143,21 +143,22 @@ export default function CollectionsPage() {
             </tr>
           </thead>
           <tbody>
-            {isLoading
+            {isLoading && !isError
               ? [...Array(5)].map((_, i) => <SkeletonRow key={i} />)
               : (
                 <>
                   {!filtered.length && (
                     <tr>
                       <td colSpan={6} className="py-12 text-center">
-                        <Text variant="body" className="text-fg-3">
+                        <Text variant="body" className="text-fg-3 animate-fade-up">
                           {techFilter || orgFilter || typeFilter ? 'No collections match your filters.' : 'No collections yet.'}
                         </Text>
                       </td>
                     </tr>
                   )}
-                  {filtered.map(c => (
-                    <tr key={c.id} className="border-b border-line hover:bg-base transition-colors duration-fast group">
+                  {filtered.map((c, i) => (
+                    <tr key={c.id} className="border-b border-line hover:bg-base transition-colors duration-fast group stagger-item"
+                      style={{ '--i': Math.min(i, 15) } as React.CSSProperties}>
                       <td className="py-1.5 pl-2.5 pr-3">
                         <Link to={`/collections/${c.id}`} className="no-underline">
                           <Text variant="body" className="hover:text-cyan transition-colors duration-fast">{c.name}</Text>
@@ -246,15 +247,15 @@ export default function CollectionsPage() {
 
       {/* Mobile cards */}
       <div className="flex flex-col gap-1.5 md:hidden flex-1 overflow-auto min-h-0">
-        {isLoading
+        {isLoading && !isError
           ? [...Array(4)].map((_, i) => (
             <Card key={i} className="p-2.5 flex flex-col gap-1">
-              <div className="concertina-warmup-line concertina-warmup-line-long" />
-              <div className="concertina-warmup-line concertina-warmup-line-short" />
+              <div className="skeleton h-[1lh] w-3/4" />
+              <div className="skeleton h-[1lh] w-1/3" />
             </Card>
           ))
           : !filtered.length
-            ? <Text variant="body" className="py-8 text-center text-fg-3">{techFilter || orgFilter || typeFilter ? 'No collections match your filters.' : 'No collections yet.'}</Text>
+            ? <Text variant="body" className="py-8 text-center text-fg-3 animate-fade-up">{techFilter || orgFilter || typeFilter ? 'No collections match your filters.' : 'No collections yet.'}</Text>
             : filtered.map(c => (
               <Link key={c.id} to={`/collections/${c.id}`} className="no-underline">
                 <Card className="p-2.5 flex flex-col gap-1 hover:border-cyan transition-colors duration-fast cursor-pointer">

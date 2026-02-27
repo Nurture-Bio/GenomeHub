@@ -10,6 +10,7 @@ import {
 import { useConfirm } from '../hooks/useConfirm';
 import { detectFormat, FORMAT_META, formatBytes, formatRelativeTime } from '../lib/formats';
 import { Button, Badge, Input, Text, Heading, Card, ChipEditor, HashPill, FilterChip, iconAction } from '../ui';
+import LoadingCrossfade from '../components/LoadingCrossfade';
 import { CollectionPicker, OrganismPicker, FileTypePicker } from '../ui';
 
 // ── Grid layout constants ─────────────────────────────────────────────────────
@@ -43,15 +44,15 @@ function SkeletonGridRow() {
       <div className="flex items-center gap-2 min-w-0">
         <div className="skeleton skel-format-icon shrink-0" />
         <div className="flex flex-col gap-1 flex-1 min-w-0">
-          <div className="skeleton h-[0.875rem] w-3/4" />
-          <div className="skeleton h-[0.75rem] w-1/4" />
+          <div className="skeleton h-[1lh] w-3/4" />
+          <div className="skeleton h-[1lh] w-1/4" />
         </div>
       </div>
-      <div className="skeleton h-5 w-12 rounded-full" />
-      <div className="skeleton h-[0.875rem] w-20" />
-      <div className="skeleton h-5 w-16 rounded-full" />
-      <div className="skeleton h-5 w-12 rounded-full" />
-      <div className="skeleton h-5 w-16 rounded-full" />
+      <div className="skeleton h-[1lh] w-12 rounded-full" />
+      <div className="skeleton h-[1lh] w-20" />
+      <div className="skeleton h-[1lh] w-16 rounded-full" />
+      <div className="skeleton h-[1lh] w-12 rounded-full" />
+      <div className="skeleton h-[1lh] w-16 rounded-full" />
       <div />
     </div>
   );
@@ -64,6 +65,7 @@ type ColItem  = { id: string; name: string | null };
 
 interface FileRowProps {
   id:          string;
+  index?:      number;
   filename:    string;
   format:      string;
   sizeBytes:   number;
@@ -83,7 +85,7 @@ interface FileRowProps {
 }
 
 function FileRow({
-  id, filename, format, sizeBytes, status, uploadedAt,
+  id, index, filename, format, sizeBytes, status, uploadedAt,
   types, organisms, collections,
   selected, onSelect, onDownload,
   onUpdateTypes, onAddOrganism, onRemoveOrganism,
@@ -91,12 +93,13 @@ function FileRow({
 }: FileRowProps) {
   return (
     <div
-      className="grid items-center border-b border-line transition-colors duration-fast hover:bg-base px-2 py-1.5"
+      className="grid items-center border-b border-line transition-colors duration-fast hover:bg-base px-2 py-1.5 stagger-item"
       style={{
         gridTemplateColumns: GRID_COLS,
         gap: '0 12px',
         background: selected ? 'var(--color-raised)' : undefined,
-      }}
+        '--i': Math.min(index ?? 0, 15),
+      } as React.CSSProperties}
     >
       {/* Checkbox */}
       <input
@@ -209,7 +212,7 @@ function FileCard({ file, loading = false, onDownload, selected, onSelect }: Fil
           : <HashPill label={meta.label} colorKey={fmt} />
         }
         {loading
-          ? <div className="skeleton h-[0.875rem] flex-1" />
+          ? <div className="skeleton h-[1lh] flex-1" />
           : <span className="font-mono text-sm truncate flex-1 min-w-0 tabular-nums">{file.filename}</span>
         }
       </div>
@@ -259,7 +262,7 @@ export default function FilesPage() {
   const [filterCollectionId, setFilterCollectionId] = useState('');
   const [filterType, setFilterType] = useState('');
 
-  const { data, isLoading } = useFilesQuery({
+  const { data, isLoading, isError } = useFilesQuery({
     collectionId: filterCollectionId || undefined,
     type: filterType || undefined,
   });
@@ -370,13 +373,13 @@ export default function FilesPage() {
     : 'No files yet. Upload some to get started.';
 
   return (
-    <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 h-full min-h-0">
+    <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 h-full min-h-0 animate-page-enter">
       {/* Header */}
       <div className="flex items-center gap-2 md:gap-3 shrink-0">
         <div className="flex-1 min-w-0">
           <Heading level="heading">Files</Heading>
           <Text variant="dim">
-            {data ? `${data.length.toLocaleString()} files` : 'Loading...'}
+            {data ? `${data.length.toLocaleString()} files` : isError ? '—' : <span className="skeleton h-[1lh] w-12 inline-block align-middle rounded-sm" />}
           </Text>
         </div>
 
@@ -443,45 +446,51 @@ export default function FilesPage() {
           </div>
         </div>
 
-        {isLoading ? (
-          <div className="flex-1 overflow-auto min-h-0">
-            {STUB_FILES.map((_, i) => <SkeletonGridRow key={i} />)}
-          </div>
-        ) : files.length === 0 ? (
-          <div className="flex-1 flex items-center justify-center">
-            <Text variant="body" className="text-fg-3">{emptyMessage}</Text>
-          </div>
-        ) : (
-          <div className="flex-1 overflow-auto min-h-0" style={{ scrollbarGutter: 'stable' }}>
-            {files.map(f => (
-              <FileRow
-                key={f.id}
-                id={f.id}
-                filename={f.filename}
-                format={f.format}
-                sizeBytes={f.sizeBytes}
-                status={f.status}
-                uploadedAt={f.uploadedAt}
-                types={f.types}
-                organisms={f.organisms}
-                collections={f.collections}
-                selected={selected.has(f.id)}
-                onSelect={toggleOne}
-                onDownload={handleDownload}
-                onUpdateTypes={handleUpdateTypes}
-                onAddOrganism={addFileOrganism}
-                onRemoveOrganism={removeFileOrganism}
-                onAddToCollection={handleAddToCollection}
-                onRemoveFromCollection={handleRemoveFromCollection}
-              />
-            ))}
-          </div>
-        )}
+        <LoadingCrossfade
+          isLoading={isLoading && !isError}
+          skeleton={
+            <div className="flex-1 overflow-auto min-h-0">
+              {STUB_FILES.map((_, i) => <SkeletonGridRow key={i} />)}
+            </div>
+          }
+        >
+          {files.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center">
+              <Text variant="body" className="text-fg-3 animate-fade-up">{emptyMessage}</Text>
+            </div>
+          ) : (
+            <div className="flex-1 overflow-auto min-h-0" style={{ scrollbarGutter: 'stable' }}>
+              {files.map((f, i) => (
+                <FileRow
+                  key={f.id}
+                  index={i}
+                  id={f.id}
+                  filename={f.filename}
+                  format={f.format}
+                  sizeBytes={f.sizeBytes}
+                  status={f.status}
+                  uploadedAt={f.uploadedAt}
+                  types={f.types}
+                  organisms={f.organisms}
+                  collections={f.collections}
+                  selected={selected.has(f.id)}
+                  onSelect={toggleOne}
+                  onDownload={handleDownload}
+                  onUpdateTypes={handleUpdateTypes}
+                  onAddOrganism={addFileOrganism}
+                  onRemoveOrganism={removeFileOrganism}
+                  onAddToCollection={handleAddToCollection}
+                  onRemoveFromCollection={handleRemoveFromCollection}
+                />
+              ))}
+            </div>
+          )}
+        </LoadingCrossfade>
       </div>
 
       {/* Mobile cards — visible below md */}
       <div className="flex flex-col gap-1.5 md:hidden flex-1 overflow-auto min-h-0">
-        {!isLoading && files.length > 0 && (
+        {!(isLoading && !isError) && files.length > 0 && (
           <label className="flex items-center gap-2 px-1 py-0.5">
             <input
               type="checkbox"
@@ -493,22 +502,26 @@ export default function FilesPage() {
           </label>
         )}
 
-        {isLoading
-          ? STUB_FILES.slice(0, 4).map(f => (
+        <LoadingCrossfade
+          isLoading={isLoading && !isError}
+          skeleton={STUB_FILES.slice(0, 4).map(f => (
             <FileCard key={f.id} file={f} loading onDownload={handleDownload} selected={false} onSelect={toggleOne} />
-          ))
-          : files.length === 0
-            ? <Text variant="body" className="py-8 text-center text-fg-3">{emptyMessage}</Text>
-            : files.map(f => (
-              <FileCard
-                key={f.id}
-                file={f}
-                selected={selected.has(f.id)}
-                onSelect={toggleOne}
-                onDownload={handleDownload}
-              />
+          ))}
+        >
+          {files.length === 0
+            ? <Text variant="body" className="py-8 text-center text-fg-3 animate-fade-up">{emptyMessage}</Text>
+            : files.map((f, i) => (
+              <div key={f.id} className="stagger-item" style={{ '--i': Math.min(i, 15) } as React.CSSProperties}>
+                <FileCard
+                  file={f}
+                  selected={selected.has(f.id)}
+                  onSelect={toggleOne}
+                  onDownload={handleDownload}
+                />
+              </div>
             ))
-        }
+          }
+        </LoadingCrossfade>
       </div>
     </div>
   );

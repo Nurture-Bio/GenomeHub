@@ -193,8 +193,12 @@ function JsonDuckDbPreview({ fileId }: { fileId: string }) {
 
 function StatusRow({ children, error }: { children: React.ReactNode; error?: boolean }) {
   return (
-    <div className="flex items-center gap-1.5 py-2">
-      {!error && <div className="size-3 rounded-full border border-cyan border-t-transparent animate-spin shrink-0" />}
+    <div className="flex flex-col gap-1.5 py-2">
+      {!error && (
+        <div className="h-1.5 w-[60%] rounded-full overflow-hidden" style={{ background: 'var(--color-raised)' }}>
+          <div className="h-full w-full progress-stripe" style={{ background: 'var(--color-cyan)' }} />
+        </div>
+      )}
       <Text variant="dim" style={error ? { color: 'var(--color-red)' } : undefined}>{children}</Text>
     </div>
   );
@@ -248,9 +252,9 @@ function TextPreview({ pages, isFetchingNextPage, hasNextPage, fetchNextPage }: 
         <div ref={sentinelRef} style={{ height: 1 }} />
         {isFetchingNextPage && (
           <div className="px-2 pb-2 flex flex-col gap-1">
-            <div className="skeleton h-3.5 rounded" style={{ width: '70%' }} />
-            <div className="skeleton h-3.5 rounded" style={{ width: '50%' }} />
-            <div className="skeleton h-3.5 rounded" style={{ width: '60%' }} />
+            <div className="skeleton h-[1lh] rounded" style={{ width: '70%' }} />
+            <div className="skeleton h-[1lh] rounded" style={{ width: '50%' }} />
+            <div className="skeleton h-[1lh] rounded" style={{ width: '60%' }} />
           </div>
         )}
       </div>

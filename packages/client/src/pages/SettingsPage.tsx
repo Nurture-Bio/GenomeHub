@@ -18,15 +18,17 @@ import { statusDot } from '../ui/recipes';
 
 interface EditableRowProps {
   id: string;
+  index?: number;
   name: string;
   description: string | null;
   onSave: (id: string, patch: { name?: string; description?: string }) => Promise<void>;
   onDelete: (id: string, name: string) => void;
 }
 
-function EditableRow({ id, name, description, onSave, onDelete }: EditableRowProps) {
+function EditableRow({ id, index, name, description, onSave, onDelete }: EditableRowProps) {
   return (
-    <tr className="border-b border-line group hover:bg-base transition-colors duration-fast">
+    <tr className="border-b border-line group hover:bg-base transition-colors duration-fast stagger-item"
+      style={{ '--i': Math.min(index ?? 0, 15) } as React.CSSProperties}>
       <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
         <InlineInput value={name} fullWidth className="font-semibold" onCommit={val => onSave(id, { name: val })} />
       </td>
@@ -116,6 +118,7 @@ function SectionTable({ title, subtitle, children }: { title: string; subtitle: 
 
 interface EngineRowProps {
   id: string;
+  index?: number;
   name: string;
   url: string;
   status: 'ok' | 'error' | 'unavailable';
@@ -123,9 +126,10 @@ interface EngineRowProps {
   onDelete: (id: string, name: string) => void;
 }
 
-function EngineRow({ id, name, url, status, onSave, onDelete }: EngineRowProps) {
+function EngineRow({ id, index, name, url, status, onSave, onDelete }: EngineRowProps) {
   return (
-    <tr className="border-b border-line group hover:bg-base transition-colors duration-fast">
+    <tr className="border-b border-line group hover:bg-base transition-colors duration-fast stagger-item"
+      style={{ '--i': Math.min(index ?? 0, 15) } as React.CSSProperties}>
       <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
         <div className="flex items-center gap-1.5">
           <div className={statusDot({ status: status === 'ok' ? 'connected' : 'disconnected', size: 'sm' })} />
@@ -274,37 +278,37 @@ export default function SettingsPage() {
   }, [createEngine]);
 
   return (
-    <div className="flex flex-col gap-4 md:gap-5 p-2 md:p-3 max-w-2xl mx-auto w-full">
+    <div className="flex flex-col gap-4 md:gap-5 p-2 md:p-3 max-w-2xl mx-auto w-full animate-page-enter">
       <div>
         <Heading level="heading">Settings</Heading>
         <Text variant="dim">Manage reference data used across GenomeHub</Text>
       </div>
 
       <EngineTable>
-        {(engines ?? []).map(e => (
-          <EngineRow key={e.id} id={e.id} name={e.name} url={e.url} status={e.status}
+        {(engines ?? []).map((e, i) => (
+          <EngineRow key={e.id} id={e.id} index={i} name={e.name} url={e.url} status={e.status}
             onSave={saveEngine} onDelete={confirmDeleteEngine} />
         ))}
         <EngineAddRow onAdd={addEngine} />
       </EngineTable>
 
       <SectionTable title="Relation Types" subtitle="Define how files can be linked to each other">
-        {(relationTypes ?? []).map(rt => (
-          <EditableRow key={rt.id} id={rt.id} name={rt.name} description={rt.description} onSave={saveRelation} onDelete={confirmDeleteRelation} />
+        {(relationTypes ?? []).map((rt, i) => (
+          <EditableRow key={rt.id} id={rt.id} index={i} name={rt.name} description={rt.description} onSave={saveRelation} onDelete={confirmDeleteRelation} />
         ))}
         <AddRow placeholder="+ new relation type" onAdd={addRelation} />
       </SectionTable>
 
       <SectionTable title="File Types" subtitle="Classify files by their biological meaning">
-        {(fileTypes ?? []).map(ft => (
-          <EditableRow key={ft.id} id={ft.id} name={ft.name} description={ft.description} onSave={saveType} onDelete={confirmDeleteType} />
+        {(fileTypes ?? []).map((ft, i) => (
+          <EditableRow key={ft.id} id={ft.id} index={i} name={ft.name} description={ft.description} onSave={saveType} onDelete={confirmDeleteType} />
         ))}
         <AddRow placeholder="+ new file type" onAdd={addType} />
       </SectionTable>
 
       <SectionTable title="Techniques" subtitle="Sequencing techniques linked to collections">
-        {(techniques ?? []).map(t => (
-          <EditableRow key={t.id} id={t.id} name={t.name} description={t.description}
+        {(techniques ?? []).map((t, i) => (
+          <EditableRow key={t.id} id={t.id} index={i} name={t.name} description={t.description}
             onSave={saveTechnique} onDelete={confirmDeleteTechnique} />
         ))}
         <AddRow placeholder="+ new technique" onAdd={addTechnique} />

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
-import { Routes, Route, NavLink, Navigate, useParams } from 'react-router-dom';
+import { Route, NavLink, Navigate, useParams } from 'react-router-dom';
+import AnimatedRoutes from './components/PageTransition';
 import * as Dialog from '@radix-ui/react-dialog';
 import { cx } from 'class-variance-authority';
 import { navLink, iconAction } from './ui/recipes';
@@ -188,9 +189,34 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full"
-        style={{ background: 'var(--color-void)' }}>
-        <Text variant="body" className="text-fg-3">Loading...</Text>
+      <div className="flex flex-col md:flex-row h-full" style={{ background: 'var(--color-void)' }}>
+        {/* Skeleton sidebar */}
+        <aside className="hidden md:flex flex-col shrink-0 border-r border-line" style={{ width: 200, background: 'var(--color-void)' }}>
+          <SidebarBrand />
+          <nav className="flex flex-col gap-1.5 p-1.5 flex-1">
+            {NAV_ITEMS.map(item => (
+              <div key={item.to} className="skeleton h-5.5 rounded-sm" />
+            ))}
+          </nav>
+          <div className="px-3 py-2 border-t border-line flex items-center gap-2">
+            <div className="skeleton w-6 h-6 rounded-full shrink-0" />
+            <div className="flex flex-col gap-1 flex-1 min-w-0">
+              <div className="skeleton h-[1lh] w-3/4" />
+              <div className="skeleton h-[1lh] w-1/2" />
+            </div>
+          </div>
+        </aside>
+        {/* Skeleton main area */}
+        <main className="flex-1 p-2 md:p-3">
+          <div className="flex flex-col gap-2">
+            <div className="skeleton h-[1lh] w-32 rounded-sm" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="skeleton h-20 rounded-md" />
+              ))}
+            </div>
+          </div>
+        </main>
       </div>
     );
   }
@@ -256,7 +282,7 @@ export default function App() {
       {/* Main */}
       <main className="flex-1 overflow-auto min-w-0" style={{ scrollbarGutter: 'stable' }}>
         <Breadcrumbs />
-        <Routes>
+        <AnimatedRoutes>
           <Route path="/" element={<PageErrorBoundary><DashboardPage /></PageErrorBoundary>} />
           <Route path="/organisms" element={<PageErrorBoundary><OrganismsPage /></PageErrorBoundary>} />
           <Route path="/collections" element={<PageErrorBoundary><CollectionsPage /></PageErrorBoundary>} />
@@ -268,7 +294,7 @@ export default function App() {
           {/* Legacy redirects */}
           <Route path="/experiments/:collectionId" element={<LegacyCollectionRedirect />} />
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        </AnimatedRoutes>
       </main>
     </div>
   );

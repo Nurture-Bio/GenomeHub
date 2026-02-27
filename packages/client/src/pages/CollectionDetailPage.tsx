@@ -64,12 +64,12 @@ export default function CollectionDetailPage() {
   if (isLoading) {
     return (
       <div className="flex flex-col gap-3 p-2 md:p-3">
-        <div className="concertina-warmup-line concertina-warmup-line-long" style={{ height: 'var(--font-size-heading)' }} />
-        <div className="concertina-warmup-line concertina-warmup-line-short" />
+        <div className="skeleton h-[1lh] w-3/4 text-heading" />
+        <div className="skeleton h-[1lh] w-1/3" />
         <div className="flex flex-col gap-1">
           {[...Array(3)].map((_, i) => (
             <div key={i} className="py-1.5 border-b border-line">
-              <div className="concertina-warmup-line concertina-warmup-line-long" />
+              <div className="skeleton h-[1lh] w-3/4" />
             </div>
           ))}
         </div>
@@ -87,7 +87,7 @@ export default function CollectionDetailPage() {
   }
 
   return (
-    <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3">
+    <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 animate-page-enter">
       {/* Header — inline editable */}
       <div>
         <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -219,11 +219,12 @@ export default function CollectionDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {collection.files.map(file => {
+                {collection.files.map((file, i) => {
                   const fmt = detectFormat(file.filename);
                   const meta = FORMAT_META[fmt];
                   return (
-                    <tr key={file.id} className="border-b border-line hover:bg-base transition-colors duration-fast group">
+                    <tr key={file.id} className="border-b border-line hover:bg-base transition-colors duration-fast group stagger-item"
+                      style={{ '--i': Math.min(i, 15) } as React.CSSProperties}>
                       <td className="py-1.5 pl-2.5 pr-3">
                         <div className="flex items-center gap-2">
                           <HashPill label={meta.label} colorKey={fmt} />

@@ -1,6 +1,5 @@
 import { useState, useRef } from 'react';
 import { cx } from 'class-variance-authority';
-import { Gigbag } from 'concertina';
 import {
   useOrganismsQuery, useCreateOrganismMutation,
   useUpdateOrganismMutation, useDeleteOrganismMutation,
@@ -14,21 +13,21 @@ function SkeletonRow() {
     <tr className="border-b border-line">
       <td className="py-1.5 pl-2.5 pr-3">
         <div className="flex flex-col gap-1">
-          <div className="concertina-warmup-line concertina-warmup-line-long" />
-          <div className="concertina-warmup-line concertina-warmup-line-short" />
+          <div className="skeleton h-[1lh] w-3/4" />
+          <div className="skeleton h-[1lh] w-1/3" />
         </div>
       </td>
       <td className="py-1.5 pl-2.5 pr-3">
         <div className="flex flex-col gap-1">
-          <div className="concertina-warmup-line concertina-warmup-line-short" />
-          <div className="concertina-warmup-line concertina-warmup-line-short" />
+          <div className="skeleton h-[1lh] w-1/3" />
+          <div className="skeleton h-[1lh] w-1/3" />
         </div>
       </td>
       <td className="py-1.5 pl-2.5 pr-3 text-right align-top pt-2">
-        <div className="concertina-warmup-line concertina-warmup-line-short ml-auto" />
+        <div className="skeleton h-[1lh] w-1/3 ml-auto" />
       </td>
       <td className="py-1.5 pl-2.5 pr-3 text-right align-top pt-2">
-        <div className="concertina-warmup-line concertina-warmup-line-short ml-auto" />
+        <div className="skeleton h-[1lh] w-1/3 ml-auto" />
       </td>
       <td />
     </tr>
@@ -36,7 +35,7 @@ function SkeletonRow() {
 }
 
 export default function OrganismsPage() {
-  const { data, isLoading } = useOrganismsQuery();
+  const { data, isLoading, isError } = useOrganismsQuery();
   const { createOrganism, pending } = useCreateOrganismMutation();
   const { updateOrganism } = useUpdateOrganismMutation();
   const { deleteOrganism } = useDeleteOrganismMutation();
@@ -60,17 +59,16 @@ export default function OrganismsPage() {
   const ready = newGenus.trim().length > 0 && newSpecies.trim().length > 0;
 
   return (
-    <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 h-full min-h-0">
+    <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 h-full min-h-0 animate-page-enter">
       <div className="shrink-0">
         <Heading level="heading">Organisms</Heading>
         <Text variant="dim">
-          {data ? `${data.length} organism${data.length !== 1 ? 's' : ''}` : 'Loading...'}
+          {data ? `${data.length} organism${data.length !== 1 ? 's' : ''}` : isError ? '—' : <span className="skeleton h-[1lh] w-16 inline-block align-middle rounded-sm" />}
         </Text>
       </div>
 
       {/* Desktop table */}
       <div className="hidden md:block flex-1 overflow-auto min-h-0 border border-line rounded-md bg-base">
-        <Gigbag className="w-full">
         <table className="w-full border-collapse text-left table-fixed">
           <thead className="sticky top-0 bg-raised z-10">
             <tr className="border-b border-line">
@@ -82,12 +80,13 @@ export default function OrganismsPage() {
             </tr>
           </thead>
           <tbody>
-            {isLoading
+            {isLoading && !isError
               ? [...Array(5)].map((_, i) => <SkeletonRow key={i} />)
               : (
                 <>
-                  {data?.map(o => (
-                    <tr key={o.id} className="border-b border-line hover:bg-base transition-colors duration-fast group">
+                  {data?.map((o, i) => (
+                    <tr key={o.id} className="border-b border-line hover:bg-base transition-colors duration-fast group stagger-item"
+                      style={{ '--i': Math.min(i, 15) } as React.CSSProperties}>
                       <td className="py-1.5 pl-2.5 pr-3 overflow-hidden">
                         <div className="flex items-baseline gap-1 min-w-0">
                           <InlineInput value={o.genus} className="italic" onCommit={v => handleUpdate(o.id, { genus: v })} />
@@ -146,20 +145,19 @@ export default function OrganismsPage() {
               )}
           </tbody>
         </table>
-        </Gigbag>
       </div>
 
       {/* Mobile cards */}
       <div className="flex flex-col gap-1.5 md:hidden flex-1 overflow-auto min-h-0">
-        {isLoading
+        {isLoading && !isError
           ? [...Array(4)].map((_, i) => (
             <Card key={i} className="p-2.5 flex flex-col gap-1">
-              <div className="concertina-warmup-line concertina-warmup-line-long" />
-              <div className="concertina-warmup-line concertina-warmup-line-short" />
+              <div className="skeleton h-[1lh] w-3/4" />
+              <div className="skeleton h-[1lh] w-1/3" />
             </Card>
           ))
           : !data?.length
-            ? <Text variant="body" className="py-8 text-center text-fg-3">No organisms yet.</Text>
+            ? <Text variant="body" className="py-8 text-center text-fg-3 animate-fade-up">No organisms yet.</Text>
             : data.map(o => (
               <Card key={o.id} className="p-2.5 flex flex-col gap-1">
                 <Text variant="body">

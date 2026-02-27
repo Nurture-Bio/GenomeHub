@@ -50,10 +50,9 @@ export default function GlobalUploadProgress() {
         {/* Status header */}
         <div className="flex items-center gap-2 px-2.5 py-1.5">
           {active.length > 0 ? (
-            <svg width="14" height="14" viewBox="0 0 14 14" className="shrink-0 animate-spin" style={{ color: 'var(--color-cyan)' }}>
-              <circle cx="7" cy="7" r="5.5" fill="none" stroke="currentColor" strokeWidth="2" opacity="0.25" />
-              <path d="M12.5 7a5.5 5.5 0 00-5.5-5.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
+            <div className="w-6 h-1.5 rounded-full overflow-hidden shrink-0" style={{ background: 'var(--color-raised)' }}>
+              <div className="h-full w-full progress-stripe" style={{ background: 'var(--color-cyan)' }} />
+            </div>
           ) : errored.length > 0 ? (
             <svg width="14" height="14" viewBox="0 0 14 14" className="shrink-0" style={{ color: 'var(--color-red)' }}>
               <circle cx="7" cy="7" r="6" fill="none" stroke="currentColor" strokeWidth="1.5" />

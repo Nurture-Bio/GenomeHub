@@ -137,6 +137,8 @@
   --animate-slide-in-left: slideInLeft var(--t-fast) var(--ease-out);
   --animate-alt-row-enter: fadeIn var(--t-fast) var(--ease-out) both;
   --animate-pulse-slow: pulse calc(var(--t-drift) * 2) var(--ease-move) infinite;
+  --animate-page-enter: pageEnter var(--t-base) var(--ease-out) both;
+  --animate-fade-up: fadeUp var(--t-base) var(--ease-out) both;
 
   /* ── Aspect ratios ───────────────────────────────────── */
 
@@ -144,14 +146,8 @@
   --aspect-treemap-mobile: 3/2;
 }
 
-/* ── Concertina warmup — linked to design tokens ──────── */
+/* ── Shared layout constants ─────────────────────────── */
 :root {
-  --concertina-warmup-line-short:     0.875rem;
-  --concertina-warmup-line-long:      0.875rem;
-  --concertina-warmup-line-color:     var(--color-raised);
-  --concertina-warmup-line-highlight: var(--color-elevated);
-  --concertina-warmup-line-radius:    var(--radius-sm);
-  /* Shared layout constants */
   --format-icon-size: 28px;
   --target-min-icon:  14px;
 }
@@ -175,6 +171,14 @@
     flex-direction: column;
     height: 100vh;
     height: 100dvh;
+  }
+
+  /* ── Global motion defaults ───────────────────────────── */
+
+  button, a, [role="button"], input, select, textarea {
+    transition-property: color, background-color, border-color, opacity, box-shadow;
+    transition-duration: var(--t-fast);
+    transition-timing-function: var(--ease-out);
   }
 
   /* ── Scrollbar ───────────────────────────────────────── */
@@ -466,6 +470,14 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
 }
+@keyframes pageEnter {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 
 /* ── Pseudo-elements ─────────────────────────────────── */
 
@@ -584,6 +596,11 @@
   line-height: 1;
 }
 
+.stagger-item {
+  animation: fadeUp var(--t-base) var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 30ms);
+}
+
 @keyframes progress-stripe {
   from { background-position: 40px 0; }
   to   { background-position: 0 0; }
@@ -605,38 +622,16 @@
   font-size: calc(var(--format-icon-size) * 0.28);
   letter-spacing: -0.02em;
 }
-/* Concertina shimmer primitives — inlined from concertina/styles.css
-   (concertina/styles.css no longer imported; only the subset used here) */
-
-@keyframes concertina-shimmer {
+@keyframes shimmer {
   0%   { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
 
-/* Structural placeholder shimmer line.
-   height: 1lh resolves to the element's computed line-height,
-   so it matches text it replaces exactly. */
-.concertina-warmup-line {
-  height: 1lh;
-  border-radius: var(--concertina-warmup-line-radius, var(--radius-sm));
-  background: linear-gradient(
-    90deg,
-    var(--concertina-warmup-line-color, var(--color-raised)) 25%,
-    var(--concertina-warmup-line-highlight, var(--color-elevated)) 50%,
-    var(--concertina-warmup-line-color, var(--color-raised)) 75%
-  );
-  background-size: 200% 100%;
-  animation: concertina-shimmer 1.5s ease-in-out infinite;
-}
-
-/* Inert ghost inside a warmup-line sizes the shimmer to content width. */
-.concertina-warmup-line > [inert] {
-  visibility: hidden;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .concertina-warmup-line { animation-duration: 0s !important; }
   .skeleton              { animation-duration: 0s !important; }
+  .stagger-item          { animation-duration: 0s !important; animation-delay: 0s !important; }
+  .animate-page-enter    { animation-duration: 0s !important; }
+  .animate-fade-up       { animation-duration: 0s !important; }
 }
 
 /* Shimmer placeholders for fixed-size icon elements.
@@ -650,13 +645,13 @@
   height: var(--target-min-icon);
 }
 .skeleton {
-  border-radius: var(--concertina-warmup-line-radius);
+  border-radius: var(--radius-sm);
   background: linear-gradient(
     90deg,
-    var(--concertina-warmup-line-color) 25%,
-    var(--concertina-warmup-line-highlight) 50%,
-    var(--concertina-warmup-line-color) 75%
+    var(--color-raised) 25%,
+    var(--color-elevated) 50%,
+    var(--color-raised) 75%
   );
   background-size: 200% 100%;
-  animation: concertina-shimmer 1.5s ease-in-out infinite;
+  animation: shimmer 1.5s ease-in-out infinite;
 }

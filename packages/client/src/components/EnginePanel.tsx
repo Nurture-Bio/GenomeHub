@@ -192,9 +192,11 @@ function MethodForm({ engineId, method }: { engineId: string; method: EngineMeth
               </div>
             </>
           ) : (
-            /* Indeterminate spinner while pct_complete is null */
-            <div className="flex items-center gap-1.5">
-              <div className="size-3 rounded-full border border-cyan border-t-transparent animate-spin shrink-0" />
+            /* Indeterminate progress bar while pct_complete is null */
+            <div className="flex flex-col gap-1.5">
+              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--color-raised)' }}>
+                <div className="h-full w-[60%] progress-stripe" style={{ background: 'var(--color-cyan)' }} />
+              </div>
               <Text variant="dim">Running...</Text>
             </div>
           )}

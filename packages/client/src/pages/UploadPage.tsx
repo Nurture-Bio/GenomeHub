@@ -288,7 +288,7 @@ export default function UploadPage() {
   const errorUploads   = [...uploads.values()].filter(u => u.status === 'error');
 
   return (
-    <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 max-w-3xl mx-auto w-full">
+    <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 max-w-3xl mx-auto w-full animate-page-enter">
       <div>
         <Heading level="heading">Upload Files</Heading>
         <Text variant="dim">Files are uploaded directly to S3 via multipart presigned URLs</Text>
@@ -319,17 +319,18 @@ export default function UploadPage() {
 
           <div className="flex flex-col gap-1">
             {queue.map((e, i) => (
-              <QueueItem
-                key={i}
-                file={e.file}
-                organismId={e.organismId}
-                collectionId={e.collectionId}
-                type={e.type}
-                description={e.description}
-                tags={e.tags}
-                onRemove={() => removeFromQueue(i)}
-                onChange={patch => updateQueueItem(i, patch)}
-              />
+              <div key={i} className="stagger-item" style={{ '--i': Math.min(i, 15) } as React.CSSProperties}>
+                <QueueItem
+                  file={e.file}
+                  organismId={e.organismId}
+                  collectionId={e.collectionId}
+                  type={e.type}
+                  description={e.description}
+                  tags={e.tags}
+                  onRemove={() => removeFromQueue(i)}
+                  onChange={patch => updateQueueItem(i, patch)}
+                />
+              </div>
             ))}
           </div>
 

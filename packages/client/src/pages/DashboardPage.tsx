@@ -2,15 +2,31 @@ import { Link } from 'react-router-dom';
 import { useStorageStats, useOrganismsQuery, useCollectionsQuery } from '../hooks/useGenomicQueries';
 import { FORMAT_META, formatBytes } from '../lib/formats';
 import { Heading, Text, Badge, Card } from '../ui';
+import { useCountUp } from '../hooks/useCountUp';
 
 // ── Stat card ─────────────────────────────────────────────
 
-function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function StatCard({ label, value, sub }: { label: string; value: number | null; sub?: string }) {
+  const animated = useCountUp(value ?? 0);
   return (
     <div className="bg-base border border-line rounded-md p-2.5 flex flex-col gap-0.5">
       <Text variant="muted">{label}</Text>
-      <Heading level="heading" className="tabular-nums">{value}</Heading>
+      <Heading level="heading" className="tabular-nums">
+        {value === null ? <span className="skeleton h-[1lh] w-10 inline-block align-middle rounded-sm" /> : animated.toLocaleString()}
+      </Heading>
       {sub && <Text variant="dim">{sub}</Text>}
+    </div>
+  );
+}
+
+function StorageStatCard({ label, bytes }: { label: string; bytes: number | null }) {
+  const animated = useCountUp(bytes ?? 0);
+  return (
+    <div className="bg-base border border-line rounded-md p-2.5 flex flex-col gap-0.5">
+      <Text variant="muted">{label}</Text>
+      <Heading level="heading" className="tabular-nums">
+        {bytes === null ? <span className="skeleton h-[1lh] w-16 inline-block align-middle rounded-sm" /> : formatBytes(animated)}
+      </Heading>
     </div>
   );
 }
@@ -42,35 +58,35 @@ function FormatBar({ items }: { items: { format: string; bytes: number }[] }) {
 // ── Dashboard ─────────────────────────────────────────────
 
 export default function DashboardPage() {
-  const { data: stats, isLoading: statsLoading } = useStorageStats();
-  const { data: organisms, isLoading: orgLoading } = useOrganismsQuery();
-  const { data: collections, isLoading: colLoading } = useCollectionsQuery();
+  const { data: stats, isLoading: statsLoading, isError: statsError } = useStorageStats();
+  const { data: organisms, isLoading: orgLoading, isError: orgError } = useOrganismsQuery();
+  const { data: collections, isLoading: colLoading, isError: colError } = useCollectionsQuery();
 
   return (
-    <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3">
+    <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 animate-page-enter">
       <Heading level="heading">Dashboard</Heading>
 
       {/* Top stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
         <StatCard
           label="Total Files"
-          value={statsLoading ? '—' : (stats?.totalFiles ?? 0).toLocaleString()}
+          value={statsLoading && !statsError ? null : (stats?.totalFiles ?? 0)}
         />
-        <StatCard
+        <StorageStatCard
           label="Storage Used"
-          value={statsLoading ? '—' : formatBytes(stats?.totalBytes ?? 0)}
+          bytes={statsLoading && !statsError ? null : (stats?.totalBytes ?? 0)}
         />
         <StatCard
           label="Organisms"
-          value={orgLoading ? '—' : (organisms?.length ?? 0).toString()}
+          value={orgLoading && !orgError ? null : (organisms?.length ?? 0)}
         />
         <StatCard
           label="Collections"
-          value={colLoading ? '—' : (collections?.length ?? 0).toString()}
+          value={colLoading && !colError ? null : (collections?.length ?? 0)}
         />
         <StatCard
           label="Formats"
-          value={statsLoading ? '—' : (stats?.byFormat.length ?? 0).toString()}
+          value={statsLoading && !statsError ? null : (stats?.byFormat.length ?? 0)}
           sub="distinct file types"
         />
       </div>
@@ -82,7 +98,7 @@ export default function DashboardPage() {
           <FormatBar items={stats.byFormat} />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-1 mt-1">
-            {stats.byFormat.map(item => {
+            {stats.byFormat.map((item, i) => {
               const fmt  = item.format as keyof typeof FORMAT_META;
               const meta = FORMAT_META[fmt] ?? FORMAT_META.other;
               const pct  = stats.totalBytes > 0
@@ -90,7 +106,8 @@ export default function DashboardPage() {
                 : '0';
               return (
                 <div key={item.format}
-                  className="flex items-center gap-1.5 p-1 bg-raised rounded-sm">
+                  className="flex items-center gap-1.5 p-1 bg-raised rounded-sm stagger-item"
+                  style={{ '--i': Math.min(i, 15) } as React.CSSProperties}>
                   <div className="w-2 h-2 rounded-full shrink-0"
                     style={{ background: meta.color }} />
                   <div className="min-w-0 flex-1">

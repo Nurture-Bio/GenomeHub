@@ -101,8 +101,8 @@ export default function FileDetailPage() {
   if (isLoading) {
     return (
       <div className="flex flex-col gap-3 p-2 md:p-3">
-        <div className="skeleton h-6 w-64 rounded-sm" />
-        <div className="skeleton h-4 w-48 rounded-sm" />
+        <div className="skeleton h-[1lh] w-64 rounded-sm" />
+        <div className="skeleton h-[1lh] w-48 rounded-sm" />
         <div className="skeleton h-32 rounded-md" />
       </div>
     );
@@ -121,7 +121,7 @@ export default function FileDetailPage() {
   const meta = FORMAT_META[fmt];
 
   return (
-    <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3">
+    <div className="flex flex-col gap-2 md:gap-3 p-2 md:p-3 animate-page-enter">
       {/* Header */}
       <div>
         <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -324,7 +324,7 @@ export default function FileDetailPage() {
         )}
 
         {file.provenance.upstream.length === 0 && file.provenance.downstream.length === 0 && !addingProv && (
-          <Text variant="dim">No data links.</Text>
+          <Text variant="dim" className="animate-fade-up">No data links.</Text>
         )}
       </div>
 
