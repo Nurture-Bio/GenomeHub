@@ -10,7 +10,7 @@
     "moduleDetection":     "force",
     "noEmit":              true,
     "paths": {
-      "@strand/core": ["../../../strand/src/index.ts"]
+      "@strand/core": ["../../vendor/strand/src/index.ts"]
     }
   },
   "include": ["src"]
