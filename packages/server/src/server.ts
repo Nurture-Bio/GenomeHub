@@ -87,7 +87,12 @@ app.use('/api/engines', engineRoutes);
 
 const clientDist = path.join(__dirname, '..', '..', '..', 'dist', 'client');
 app.use(express.static(clientDist));
-app.get('*', fallbackLimiter, (_req, res) => {
+app.get('*', fallbackLimiter, (req, res) => {
+  // SharedArrayBuffer requires cross-origin isolation
+  if (req.path.startsWith('/dev/')) {
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+  }
   res.sendFile(path.join(clientDist, 'index.html'));
 });
 
