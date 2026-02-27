@@ -280,7 +280,7 @@ router.post('/:id/methods/:methodId', asyncWrap(async (req, res) => {
       }
       inputFileIds.push(file.id);
 
-      const boundary = `concertina${randomUUID().replace(/-/g, '')}`;
+      const boundary = `genomehub${randomUUID().replace(/-/g, '')}`;
       const encoder  = new TextEncoder();
       const prelude  = encoder.encode(
         `--${boundary}\r\n` +

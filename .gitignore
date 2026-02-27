@@ -4,8 +4,6 @@ node_modules/
 # Build output
 dist/
 build/
-# Vendor exceptions — concertina/dist is committed (Docker build context)
-!concertina/dist/
 
 # CDK
 cdk.out/
