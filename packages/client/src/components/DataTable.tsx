@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect, memo } from 'react';
 import type { ColumnInfo, SortSpec, ColumnStats, ColumnCardinality } from '../hooks/useJsonDuckDb';
 import { isNumericType, FACET_MAX, DROPDOWN_MAX } from '../hooks/useJsonDuckDb';
 import * as Popover from '@radix-ui/react-popover';
@@ -321,6 +321,7 @@ export default function DataTable({
   const [colWidths, setColWidths] = useState<Record<string, number>>({});
   const [rangeState, setRangeState] = useState<Record<string, [number, number]>>({});
   const resizingRef = useRef<{ col: string; startX: number; startW: number } | null>(null);
+  const rangeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const expanded = useMemo(() => expandColumns(columns), [columns]);
 
@@ -377,17 +378,27 @@ export default function DataTable({
     }
   }, [sort, onSortChange]);
 
-  // Range filter change
+  // Range filter change — visual update is immediate; parent notification is
+  // debounced so that dragging the slider doesn't re-render 1000 rows per pixel.
   const handleRangeChange = useCallback((path: string, low: number, high: number) => {
     const stats = columnStats[path] ?? columnStats[path.split('.').pop()!];
     setRangeState(prev => ({ ...prev, [path]: [low, high] }));
     if (!stats) return;
-    if (low <= stats.min && high >= stats.max) {
-      onFilterChange(path, '');
-    } else {
-      onFilterChange(path, `BETWEEN ${low} AND ${high}`);
-    }
+
+    if (rangeDebounceRef.current) clearTimeout(rangeDebounceRef.current);
+    rangeDebounceRef.current = setTimeout(() => {
+      if (low <= stats.min && high >= stats.max) {
+        onFilterChange(path, '');
+      } else {
+        onFilterChange(path, `BETWEEN ${low} AND ${high}`);
+      }
+    }, 120);
   }, [columnStats, onFilterChange]);
+
+  // Cleanup range debounce on unmount
+  useEffect(() => () => {
+    if (rangeDebounceRef.current) clearTimeout(rangeDebounceRef.current);
+  }, []);
 
   // Initialize range state from column stats
   useEffect(() => {
@@ -607,49 +618,8 @@ export default function DataTable({
             </tr>
           </thead>
 
-          {/* ── Data rows ───────────────────────────────────── */}
-          <tbody>
-            {rows.map((row, ri) => (
-              <tr
-                key={ri}
-                className="stagger-item hover:brightness-110"
-                style={{
-                  '--i': Math.min(ri, 15),
-                  background: ri % 2 === 1 ? 'oklch(0.120 0.020 250 / 0.3)' : undefined,
-                } as React.CSSProperties}
-              >
-                {tableColumns.map(col => {
-                  const val = getNestedValue(row, col.path);
-                  const numeric = isNumericType(col.type);
-                  const stats = numeric
-                    ? (columnStats[col.path] ?? columnStats[col.path.split('.').pop()!])
-                    : undefined;
-                  const numVal = numeric ? Number(val) : NaN;
-
-                  let cellStyle: React.CSSProperties = {
-                    borderBottom: '1px solid var(--color-line)',
-                  };
-                  if (numeric && stats && !isNaN(numVal)) {
-                    cellStyle = { ...cellStyle, ...heatmapStyle(numVal, stats.min, stats.max) };
-                  }
-
-                  return (
-                    <td
-                      key={col.path}
-                      className="tbl-cell dt-heat"
-                      style={{
-                        ...cellStyle,
-                        textAlign: numeric ? 'right' : 'left',
-                        fontVariantNumeric: numeric ? 'tabular-nums' : undefined,
-                      }}
-                    >
-                      {renderCell(val, col.type, numeric)}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
+          {/* ── Data rows (memoized — skips re-render when only filters change) */}
+          <TableBody rows={rows} tableColumns={tableColumns} columnStats={columnStats} />
         </table>
 
         {/* Empty state */}
@@ -669,6 +639,61 @@ export default function DataTable({
     </div>
   );
 }
+
+// ── Memoized table body (skips re-render when only filters change) ──
+
+const TableBody = memo(function TableBody({
+  rows, tableColumns, columnStats,
+}: {
+  rows: Record<string, unknown>[];
+  tableColumns: ExpandedColumn[];
+  columnStats: Record<string, ColumnStats>;
+}) {
+  return (
+    <tbody>
+      {rows.map((row, ri) => (
+        <tr
+          key={ri}
+          className="stagger-item hover:brightness-110"
+          style={{
+            '--i': Math.min(ri, 15),
+            background: ri % 2 === 1 ? 'oklch(0.120 0.020 250 / 0.3)' : undefined,
+          } as React.CSSProperties}
+        >
+          {tableColumns.map(col => {
+            const val = getNestedValue(row, col.path);
+            const numeric = isNumericType(col.type);
+            const stats = numeric
+              ? (columnStats[col.path] ?? columnStats[col.path.split('.').pop()!])
+              : undefined;
+            const numVal = numeric ? Number(val) : NaN;
+
+            let cellStyle: React.CSSProperties = {
+              borderBottom: '1px solid var(--color-line)',
+            };
+            if (numeric && stats && !isNaN(numVal)) {
+              cellStyle = { ...cellStyle, ...heatmapStyle(numVal, stats.min, stats.max) };
+            }
+
+            return (
+              <td
+                key={col.path}
+                className="tbl-cell dt-heat"
+                style={{
+                  ...cellStyle,
+                  textAlign: numeric ? 'right' : 'left',
+                  fontVariantNumeric: numeric ? 'tabular-nums' : undefined,
+                }}
+              >
+                {renderCell(val, col.type, numeric)}
+              </td>
+            );
+          })}
+        </tr>
+      ))}
+    </tbody>
+  );
+});
 
 // ── Cell renderer ────────────────────────────────────────
 

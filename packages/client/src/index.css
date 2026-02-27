@@ -239,6 +239,9 @@
   .tbl-cell-end { @apply py-1.5 pr-2.5; }
   .tbl-row      { @apply px-2 py-1.5; }
 
+  .range-thumb {
+    pointer-events: none;
+  }
   .range-thumb::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;

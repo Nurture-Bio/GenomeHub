@@ -116,6 +116,22 @@ async function ensureTable(fileId: string, getUrl: () => Promise<string>): Promi
   await _loadPromise;
 }
 
+// ── BigInt coercion (avoids JSON round-trip) ─────────────
+
+function coerceBigInts(obj: unknown): unknown {
+  if (typeof obj === 'bigint') return Number(obj);
+  if (obj === null || obj === undefined) return obj;
+  if (Array.isArray(obj)) return obj.map(coerceBigInts);
+  if (typeof obj === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const key of Object.keys(obj as Record<string, unknown>)) {
+      result[key] = coerceBigInts((obj as Record<string, unknown>)[key]);
+    }
+    return result;
+  }
+  return obj;
+}
+
 // ── Hook ─────────────────────────────────────────────────
 
 export function useJsonDuckDb(
@@ -275,9 +291,8 @@ export function useJsonDuckDb(
         _conn.query(`SELECT * FROM result ${where} ${orderBy} LIMIT 1000`),
         _conn.query(`SELECT COUNT(*)::INTEGER AS n FROM result ${where}`),
       ]);
-      const bigIntReplacer = (_: string, v: unknown) => typeof v === 'bigint' ? Number(v) : v;
       return {
-        rows:          rows.toArray().map((r: unknown) => JSON.parse(JSON.stringify(r, bigIntReplacer))),
+        rows:          rows.toArray().map((r: unknown) => coerceBigInts(r) as Record<string, unknown>),
         filteredCount: Number((cnt.toArray()[0] as Record<string, unknown>).n),
       };
     } catch (e) {

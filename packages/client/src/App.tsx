@@ -94,6 +94,19 @@ const icons: Record<string, ReactNode> = {
       <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
     </svg>
   ),
+  dev: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round">
+      <path d="M9 3H5a2 2 0 00-2 2v4" />
+      <path d="M3 15v4a2 2 0 002 2h4" />
+      <path d="M21 9V5a2 2 0 00-2-2h-4" />
+      <path d="M15 21h4a2 2 0 002-2v-4" />
+      <line x1="7" y1="8" x2="7" y2="16" />
+      <line x1="10" y1="8" x2="10" y2="16" />
+      <line x1="13" y1="8" x2="13" y2="16" />
+      <line x1="16" y1="8" x2="16" y2="16" />
+    </svg>
+  ),
 };
 
 const NAV_ITEMS: { to: string; label: string; icon: string; end?: boolean }[] = [
@@ -103,6 +116,7 @@ const NAV_ITEMS: { to: string; label: string; icon: string; end?: boolean }[] = 
   { to: '/files',        label: 'Files',        icon: 'files' },
   { to: '/upload',       label: 'Upload',       icon: 'upload' },
   { to: '/settings',     label: 'Settings',     icon: 'settings' },
+  { to: '/dev/table',    label: 'Dev Table',    icon: 'dev' },
 ];
 
 // ── Sidebar content (shared between desktop static + mobile drawer) ──
@@ -192,6 +206,11 @@ export default function App() {
 
   // Dev route — no auth, no server, just mock data
   if (window.location.pathname === '/dev/table') {
+    return <Suspense fallback={null}><DevTablePage /></Suspense>;
+  }
+
+  // Allow dev route through auth gate when accessed via nav
+  if (loading && window.location.pathname.startsWith('/dev/')) {
     return <Suspense fallback={null}><DevTablePage /></Suspense>;
   }
 
@@ -299,6 +318,7 @@ export default function App() {
           <Route path="/upload" element={<PageErrorBoundary><UploadPage /></PageErrorBoundary>} />
           <Route path="/settings" element={<PageErrorBoundary><SettingsPage /></PageErrorBoundary>} />
           <Route path="/collections/:collectionId" element={<PageErrorBoundary><CollectionDetailPage /></PageErrorBoundary>} />
+          <Route path="/dev/table" element={<PageErrorBoundary><Suspense fallback={null}><DevTablePage /></Suspense></PageErrorBoundary>} />
           {/* Legacy redirects */}
           <Route path="/experiments/:collectionId" element={<LegacyCollectionRedirect />} />
           <Route path="*" element={<Navigate to="/" replace />} />
