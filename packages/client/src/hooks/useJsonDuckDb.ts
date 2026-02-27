@@ -280,7 +280,15 @@ export function useJsonDuckDb(
 
     const conditions = Object.entries(params.filters)
       .filter(([, v]) => v.trim())
-      .map(([path, expr]) => `(${path} ${expr})`);
+      .map(([path, expr]) => {
+        // Quote column name to handle SQL reserved words (end, start, etc.)
+        // For struct paths like "tags.matched", quote the root and keep the accessor
+        const dot = path.indexOf('.');
+        const quoted = dot >= 0
+          ? `"${path.slice(0, dot)}".${path.slice(dot + 1)}`
+          : `"${path}"`;
+        return `(${quoted} ${expr})`;
+      });
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const orderBy = params.sort
       ? `ORDER BY "${params.sort.column}" ${params.sort.direction.toUpperCase()}`
