@@ -61,9 +61,15 @@ async function ensureTable(fileId: string, getUrl: () => Promise<string>): Promi
     try {
       await _conn!.query(`DROP TABLE IF EXISTS result`);
       const url = await getUrl();
+      await _db!.registerFileURL(
+        'result_data.json',
+        url,
+        duckdb.DuckDBDataProtocol.HTTP,
+        true,
+      );
       await _conn!.query(`
         CREATE TABLE result AS
-        SELECT * FROM read_json_auto('${url}', maximum_object_size=104857600)
+        SELECT * FROM read_json_auto('result_data.json', maximum_object_size=104857600)
       `);
       _loadedFileId = fileId;
     } finally {
@@ -131,8 +137,10 @@ export function useJsonDuckDb(
   const query = useCallback(async (fragments: Record<string, string>): Promise<QueryResult | null> => {
     if (!_conn) return null;
 
-    const conditions = Object.values(fragments).filter(v => v.trim());
-    const where = conditions.length ? `WHERE ${conditions.map(c => `(${c})`).join(' AND ')}` : '';
+    const conditions = Object.entries(fragments)
+      .filter(([, v]) => v.trim())
+      .map(([path, expr]) => `(${path} ${expr})`);
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
     try {
       const [rows, cnt] = await Promise.all([

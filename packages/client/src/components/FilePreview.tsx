@@ -47,6 +47,12 @@ interface FilterRow {
   placeholder: string;
 }
 
+function typeHint(type: string): string {
+  if (type.includes('VARCHAR')) return `= 'value'`;
+  if (type.includes('BOOLEAN')) return `= true`;
+  return `= 0`;
+}
+
 function buildFilterRows(columns: ColumnInfo[]): FilterRow[] {
   const rows: FilterRow[] = [];
   for (const col of columns) {
@@ -57,7 +63,7 @@ function buildFilterRows(columns: ColumnInfo[]): FilterRow[] {
           path:        `${col.name}.${f.name}`,
           label:       `${col.name}.${f.name}`,
           type:        f.type,
-          placeholder: `${col.name}.${f.name} = …`,
+          placeholder: typeHint(f.type),
         });
       }
     } else {
@@ -65,7 +71,7 @@ function buildFilterRows(columns: ColumnInfo[]): FilterRow[] {
         path:        col.name,
         label:       col.name,
         type:        col.type,
-        placeholder: `${col.name} = …`,
+        placeholder: typeHint(col.type),
       });
     }
   }
