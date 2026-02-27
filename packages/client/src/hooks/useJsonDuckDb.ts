@@ -43,6 +43,13 @@ export interface QueryResult {
 
 export type DuckDbStatus = 'idle' | 'loading' | 'ready' | 'error';
 
+export type DuckDbStage =
+  | 'initializing'    // booting WASM engine
+  | 'loading-json'    // fetching + CREATE TABLE from JSON
+  | 'analyzing'       // DESCRIBE + COUNT
+  | 'statistics'      // min/max + cardinality
+  | 'ready';          // done
+
 // ── Numeric type detection ────────────────────────────────
 
 const NUMERIC_TYPES = new Set([
@@ -139,6 +146,7 @@ export function useJsonDuckDb(
   getUrl: (() => Promise<string>) | null,
 ) {
   const [status,            setStatus]            = useState<DuckDbStatus>('idle');
+  const [stage,             setStage]             = useState<DuckDbStage>('initializing');
   const [columns,           setColumns]           = useState<ColumnInfo[]>([]);
   const [totalRows,         setTotalRows]         = useState(0);
   const [columnStats,       setColumnStats]       = useState<Record<string, ColumnStats>>({});
@@ -153,13 +161,16 @@ export function useJsonDuckDb(
 
     async function load() {
       setStatus('loading');
+      setStage('initializing');
       try {
         await ensureDb();
         if (cancelled) return;
 
+        setStage('loading-json');
         await ensureTable(id, fn);
         if (cancelled) return;
 
+        setStage('analyzing');
         const [desc, count] = await Promise.all([
           _conn!.query(`DESCRIBE result`),
           _conn!.query(`SELECT COUNT(*)::INTEGER AS n FROM result`),
@@ -171,6 +182,7 @@ export function useJsonDuckDb(
         });
         const total = Number((count.toArray()[0] as Record<string, unknown>).n);
 
+        setStage('statistics');
         // Compute min/max for numeric columns
         const numericCols = cols.filter(c => isNumericType(c.type));
         const stats: Record<string, ColumnStats> = {};
@@ -257,6 +269,7 @@ export function useJsonDuckDb(
         }
 
         if (!cancelled) {
+          setStage('ready');
           setColumns(cols);
           setTotalRows(total);
           setColumnStats(stats);
@@ -308,5 +321,5 @@ export function useJsonDuckDb(
     }
   }, []);
 
-  return { status, columns, totalRows, columnStats, columnCardinality, error, query };
+  return { status, stage, columns, totalRows, columnStats, columnCardinality, error, query };
 }

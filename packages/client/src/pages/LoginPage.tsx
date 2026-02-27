@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { Text, Heading } from '../ui';
 
@@ -15,18 +15,25 @@ const GoogleIcon = () => (
   </svg>
 );
 
-function loadGisScript(): Promise<void> {
-  if (typeof google !== 'undefined' && google.accounts) return Promise.resolve();
-  return new Promise((resolve, reject) => {
-    const existing = document.querySelector('script[src*="accounts.google.com/gsi/client"]');
-    if (existing) { resolve(); return; }
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error('Failed to load Google sign-in'));
-    document.head.appendChild(script);
+/** Parse access_token from URL hash fragment (Google implicit redirect flow) */
+function parseHashToken(): string | null {
+  const hash = window.location.hash.substring(1);
+  if (!hash) return null;
+  const params = new URLSearchParams(hash);
+  return params.get('access_token');
+}
+
+/** Build Google OAuth implicit-flow redirect URL */
+function buildGoogleAuthUrl(): string {
+  const redirectUri = `${window.location.origin}/login`;
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: redirectUri,
+    response_type: 'token',
+    scope: 'openid email profile',
+    prompt: 'select_account',
   });
+  return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
 }
 
 export default function LoginPage() {
@@ -34,36 +41,22 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
-  const handleSignIn = useCallback(async () => {
-    try {
-      setError(null);
-      await loadGisScript();
-
-      const client = google.accounts.oauth2.initTokenClient({
-        client_id: GOOGLE_CLIENT_ID,
-        scope: 'openid email profile',
-        callback: async (response) => {
-          if (response.error) {
-            setError(response.error_description || response.error);
-            setPending(false);
-            return;
-          }
-          try {
-            setPending(true);
-            await login(response.access_token);
-          } catch (err) {
-            setError(err instanceof Error ? err.message : 'Login failed');
-          } finally {
-            setPending(false);
-          }
-        },
-      });
-
-      client.requestAccessToken({ prompt: 'select_account' });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to initialize Google sign-in');
-    }
+  // Handle redirect back from Google with access_token in hash
+  useEffect(() => {
+    const token = parseHashToken();
+    if (!token) return;
+    // Clear hash immediately so token isn't visible in URL
+    window.history.replaceState(null, '', '/login');
+    setPending(true);
+    login(token)
+      .catch(err => setError(err instanceof Error ? err.message : 'Login failed'))
+      .finally(() => setPending(false));
   }, [login]);
+
+  const handleSignIn = useCallback(() => {
+    setError(null);
+    window.location.href = buildGoogleAuthUrl();
+  }, []);
 
   return (
     <div className="flex items-center justify-center h-full login-bg">

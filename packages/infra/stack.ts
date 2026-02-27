@@ -240,8 +240,8 @@ export class GenomeHubStack extends cdk.Stack {
       responseHeadersPolicyName: `GenomeHub-CoopCoep-${this.account}`,
       customHeadersBehavior: {
         customHeaders: [
-          { header: 'Cross-Origin-Opener-Policy',   value: 'restrict-properties', override: true },
-          { header: 'Cross-Origin-Embedder-Policy',  value: 'credentialless',      override: true },
+          { header: 'Cross-Origin-Opener-Policy',   value: 'same-origin',    override: true },
+          { header: 'Cross-Origin-Embedder-Policy',  value: 'credentialless', override: true },
         ],
       },
     });

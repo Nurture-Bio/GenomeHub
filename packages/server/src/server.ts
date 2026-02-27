@@ -88,7 +88,7 @@ app.use('/api/engines', engineRoutes);
 const clientDist = path.join(__dirname, '..', '..', '..', 'dist', 'client');
 app.use(express.static(clientDist));
 app.get('*', fallbackLimiter, (_req, res) => {
-  res.setHeader('Cross-Origin-Opener-Policy', 'restrict-properties');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
   res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
   res.sendFile(path.join(clientDist, 'index.html'));
 });
