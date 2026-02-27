@@ -4,21 +4,7 @@ import { Text, Heading } from '../ui';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
-const GenomicIcon = () => (
-  <svg width="48" height="48" viewBox="0 0 24 24" fill="none"
-    style={{ color: 'var(--color-cyan)' }}>
-    <path d="M7 3c0 0 1 2 5 2s5 2 5 2" stroke="currentColor" strokeWidth="2"
-      strokeLinecap="round" />
-    <path d="M17 3c0 0-1 2-5 2S7 7 7 7" stroke="currentColor" strokeWidth="2"
-      strokeLinecap="round" />
-    <path d="M7 12c0 0 1 2 5 2s5 2 5 2" stroke="currentColor" strokeWidth="2"
-      strokeLinecap="round" />
-    <path d="M17 12c0 0-1 2-5 2s-5 2-5 2" stroke="currentColor" strokeWidth="2"
-      strokeLinecap="round" />
-    <path d="M7 3v18M17 3v18" stroke="currentColor" strokeWidth="1.5"
-      strokeLinecap="round" strokeDasharray="2 3" />
-  </svg>
-);
+import { AppLogo } from '../components/AppLogo';
 
 const GoogleIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24">
@@ -83,7 +69,7 @@ export default function LoginPage() {
     <div className="flex items-center justify-center h-full login-bg">
       <div className="flex flex-col items-center gap-4 p-8 rounded-lg border border-line card-surface"
         style={{ width: 380 }}>
-        <span className="logo-glow"><GenomicIcon /></span>
+        <span className="logo-glow"><AppLogo size={48} /></span>
         <div className="text-center">
           <Heading as="div" level="heading" className="font-bold">
             GenomeHub

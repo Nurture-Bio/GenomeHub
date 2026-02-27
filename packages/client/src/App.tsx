@@ -27,25 +27,7 @@ import EnginePanel          from './components/EnginePanel';
 const DevTablePage = lazy(() => import('./pages/DevTablePage'));
 
 // ── Hub icon ─────────────────────────────────────────────
-const GenomicIcon = () => (
-  <svg width="28" height="28" viewBox="0 0 24 24" fill="none"
-    style={{ color: 'var(--color-cyan)' }}>
-    {/* Center node */}
-    <circle cx="12" cy="12" r="3.5" fill="currentColor" />
-    {/* Spokes */}
-    <line x1="12" y1="8.5" x2="12" y2="4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    <line x1="15.1" y1="13.8" x2="19" y2="16.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    <line x1="8.9" y1="13.8" x2="5" y2="16.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    <line x1="14.5" y1="10.2" x2="19" y2="7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    <line x1="9.5" y1="10.2" x2="5" y2="7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    {/* Outer nodes */}
-    <circle cx="12" cy="3" r="1.8" fill="currentColor" opacity="0.5" />
-    <circle cx="19.5" cy="17" r="1.8" fill="currentColor" opacity="0.5" />
-    <circle cx="4.5" cy="17" r="1.8" fill="currentColor" opacity="0.5" />
-    <circle cx="19.5" cy="6.5" r="1.8" fill="currentColor" opacity="0.5" />
-    <circle cx="4.5" cy="6.5" r="1.8" fill="currentColor" opacity="0.5" />
-  </svg>
-);
+import { AppLogo } from './components/AppLogo';
 
 // ── Navigation icons ──────────────────────────────────────
 
@@ -124,7 +106,7 @@ const NAV_ITEMS: { to: string; label: string; icon: string; end?: boolean }[] = 
 function SidebarBrand() {
   return (
     <div className="flex items-center gap-2.5 px-4 py-4 border-b border-line shrink-0">
-      <span className="logo-glow"><GenomicIcon /></span>
+      <span className="logo-glow"><AppLogo size={28} /></span>
       <Heading as="span" level="subheading" className="font-display font-bold tracking-tight">GenomeHub</Heading>
     </div>
   );
@@ -248,7 +230,7 @@ export default function App() {
         className="flex md:hidden items-center gap-2 px-3 py-2 border-b border-line shrink-0"
         style={{ background: 'var(--color-void)' }}
       >
-        <span className="logo-glow"><GenomicIcon /></span>
+        <span className="logo-glow"><AppLogo size={28} /></span>
         <Heading as="span" level="subheading" className="font-display font-bold tracking-tight flex-1">GenomeHub</Heading>
         <button
           onClick={() => setMobileMenuOpen(true)}
