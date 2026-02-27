@@ -233,14 +233,15 @@ export class GenomeHubStack extends cdk.Stack {
       queryStringBehavior: cloudfront.CacheQueryStringBehavior.all(),
     });
 
-    // Response headers policy for cross-origin isolation (SharedArrayBuffer)
-    // Only applied to /dev/* paths to avoid breaking Google OAuth on other pages
+    // Cross-origin isolation headers (enables SharedArrayBuffer globally)
+    // restrict-properties allows OAuth popups (postMessage + window.closed still work)
+    // credentialless avoids breaking cross-origin resources (profile images, etc.)
     const coopCoepHeaders = new cloudfront.ResponseHeadersPolicy(this, 'CoopCoep', {
       responseHeadersPolicyName: `GenomeHub-CoopCoep-${this.account}`,
       customHeadersBehavior: {
         customHeaders: [
-          { header: 'Cross-Origin-Opener-Policy',   value: 'same-origin',  override: true },
-          { header: 'Cross-Origin-Embedder-Policy',  value: 'require-corp', override: true },
+          { header: 'Cross-Origin-Opener-Policy',   value: 'restrict-properties', override: true },
+          { header: 'Cross-Origin-Embedder-Policy',  value: 'credentialless',      override: true },
         ],
       },
     });
@@ -257,17 +258,7 @@ export class GenomeHubStack extends cdk.Stack {
         allowedMethods:         cloudfront.AllowedMethods.ALLOW_ALL,
         cachedMethods:          cloudfront.CachedMethods.CACHE_GET_HEAD,
         originRequestPolicy:    cloudfront.OriginRequestPolicy.ALL_VIEWER,
-      },
-      additionalBehaviors: {
-        '/dev/*': {
-          origin:                 albOrigin,
-          viewerProtocolPolicy:   cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-          cachePolicy:            noCacheWithCookies,
-          allowedMethods:         cloudfront.AllowedMethods.ALLOW_ALL,
-          cachedMethods:          cloudfront.CachedMethods.CACHE_GET_HEAD,
-          originRequestPolicy:    cloudfront.OriginRequestPolicy.ALL_VIEWER,
-          responseHeadersPolicy:  coopCoepHeaders,
-        },
+        responseHeadersPolicy:  coopCoepHeaders,
       },
       // NOTE: Large genomic file downloads use S3 presigned URLs directly —
       // they bypass CloudFront entirely to avoid transfer cost doubling.
