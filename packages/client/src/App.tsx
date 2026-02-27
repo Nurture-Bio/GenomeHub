@@ -133,24 +133,45 @@ function SidebarBrand() {
 function SidebarNav({ onNavClick }: { onNavClick?: () => void }) {
   return (
     <nav className="flex flex-col gap-1 p-2 flex-1">
-      {NAV_ITEMS.map(item => (
-        <NavLink
-          key={item.to}
-          to={item.to}
-          end={item.end}
-          onClick={onNavClick}
-          className={({ isActive }) =>
-            cx(
-              navLink({ active: isActive }),
-              'rounded-sm gap-2.5 w-full text-left border-none cursor-pointer bg-transparent no-underline min-h-5.5',
-              isActive && 'bg-cyan/[0.06]'
-            )
-          }
-        >
-          {icons[item.icon]}
-          {item.label}
-        </NavLink>
-      ))}
+      {NAV_ITEMS.map(item => {
+        // /dev/* needs a full page load so CloudFront COOP/COEP headers apply
+        if (item.to.startsWith('/dev/')) {
+          const isActive = window.location.pathname === item.to;
+          return (
+            <a
+              key={item.to}
+              href={item.to}
+              onClick={onNavClick}
+              className={cx(
+                navLink({ active: isActive }),
+                'rounded-sm gap-2.5 w-full text-left border-none cursor-pointer bg-transparent no-underline min-h-5.5',
+                isActive && 'bg-cyan/[0.06]'
+              )}
+            >
+              {icons[item.icon]}
+              {item.label}
+            </a>
+          );
+        }
+        return (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.end}
+            onClick={onNavClick}
+            className={({ isActive }) =>
+              cx(
+                navLink({ active: isActive }),
+                'rounded-sm gap-2.5 w-full text-left border-none cursor-pointer bg-transparent no-underline min-h-5.5',
+                isActive && 'bg-cyan/[0.06]'
+              )
+            }
+          >
+            {icons[item.icon]}
+            {item.label}
+          </NavLink>
+        );
+      })}
     </nav>
   );
 }
