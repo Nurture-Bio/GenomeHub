@@ -29,8 +29,8 @@ The browser uploads directly to S3 via presigned multipart URLs. The server only
 
 | Layer | Stack | Notes |
 |---|---|---|
-| Client | React 19, Vite, Tailwind CSS 4 | SPA with dashboard, file browser, upload, settings |
-| Server | Express, TypeORM, AWS SDK v3 | REST API, presigned URL generation, metadata CRUD |
+| Client | React 19, Vite, DuckDB WASM, Tailwind CSS 4 | SPA with progressive Parquet queries, file browser, upload |
+| Server | Express, TypeORM, DuckDB Node, AWS SDK v3 | REST API, JSON→Parquet conversion, presigned URLs |
 | Infra | AWS CDK (TypeScript) | Single `cdk deploy` provisions everything |
 | Storage | S3 | Intelligent-Tiering at 30 days, Glacier at 180 days |
 | Database | PostgreSQL 16 on RDS | Isolated subnet, encrypted at rest, 7-day backups |
@@ -106,7 +106,7 @@ To connect a local analysis engine, start it separately, then go to Settings and
 ### Deploy to AWS
 
 ```bash
-npx cdk deploy --region us-west-2
+cd packages/infra && npx cdk deploy
 ```
 
 Builds the Docker images, pushes to ECR, and provisions:
@@ -132,18 +132,22 @@ packages/
       pages/         Dashboard, Files, Upload, Organisms, Collections, Settings
                      DevJsonPage — JSON → Strand analytical pipeline (dev route)
       hooks/         TanStack Query data-fetching hooks
+                     useParquetPreview — DuckDB WASM Parquet preview (windowed queries, stats, filters)
                      useJsonStrand — three-phase SAB pipeline + constraint engine hook
       workers/       jsonStrandWorker — Phase 1 scan, Phase 2 stream, Phase 3 constraints
+      lib/duckdb.ts  Shared DuckDB WASM singleton (boot, connection, BigInt coercion)
       ui/            CVA component recipes (Button, Badge, Card, Input, ...)
       lib/           API fetch wrapper, query keys, format detection
-      components/    FilePreview, JsonStrandPreview (embedded auto-inference preview),
+      components/    FilePreview, ParquetPreview (DuckDB WASM + virtualizer),
+                     JsonStrandPreview (Strand SAB pipeline), DatasetErrorState,
                      Breadcrumbs, EnginePanel, ...
       stores/        Zustand stores (app state, upload progress)
   server/            Express API
     src/
       entities/      TypeORM models (GenomicFile, Collection, Organism, Engine, ...)
       routes/        Route modules (files, engines, uploads, collections, ...)
-      lib/           S3 helpers (putObject, putObjectStream), edge service
+      lib/           S3 helpers (putObject, putObjectStream), edge service,
+                     parquet.ts (JSON→Parquet conversion via DuckDB Node bindings)
       migrations/    Sequential SQL schema migrations
   infra/             AWS CDK stack
 packages/
@@ -176,6 +180,8 @@ docs/
 | `PUT` | `/api/files/:id` | Update file metadata (description, types, tags) |
 | `DELETE` | `/api/files/:id` | Delete file from S3 and database |
 | `GET` | `/api/files/:id/download` | Get a presigned download URL |
+| `GET` | `/api/files/:id/parquet-url` | Parquet sidecar status + presigned URL |
+| `GET` | `/api/files/errors` | Files with failed Parquet conversions |
 
 ### Collections
 
@@ -299,6 +305,135 @@ Engine result (sync 200 body, or async GET /api/jobs/:id/stream)
 **Server heap usage: O(upload part size) ≈ 5–10 MB, regardless of result size.**
 
 The result file is never materialized in Node memory. `Content-Disposition: attachment; filename="result.ext"` on the engine response determines the stored filename and format.
+
+### DuckDB WASM + Parquet progressive query engine
+
+Large JSON datasets (600 MB+, 955K+ records) are converted to Parquet at upload time and queried in-browser via DuckDB WASM. The browser never downloads the full file. Only the Parquet footer (a few KB) and the row groups the virtualizer needs are fetched over HTTP range requests.
+
+```
+Upload JSON
+  │
+  ▼  Server (fire-and-forget, non-blocking)
+DuckDB Node bindings
+  │  COPY (SELECT * FROM read_json_auto(tmp.json, maximum_object_size=104857600))
+  │    TO tmp.parquet (FORMAT PARQUET, ROW_GROUP_SIZE 10000, COMPRESSION 'ZSTD')
+  │  Upload Parquet sidecar to S3
+  │  UPDATE genomic_files SET parquet_s3_key = '...', parquet_status = 'ready'
+  │
+  ▼  Client clicks file → polls GET /api/files/:id/parquet-url
+DuckDB WASM (SharedArrayBuffer, cross-origin isolated)
+  │
+  ▼  Initialization (Parquet footer only — no data scan)
+  │  registerFileURL('preview.parquet', presignedUrl, HTTP, true)
+  │  DESCRIBE SELECT * FROM read_parquet(...)        → schema
+  │  SELECT COUNT(*) FROM read_parquet(...)           → total rows (metadata)
+  │  SELECT MIN(col), MAX(col) FROM read_parquet(...) → global stats (row group stats)
+  │  COUNT(DISTINCT col) for cardinality detection    → filter control selection
+  │
+  ▼  User scrolls → virtualizer requests rows
+fetchWindow(offset, limit)
+  │  SELECT ... FROM read_parquet(...) WHERE ... ORDER BY ... LIMIT n OFFSET m
+  │  DuckDB fetches only the row groups covering [offset, offset+limit)
+  │  Response cached in Map<number, Record<string, unknown>>
+  │
+  ▼  User filters → predicate pushdown
+applyFilters(filters, sort)
+  │  SELECT COUNT(*) ... WHERE ...                → filtered count (instant)
+  │  SELECT MIN/MAX ... WHERE ...                 → constrained stats
+  │  DuckDB pushes predicates to Parquet row groups — skips irrelevant groups entirely
+  │  Row cache cleared, cacheGen incremented
+  │  VirtualRows remounted via key={cacheGen} — React reconciler destroys stale state
+  │  scrollTop reset to 0 — virtualizer starts at row 0 of filtered dataset
+  │
+  ▼  React renders ~40 overscan rows via @tanstack/react-virtual
+```
+
+**Parquet format**: row groups of 10,000 records with ZSTD compression. Each row group carries its own min/max statistics, so DuckDB can skip entire groups that fall outside a filter range without reading them. A 600 MB JSON file compresses to ~80 MB Parquet.
+
+**HTTP range requests**: DuckDB WASM reads Parquet files via `registerFileURL` with `DuckDBDataProtocol.HTTP`. It issues HTTP `Range` requests to fetch individual row groups on demand. The S3 CORS config exposes `Content-Range`, `Content-Length`, and `Accept-Ranges` headers. Presigned URLs rotate, so the file is always re-registered with `dropFile()` before `registerFileURL()`.
+
+#### STRUCT column flattening
+
+DuckDB reads nested JSON objects as `STRUCT` columns. GenomeHub flattens these into dot-notation columns matching the legacy Strand behavior:
+
+```
+Parquet schema:  pam STRUCT(pattern VARCHAR, matched BOOLEAN, pam_start INTEGER)
+
+→ Expanded to:   pam.pattern   VARCHAR
+                  pam.matched   BOOLEAN
+                  pam.pam_start INTEGER
+
+SQL:  SELECT "pam"."pattern" AS "pam.pattern",
+             "pam"."matched" AS "pam.matched",
+             "pam"."pam_start" AS "pam.pam_start"
+      FROM read_parquet('preview.parquet')
+```
+
+Nested struct expansion is recursive-safe (tracks parenthesis depth for `STRUCT(a STRUCT(b INTEGER))`). All filter, sort, and stats queries use `colToSql()` to convert dot-notation back to struct access expressions.
+
+#### Windowed virtualization
+
+The virtualizer (`@tanstack/react-virtual`) renders ~40 overscan rows. `VirtualRows` fetches 200-row windows from DuckDB and caches them in a local `Map<number, Record<string, unknown>>`. Uncached rows render skeleton placeholders until the fetch resolves.
+
+```
+Scroll position → virtualizer.getVirtualItems() → [index 5000..5040]
+  │
+  ▼  VirtualRows useEffect
+  for each uncached index:
+    windowStart = floor(index / 200) * 200
+    fetchWindow(windowStart, 200)    → DuckDB range request → 200 rows cached
+  │
+  ▼  setRows(prev => new Map([...prev, ...fetched]))
+  Render: each visible row reads from the Map; missing rows show skeletons
+```
+
+#### Cache invalidation via React reconciler
+
+When filters change, `applyFilters` clears the hook's `rowCache` ref and increments a `cacheGen` counter (React state). The `<VirtualRows>` component receives `key={cacheGen}` — when the key changes, React unmounts the old instance and mounts a fresh one in a single render pass. This declaratively destroys the stale local `rows` Map, the `fetchingRef` set, and the `useVirtualizer` instance. No `useEffect` state synchronization, no double-render waterfall.
+
+The scroll container is reset to `scrollTop = 0` synchronously before `applyFilters` runs, so the freshly mounted virtualizer always starts at row 0 of the filtered dataset.
+
+#### Filter sidebar
+
+The same `FilterSidebar` pattern from the Strand pipeline is reused. Control selection is driven by column metadata:
+
+| Column type | Cardinality | Sidebar control | Table column |
+|---|---|---|---|
+| Numeric | — | `RangeSlider` with constrained stats overlay | Shown with heatmap |
+| Categorical | 1 | `value (constant)` label | Hidden |
+| Categorical | 2–5 | `InlineSelect` toggle pills | Hidden |
+| Categorical | 6–50 | `MultiSelect` popover | Shown |
+| Text | > 50 | `ILIKE` text search | Shown |
+
+Constrained stats (min/max within the current filter set) power the constraint band overlay and amber out-of-bounds indicators, identical to the Strand implementation.
+
+#### Parquet conversion status lifecycle
+
+```
+Upload completes → parquet_status = 'converting'
+  │
+  ├─ Success → parquet_status = 'ready', parquet_s3_key set
+  │    Client: DuckDB WASM preview
+  │
+  ├─ Failure → parquet_status = 'failed', parquet_error = 'OOM / parse error / ...'
+  │    Client: DatasetErrorState with actionable error message
+  │    Visible on: /errors page (pipeline error dashboard)
+  │
+  └─ Unavailable → file too large or not JSON
+       Client: falls back to Strand SAB pipeline (small files) or text preview
+```
+
+#### Strand coexistence
+
+The Strand SAB pipeline is preserved for real-time streaming use cases (live SeqChain results). The Parquet path handles large static datasets. The routing logic in `FilePreview.tsx`:
+
+1. Poll `GET /api/files/:id/parquet-url`
+2. If `ready` → `<ParquetPreview>` (DuckDB WASM)
+3. If `converting` → progress indicator, poll every 2s
+4. If `failed` → `<DatasetErrorState>` with error details
+5. If `unavailable` → fall back to `<JsonStrandPreview>` (Strand SAB)
+
+---
 
 ### JSON → Strand analytical pipeline
 
@@ -438,6 +573,8 @@ VirtualChamber (main thread)
 ### GenomeHub
 
 - [x] In-browser analytics: JSON → Strand SAB pipeline with vectorized bitset constraint engine, zero-copy virtualizer, and reactive FilterSidebar projection
+- [x] Parquet progressive queries: DuckDB WASM over HTTP range requests — schema, stats, and windowed rows from Parquet footer without downloading the full file
+- [x] Pipeline error dashboard: `/errors` page with actionable error messages for failed Parquet conversions
 - [ ] Search and filtering: full-text search over filenames, tags, and descriptions
 - [ ] Batch operations: multi-file download (zip) and bulk tag editing
 - [ ] File validation: post-upload format verification (samtools quickcheck, vcf-validator)
@@ -473,8 +610,12 @@ flowchart LR
 
 ## CDK commands
 
+All CDK commands must run from `packages/infra/` (where `cdk.json` lives). Docker context paths are absolute (resolved from `import.meta.url`), so the stack synthesizes correctly regardless of working directory.
+
 ```bash
+cd packages/infra
 npx cdk diff       # Preview infrastructure changes
 npx cdk synth      # Emit CloudFormation template
+npx cdk deploy     # Build, push, and provision everything
 npx cdk destroy    # Tear down (S3 and RDS are retained by policy)
 ```
