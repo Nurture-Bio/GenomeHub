@@ -55,6 +55,11 @@ export interface UseJsonStrandResult {
    * ranges + multi-select handle sets).
    */
   onConstraintRequest: (predicates: { field: string; predicate: FilterPredicate }[]) => void;
+  /**
+   * Display-character min/max/avg per field, measured during Phase 1 using
+   * the same formatting rules as the UI.  Use to seed initial column widths.
+   */
+  fieldWidths: Record<string, { min: number; max: number; avg: number }>;
 }
 
 // ── SAB sizing constants ──────────────────────────────────────────────────────
@@ -95,6 +100,7 @@ export function useJsonStrand(url: string, fieldsOrAuto: FieldDef[] | 'auto'): U
   const [debFilters,   setDebFilters]  = useState<Record<string, string>>({});
   const [constrainedRanges, setConstrainedRanges] = useState<ConstrainedRanges>({});
   const [constrainedCount,  setConstrainedCount]  = useState(0);
+  const [fieldWidths,       setFieldWidths]        = useState<Record<string, { min: number; max: number; avg: number }>>({});
 
   const viewRef     = useRef<StrandView   | null>(null);
   const cursorRef   = useRef<RecordCursor | null>(null);
@@ -191,8 +197,9 @@ export function useJsonStrand(url: string, fieldsOrAuto: FieldDef[] | 'auto'): U
         cursorRef.current = cursor;
 
         setInternTable(table);
-        // Cardinality is fully computed by the worker in Phase 1 — set it once.
+        // Cardinality and field widths are fully computed in Phase 1 — set once.
         setCard(stats.cardinality);
+        setFieldWidths(stats.fieldWidths);
         setStatus('streaming');
 
         // ── Drain loop ───────────────────────────────────────────────────────
@@ -416,6 +423,7 @@ export function useJsonStrand(url: string, fieldsOrAuto: FieldDef[] | 'auto'): U
     constrainedRanges,
     constrainedCount,
     onConstraintRequest,
+    fieldWidths,
   };
 }
 

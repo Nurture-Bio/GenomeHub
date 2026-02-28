@@ -122,17 +122,30 @@ export default function FileDetailPage() {
 
   return (
     <div className="flex flex-col gap-3 md:gap-4 p-2 md:p-5 animate-page-enter">
-      {/* Header */}
-      <div>
-        <div className="flex items-center gap-2 mb-1 flex-wrap">
-          <HashPill label={meta.label} colorKey={fmt} />
-          {file.types.map(t => <HashPill key={t} label={t} />)}
-          {file.status === 'ready' && <Badge variant="status" color="green">ready</Badge>}
-          {file.status === 'pending' && <Badge variant="status" color="yellow">uploading</Badge>}
-          {file.status === 'error' && <Badge variant="status" color="red">error</Badge>}
-        </div>
-        <Heading level="heading">{file.filename}</Heading>
 
+      {/* Title row — minimal, just enough context before the data */}
+      <div className="flex items-start gap-2 flex-wrap">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+            <HashPill label={meta.label} colorKey={fmt} />
+            {file.status === 'ready'   && <Badge variant="status" color="green">ready</Badge>}
+            {file.status === 'pending' && <Badge variant="status" color="yellow">uploading</Badge>}
+            {file.status === 'error'   && <Badge variant="status" color="red">error</Badge>}
+          </div>
+          <Heading level="heading">{file.filename}</Heading>
+        </div>
+        <Button intent="primary" size="sm" onClick={handleDownload}>Download</Button>
+      </div>
+
+      {/* File preview — first thing after the title */}
+      {file.status === 'ready' && (
+        <Suspense fallback={<div className="skeleton h-32 rounded-md" />}>
+          <FilePreview fileId={fileId!} filename={file.filename} />
+        </Suspense>
+      )}
+
+      {/* Metadata — below the data where it belongs */}
+      <div className="flex flex-col gap-2">
         <div className="mt-0.5">
           <InlineInput
             value={file.description ?? ''}
@@ -141,15 +154,14 @@ export default function FileDetailPage() {
           />
         </div>
 
-        <div className="flex items-center gap-2 mt-1 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
           <Text variant="dim">{formatBytes(file.sizeBytes)}</Text>
           {file.md5 && <Text variant="dim">MD5: {file.md5.slice(0, 12)}...</Text>}
           <Text variant="dim">Uploaded {formatRelativeTime(file.uploadedAt)}</Text>
           {file.uploadedBy && <Text variant="dim">by {file.uploadedBy}</Text>}
         </div>
 
-        {/* Organisms */}
-        <div className="flex items-center gap-2 mt-1">
+        <div className="flex items-center gap-2">
           <Text variant="dim" className="shrink-0">Organisms:</Text>
           <ChipEditor
             items={file.organisms.map(o => ({ id: o.id, label: o.displayName }))}
@@ -159,8 +171,7 @@ export default function FileDetailPage() {
           />
         </div>
 
-        {/* Types */}
-        <div className="flex items-center gap-2 mt-1">
+        <div className="flex items-center gap-2">
           <Text variant="dim" className="shrink-0">Types:</Text>
           <ChipEditor
             items={file.types.map(t => ({ id: t, label: t }))}
@@ -171,21 +182,11 @@ export default function FileDetailPage() {
         </div>
 
         {file.tags.length > 0 && (
-          <div className="flex gap-0.5 flex-wrap mt-1">
+          <div className="flex gap-0.5 flex-wrap">
             {file.tags.map(t => <Badge key={t} variant="count" color="dim">{t}</Badge>)}
           </div>
         )}
-        <div className="flex gap-1.5 mt-2">
-          <Button intent="primary" size="sm" onClick={handleDownload}>Download</Button>
-        </div>
       </div>
-
-      {/* File preview — lazy loaded, only for text formats */}
-      {file.status === 'ready' && (
-        <Suspense fallback={<div className="skeleton h-32 rounded-md" />}>
-          <FilePreview fileId={fileId!} filename={file.filename} />
-        </Suspense>
-      )}
 
       {/* Collections */}
       <div>

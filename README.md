@@ -136,7 +136,8 @@ packages/
       workers/       jsonStrandWorker — Phase 1 scan, Phase 2 stream, Phase 3 constraints
       ui/            CVA component recipes (Button, Badge, Card, Input, ...)
       lib/           API fetch wrapper, query keys, format detection
-      components/    FilePreview, Breadcrumbs, EnginePanel, ...
+      components/    FilePreview, JsonStrandPreview (embedded auto-inference preview),
+                     Breadcrumbs, EnginePanel, ...
       stores/        Zustand stores (app state, upload progress)
   server/            Express API
     src/
@@ -145,6 +146,9 @@ packages/
       lib/           S3 helpers (putObject, putObjectStream), edge service
       migrations/    Sequential SQL schema migrations
   infra/             AWS CDK stack
+packages/
+  strand/src/        @strand/inference — stateless schema inference (inferFields)
+                     Separate from @strand/core; used only by jsonStrandWorker
 vendor/
   strand/src/        Vendored @strand/core (TypeScript source, path-aliased)
                      Synced from github.com/ryandward/strand
@@ -332,6 +336,36 @@ FilterSidebar (UI projection)
 **Phase 2 drain loop**: `view.acknowledgeRead(count)` is called unconditionally for every committed record, including records that will be filtered out. Gating it on filter results lets the ring fill and permanently deadlocks the producer — see [strand `acknowledgeRead()` docs](https://github.com/ryandward/strand).
 
 **Phase 3 constraint queries**: fired by a debounced `useEffect` on the main thread whenever `debFilters` or multi-select state changes. The worker answers from the already-live SAB — no re-parse, no re-stream. Numeric `BETWEEN` predicates and utf8_ref `in` predicates (handles pre-resolved from the intern table) are bitset-able and go through Phase 3. Free-text `utf8` substring filters are not bitset-able and stay on the main thread via the existing zero-copy seq scan.
+
+#### Schema inference (auto mode)
+
+`useJsonStrand` accepts either an explicit `FieldDef[]` or the string `'auto'`. In auto mode the worker runs a Phase 0 inference pass before the stats scan:
+
+```
+Phase 0 — inferFields(records, { sampleSize: 500 })
+  │  Classifies every leaf path as i32 / f64 / bool / utf8 / json
+  │  Cardinality gate: distinct ≤ 100 AND ratio ≤ 0.5  →  utf8_ref (interned)
+  │  Low-cardinality guarantee: distinct ≤ 8  →  always utf8_ref
+  │  Pure boolean fields  →  utf8_ref  ("true" / "false" as strings)
+  │  Posts: { type: 'schema', fields: FieldDef[] }
+  │
+  ▼  Main thread sends { type: 'scan', fields } to proceed with Phase 1
+```
+
+The low-cardinality guarantee and boolean reclassification ensure that fields like `strand` (`+`/`-`) and `is_reverse` (`true`/`false`) always receive categorical treatment regardless of sample size.
+
+#### Cardinality-driven layout
+
+Cardinality data collected in Phase 1 governs both the sidebar control and the table column layout. Low-cardinality categoricals carry no information row-by-row — they belong in a filter, not a column.
+
+| Cardinality | Sidebar control | Table column |
+|---|---|---|
+| 1 (constant) | `value (constant)` label | Hidden |
+| 2–5 | `InlineSelect` — visible toggle pills, no popover | Hidden |
+| 6–100 | `MultiSelect` — popover with checkbox list | Shown |
+| > 100 | Text search | Shown |
+
+Numeric fields with `min === max` get a `value (constant)` label instead of a frozen range slider.
 
 #### FilterSidebar — UI as projection
 

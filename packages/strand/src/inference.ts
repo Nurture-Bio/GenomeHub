@@ -172,8 +172,10 @@ function resolveType(acc: FieldAccum, cardMax: number, cardRatio: number): Field
   // json wins over everything (arrays, depth-capped objects).
   if (concrete.has('json')) return 'json';
 
-  // Pure boolean.
-  if (concrete.size === 1 && concrete.has('bool8')) return 'bool8';
+  // Pure boolean: always treat as 2-value categorical so the UI renders
+  // a MultiSelect ("true" / "false") rather than no filter control at all.
+  // The worker writes String(raw) → intern handle, same as any utf8_ref field.
+  if (concrete.size === 1 && concrete.has('bool8')) return 'utf8_ref';
 
   const hasNum  = concrete.has('i32') || concrete.has('f64');
   const hasBool = concrete.has('bool8');
@@ -190,6 +192,10 @@ function resolveType(acc: FieldAccum, cardMax: number, cardRatio: number): Field
     if (hasNum) return 'utf8';
 
     // Pure string field: apply cardinality gate.
+    // Fields with very few distinct values are ALWAYS categorical regardless
+    // of the ratio heuristic — a 2-value field like +/- is always utf8_ref
+    // even if the sample happens to be small relative to the distinct count.
+    if (distinct.size <= 8) return 'utf8_ref';
     const ratio = seen > 0 ? distinct.size / seen : 1;
     if (distinct.size <= cardMax && ratio <= cardRatio) return 'utf8_ref';
     return 'utf8';

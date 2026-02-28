@@ -24,8 +24,12 @@ import type { RecordCursor, FieldType, FilterPredicate, ConstrainedRanges } from
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const NUMERIC_FIELD_TYPES = new Set<FieldType>(['i32', 'u32', 'f32', 'f64', 'u8', 'u16']);
-const ROW_H   = 28;
-const PANEL_H = 560;
+const ROW_H        = 28;
+const PANEL_H      = 560;
+const PX_PER_CHAR  = 7.5;  // monospace char width at --font-size-xs
+const MIN_COL_W    = 50;
+const MAX_COL_W    = 300;
+const COL_PADDING  = 20;   // left + right cell padding
 
 // ── Formatting ────────────────────────────────────────────────────────────────
 
@@ -50,8 +54,26 @@ function heatStyle(v: number, min: number, max: number): CSSProperties {
   return { background: `oklch(0.750 0.180 195 / ${(t * 0.14).toFixed(3)})` };
 }
 
+/** Fallback width before field-width stats arrive. */
 function colW(type: FieldType): number {
   return (NUMERIC_FIELD_TYPES.has(type) || type === 'i64') ? 92 : 140;
+}
+
+/**
+ * Project Phase 1 display-width stats into an initial pixel column width.
+ * Uses avg character count so narrow columns stay narrow and wide ones get room.
+ * Also ensures the column header label always fits.
+ */
+function colWFromStats(
+  name:        string,
+  type:        FieldType,
+  fieldWidths: Record<string, { min: number; max: number; avg: number }>,
+): number {
+  const stats = fieldWidths[name];
+  if (!stats || stats.avg === 0) return colW(type);
+  const chars   = Math.max(stats.avg, name.length);
+  const px      = Math.round(chars * PX_PER_CHAR) + COL_PADDING;
+  return Math.min(MAX_COL_W, Math.max(MIN_COL_W, px));
 }
 
 // ── SortChevron ───────────────────────────────────────────────────────────────
@@ -253,6 +275,40 @@ function MultiSelect({ values, selected, onToggle, onClear }: {
   );
 }
 
+// ── InlineSelect ──────────────────────────────────────────────────────────────
+// For fields with ≤ 5 distinct values: always-visible toggle pills.
+// No popover — each value is a single-click button right in the sidebar.
+
+function InlineSelect({ values, selected, onToggle }: {
+  values:   string[];
+  selected: Set<string>;
+  onToggle: (v: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-1">
+      {values.map(v => {
+        const on = selected.has(v);
+        return (
+          <button
+            key={v}
+            onClick={() => onToggle(v)}
+            className="font-mono cursor-pointer border rounded-sm px-1.5 py-0.5 transition-colors"
+            style={{
+              fontSize: 'var(--font-size-xs)',
+              background:   on ? 'var(--color-cyan)'   : 'transparent',
+              color:        on ? 'var(--color-void)'   : 'var(--color-fg-2)',
+              borderColor:  on ? 'var(--color-cyan)'   : 'var(--color-line)',
+              fontWeight:   on ? 600 : 400,
+            }}
+          >
+            {v}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── FilterSidebar ─────────────────────────────────────────────────────────────
 
 const FilterSidebar = memo(function FilterSidebar({
@@ -340,16 +396,22 @@ const FilterSidebar = memo(function FilterSidebar({
               </div>
 
               {isNum && stats ? (
-                <RangeSlider
-                  name={f.name}
-                  min={stats.min} max={stats.max}
-                  low={rangeState[f.name]?.[0]  ?? stats.min}
-                  high={rangeState[f.name]?.[1] ?? stats.max}
-                  constrainedMin={hasAnyFilter ? constrainedRanges[f.name]?.min : undefined}
-                  constrainedMax={hasAnyFilter ? constrainedRanges[f.name]?.max : undefined}
-                  pending={pendingConstraints}
-                  onRangeChange={onRangeChange}
-                />
+                stats.min === stats.max ? (
+                  <span className="font-mono" style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-fg-3)', fontStyle: 'italic' }}>
+                    {Number.isInteger(stats.min) ? stats.min.toLocaleString() : stats.min.toFixed(2)} (constant)
+                  </span>
+                ) : (
+                  <RangeSlider
+                    name={f.name}
+                    min={stats.min} max={stats.max}
+                    low={rangeState[f.name]?.[0]  ?? stats.min}
+                    high={rangeState[f.name]?.[1] ?? stats.max}
+                    constrainedMin={hasAnyFilter ? constrainedRanges[f.name]?.min : undefined}
+                    constrainedMax={hasAnyFilter ? constrainedRanges[f.name]?.max : undefined}
+                    pending={pendingConstraints}
+                    onRangeChange={onRangeChange}
+                  />
+                )
               ) : isNum ? (
                 <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-fg-3)', fontStyle: 'italic' }}>
                   Loading…
@@ -359,6 +421,12 @@ const FilterSidebar = memo(function FilterSidebar({
                   <span className="font-mono" style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-fg-3)', fontStyle: 'italic' }}>
                     {card[0]} (constant)
                   </span>
+                ) : card.length <= 5 ? (
+                  <InlineSelect
+                    values={card}
+                    selected={sel}
+                    onToggle={v => onToggleSelect(f.name, v)}
+                  />
                 ) : (
                   <MultiSelect
                     values={card}
@@ -468,6 +536,7 @@ export default function JsonStrandPreview({ url }: { url: string }) {
     cursor, numericStats, cardinality, internTable, fields,
     error, filters, debFilters, onFilterChange,
     constrainedRanges, constrainedCount, onConstraintRequest,
+    fieldWidths,
   } = useJsonStrand(url, 'auto');
 
   const scrollRef   = useRef<HTMLDivElement>(null);
@@ -555,6 +624,29 @@ export default function JsonStrandPreview({ url }: { url: string }) {
     setRangeState({});
   }, [fields, onFilterChange]);
 
+  // Fields shown as table columns: utf8_ref fields with ≤ 5 distinct values are
+  // sidebar-only (they're already a MultiSelect filter — no info gain in the table).
+  const tableFields = useMemo(() => fields.filter(f => {
+    if (f.type !== 'utf8_ref') return true;
+    const card = cardinality[f.name];
+    return !card || card.length > 5;
+  }), [fields, cardinality]);
+
+  // Seed initial column widths from Phase 1 field-width stats.
+  // Only runs once (when fieldWidths first becomes non-empty); manual resizes
+  // take precedence because setColWidths skips already-set columns.
+  useEffect(() => {
+    if (Object.keys(fieldWidths).length === 0 || fields.length === 0) return;
+    setColWidths(prev => {
+      const next = { ...prev };
+      for (const f of fields) {
+        if (!(f.name in next)) next[f.name] = colWFromStats(f.name, f.type, fieldWidths);
+      }
+      return next;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fieldWidths]);
+
   // Init range state from stats
   useEffect(() => {
     const init: Record<string, [number, number]> = {};
@@ -637,7 +729,7 @@ export default function JsonStrandPreview({ url }: { url: string }) {
 
   // ── Derived state ─────────────────────────────────────────────────────────
 
-  const totalWidth   = fields.reduce((s, f) => s + (colWidths[f.name] ?? colW(f.type)), 0);
+  const totalWidth   = tableFields.reduce((s, f) => s + (colWidths[f.name] ?? colW(f.type)), 0);
   const hasAnyFilter = Object.values(filters).some(v => v.trim()) || Object.keys(selected).length > 0;
   const isStreaming  = status === 'streaming' || status === 'scanning';
   const displayCount = displayIndices.length;
@@ -655,16 +747,49 @@ export default function JsonStrandPreview({ url }: { url: string }) {
   }
 
   if (status === 'init' || status === 'inferring' || status === 'scanning') {
-    const label = status === 'inferring' ? 'Inferring schema…'
-                : status === 'scanning'  ? 'Scanning JSON…'
-                :                         'Initializing…';
+    const steps = [
+      { label: 'Connecting',  active: status === 'init' },
+      { label: 'Reading',     active: status === 'inferring' },
+      { label: 'Analyzing',   active: status === 'scanning' },
+      { label: 'Loading',     active: false },
+    ];
+    const activeIdx = steps.findIndex(s => s.active);
     return (
-      <div className="flex flex-col items-center justify-center gap-2"
+      <div className="flex flex-col items-center justify-center gap-4"
         style={{ height: PANEL_H, background: 'var(--color-void)' }}>
-        <div className="h-0.5 w-32 rounded-full overflow-hidden" style={{ background: 'var(--color-raised)' }}>
-          <div className="h-full w-full progress-stripe" style={{ background: 'var(--color-cyan)' }} />
+        <div className="flex items-center gap-0">
+          {steps.map((step, i) => {
+            const done    = i < activeIdx;
+            const current = i === activeIdx;
+            const pending = i > activeIdx;
+            return (
+              <div key={step.label} className="flex items-center">
+                {/* dot */}
+                <div style={{
+                  width: 8, height: 8, borderRadius: '50%',
+                  background: done    ? 'var(--color-cyan)'
+                            : current ? 'var(--color-cyan)'
+                            :           'var(--color-raised)',
+                  boxShadow: current ? '0 0 6px var(--color-cyan)' : 'none',
+                  opacity: pending ? 0.35 : 1,
+                  transition: 'background 0.3s, box-shadow 0.3s, opacity 0.3s',
+                }} />
+                {/* connector line (not after last) */}
+                {i < steps.length - 1 && (
+                  <div style={{
+                    width: 28, height: 1,
+                    background: done ? 'var(--color-cyan)' : 'var(--color-raised)',
+                    opacity: pending ? 0.35 : 1,
+                    transition: 'background 0.3s',
+                  }} />
+                )}
+              </div>
+            );
+          })}
         </div>
-        <Text variant="dim">{label}</Text>
+        <Text variant="dim" style={{ fontSize: 'var(--font-size-xs)' }}>
+          {steps[activeIdx]?.label ?? 'Loading'}…
+        </Text>
       </div>
     );
   }
@@ -678,7 +803,7 @@ export default function JsonStrandPreview({ url }: { url: string }) {
       <div className="px-3 py-1.5 border-b border-line flex items-center gap-2 flex-wrap shrink-0"
         style={{ background: 'var(--color-base)' }}>
         <Text variant="dim">{totalRecords.toLocaleString()} records</Text>
-        {isStreaming && <Badge variant="count" color="dim">streaming</Badge>}
+        {isStreaming && <Badge variant="count" color="dim">loading…</Badge>}
         {isFiltered && (
           <Badge variant="count" color="dim">
             {displayCount.toLocaleString()} / {totalRecords.toLocaleString()} shown
@@ -712,9 +837,9 @@ export default function JsonStrandPreview({ url }: { url: string }) {
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
 
           {/* Pinned column header */}
-          <div ref={headerRef} className="shrink-0 overflow-hidden font-mono" style={{ width: totalWidth }}>
-            <div className="flex">
-              {fields.map(f => {
+          <div ref={headerRef} className="shrink-0 overflow-hidden font-mono">
+            <div className="flex" style={{ width: totalWidth }}>
+              {tableFields.map(f => {
                 const w       = colWidths[f.name] ?? colW(f.type);
                 const sortDir = sort?.name === f.name ? sort.dir : null;
                 return (
@@ -760,7 +885,7 @@ export default function JsonStrandPreview({ url }: { url: string }) {
                 scrollRef={scrollRef}
                 displayIndices={displayIndices}
                 cursor={cursor}
-                fields={fields}
+                fields={tableFields}
                 numericStats={numericStats}
                 colWidths={colWidths}
                 totalWidth={totalWidth}

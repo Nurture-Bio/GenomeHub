@@ -74,6 +74,12 @@ export interface StatsPayload {
   numericStats: Record<string, { min: number; max: number }>;
   /** Present for every field with type 'utf8_ref'. Sorted distinct values. */
   cardinality:  Record<string, string[]>;
+  /**
+   * Serialised display-character min/max/avg for every field, measured using
+   * the same formatting rules as the UI (fmt()).  Lets the preview set initial
+   * column widths from real data instead of hardcoded per-type guesses.
+   */
+  fieldWidths:  Record<string, { min: number; max: number; avg: number }>;
 }
 
 // ── Message types ─────────────────────────────────────────────────────────────
@@ -196,6 +202,43 @@ function resolve(obj: unknown, jsonPath: string | string[]): unknown {
   return cur;
 }
 
+// ── Display-length measurement ────────────────────────────────────────────────
+// Mirrors the fmt() function in JsonStrandPreview so the measured character
+// count matches exactly what the virtualizer will render.  Used in the Phase 1
+// scan to build per-field min/max/avg display widths for column auto-sizing.
+
+function measureDisplayLen(raw: unknown, type: FieldType): number {
+  if (raw == null) return 1;
+  switch (type) {
+    case 'f32':
+    case 'f64': {
+      const n = Number(raw);
+      return isFinite(n) ? n.toFixed(2).length : 3; // 'NaN'
+    }
+    case 'i32':
+    case 'u32':
+    case 'u16':
+    case 'u8': {
+      const n = Number(raw);
+      if (!isFinite(n)) return 3;
+      const a = Math.abs(n);
+      if (a >= 1_000_000) return (n / 1_000_000).toFixed(1).length + 1; // '1.2M'
+      if (a >= 10_000)    return (n / 1_000).toFixed(1).length + 1;     // '12.3K'
+      return n.toLocaleString().length;
+    }
+    case 'i64':
+      return String(raw).length;
+    case 'bool8':
+      return raw ? 4 : 5; // 'true' / 'false'
+    case 'json':
+      return Math.min(JSON.stringify(raw).length, 32);
+    case 'utf8':
+    case 'utf8_ref':
+    default:
+      return Math.min(String(raw).length, 32); // cap matches fmt() truncation
+  }
+}
+
 // ── Numeric type set ──────────────────────────────────────────────────────────
 // i64 is intentionally excluded: the stats accumulator uses JS number arithmetic,
 // and BigInt comparison is non-standard. Pass i64 range stats server-side if needed.
@@ -252,33 +295,50 @@ async function handleScan(url: string, fields: InferredFieldDef[]): Promise<void
       throw new Error('Expected a JSON array at the top level.');
     }
 
-    const numericDefs  = fields.filter(f => NUMERIC_TYPES.has(f.type));
     const categoricals = fields.filter(f => f.type === 'utf8_ref');
 
     const numericStats: Record<string, { min: number; max: number }> = {};
-    for (const f of numericDefs) {
-      numericStats[f.name] = { min: Infinity, max: -Infinity };
+    for (const f of fields) {
+      if (NUMERIC_TYPES.has(f.type)) numericStats[f.name] = { min: Infinity, max: -Infinity };
     }
 
     const cardSets: Record<string, Set<string>> = {};
-    for (const f of categoricals) {
-      cardSets[f.name] = new Set<string>();
-    }
+    for (const f of categoricals) cardSets[f.name] = new Set<string>();
 
-    // ── One-pass stats scan ──────────────────────────────────────────────────
+    // Width accumulators — track display-char length to auto-size columns.
+    // min/max/sum in one pass; avg computed after.
+    const widthAcc: Record<string, { min: number; max: number; sum: number }> = {};
+    for (const f of fields) widthAcc[f.name] = { min: Infinity, max: 0, sum: 0 };
+
+    // ── Single-pass scan — numeric stats + cardinality + display widths ──────
+    // One resolve() call per field per record. No intermediate JS objects.
 
     for (const rec of _records) {
-      for (const f of numericDefs) {
-        const v = Number(resolve(rec, f.jsonPath));
-        if (isFinite(v)) {
-          const s = numericStats[f.name]!;
-          if (v < s.min) s.min = v;
-          if (v > s.max) s.max = v;
+      for (const f of fields) {
+        const raw = resolve(rec, f.jsonPath);
+
+        // Numeric stats
+        if (NUMERIC_TYPES.has(f.type)) {
+          const v = Number(raw);
+          if (isFinite(v)) {
+            const s = numericStats[f.name]!;
+            if (v < s.min) s.min = v;
+            if (v > s.max) s.max = v;
+          }
         }
-      }
-      for (const f of categoricals) {
-        const v = String(resolve(rec, f.jsonPath) ?? '');
-        if (v) cardSets[f.name]!.add(v);
+
+        // Cardinality
+        if (f.type === 'utf8_ref') {
+          const v = String(raw ?? '');
+          if (v) cardSets[f.name]!.add(v);
+        }
+
+        // Display-width tracking — mirrors fmt() in JsonStrandPreview
+        const len = measureDisplayLen(raw, f.type);
+        const w   = widthAcc[f.name]!;
+        if (len < w.min) w.min = len;
+        if (len > w.max) w.max = len;
+        w.sum += len;
       }
     }
 
@@ -301,12 +361,25 @@ async function handleScan(url: string, fields: InferredFieldDef[]): Promise<void
       }
     }
 
+    // Finalise fieldWidths: collapse sum→avg, guard empty files.
+    const n = _records.length || 1;
+    const fieldWidths: Record<string, { min: number; max: number; avg: number }> = {};
+    for (const f of fields) {
+      const w = widthAcc[f.name]!;
+      fieldWidths[f.name] = {
+        min: w.min === Infinity ? 0 : w.min,
+        max: w.max,
+        avg: w.sum / n,
+      };
+    }
+
     const payload: StatsPayload = {
       type:        'stats',
       recordCount: _records.length,
       internTable,
       numericStats,
       cardinality,
+      fieldWidths,
     };
 
     self.postMessage(payload);
