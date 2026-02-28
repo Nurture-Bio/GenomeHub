@@ -14,5 +14,6 @@
       "@strand/inference": ["../../packages/strand/src/inference.ts"]
     }
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
 }

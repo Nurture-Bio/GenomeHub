@@ -18,8 +18,9 @@ RUN npm run build -w packages/shared
 FROM build-shared AS build-client
 ARG VITE_GOOGLE_CLIENT_ID
 ENV VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID}
+COPY vendor/strand/   ./vendor/strand/
+COPY packages/strand/ ./packages/strand/
 COPY packages/client/ ./packages/client/
-COPY vendor/strand/ ./vendor/strand/
 COPY .env.example ./.env
 RUN npm run build -w packages/client
 

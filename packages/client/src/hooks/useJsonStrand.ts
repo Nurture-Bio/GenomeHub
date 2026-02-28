@@ -66,15 +66,22 @@ export interface UseJsonStrandResult {
 //
 // index_capacity MUST be a power of 2 AND must be >= total record count so
 // that cursor.seek(seq) can reach any committed record without the ring having
-// wrapped over it.  2^17 = 131072 comfortably covers library.json (70 499).
+// wrapped over it.  Sized dynamically from stats.recordCount at stream time.
 //
 // heap_capacity covers all utf8 field bytes across all records.
 // Estimate: 5 utf8 fields × avg 15 bytes × 70 499 records ≈ 5.3 MB.
 // 12 MB gives a comfortable 2× margin.
 
-const INDEX_CAPACITY = 131_072;          // 2^17, must be power of 2
 const HEAP_CAPACITY  = 12 * 1024 * 1024; // 12 MB
 const BATCH_SIZE     = 500;
+
+/** Next power of 2 >= n, clamped to a maximum of 2^22 (~4 M records). */
+function nextPow2Capacity(n: number): number {
+  if (n <= 1) return 1;
+  let p = 1;
+  while (p < n) p <<= 1;
+  return Math.min(p, 1 << 22); // cap at ~4M
+}
 
 // ── Numeric type set ──────────────────────────────────────────────────────────
 // Mirrors the worker's NUMERIC_TYPES. i64 excluded — BigInt doesn't fit in JS
@@ -181,7 +188,7 @@ export function useJsonStrand(url: string, fieldsOrAuto: FieldDef[] | 'auto'): U
         // ── Allocate SAB — must happen on the main thread ────────────────────
         const map = computeStrandMap({
           schema,
-          index_capacity:    INDEX_CAPACITY,
+          index_capacity:    nextPow2Capacity(stats.recordCount),
           heap_capacity:     HEAP_CAPACITY,
           query:             { assembly: 'json', chrom: '*', start: 0, end: 0 },
           estimated_records: stats.recordCount,

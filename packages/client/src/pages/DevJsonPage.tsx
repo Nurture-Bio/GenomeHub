@@ -848,7 +848,7 @@ export default function DevJsonPage() {
             <div className="flex">
               {fields.map(f => {
                 const w       = colWidths[f.name] ?? colW(f.type);
-                const sortDir = sort?.name === f.name ? sort.dir : null;
+                const sortDir = sort && sort.name === f.name ? sort.dir : null;
                 return (
                   <div key={f.name}
                     className="text-left font-semibold text-fg-2 select-none relative group cursor-pointer"

@@ -353,8 +353,10 @@ async function handleScan(url: string, fields: InferredFieldDef[]): Promise<void
     // All utf8_ref fields share one handle space. Build in field-declaration
     // order (alphabetically within each field via sorted cardinality above)
     // so handles are deterministic and stable across reruns.
-    const seen        = new Set<string>();
-    const internTable: string[] = [];
+    // "" is always handle 0 — ensures null/undefined field values in Phase 2
+    // map to a known handle rather than throwing.
+    const seen        = new Set<string>(['']);
+    const internTable: string[] = [''];
     for (const f of categoricals) {
       for (const v of cardinality[f.name]!) {
         if (!seen.has(v)) { seen.add(v); internTable.push(v); }
@@ -413,14 +415,12 @@ function handleStream(
     handle.set(internTable[i]!, i);
   }
 
-  // Loud failure on missing handles — a value not in the global intern table
-  // means the Phase 1 stats scan was incomplete. Fail fast.
+  // Return the intern handle for a string value. "" (handle 0) is the
+  // guaranteed fallback for any value not seen during the Phase 1 scan —
+  // this handles null/undefined fields and values that appear only in
+  // the tail of a large file outside the inference window.
   function h(value: string): number {
-    const idx = handle.get(value);
-    if (idx === undefined) {
-      throw new Error(`Missing intern handle for value: "${value}"`);
-    }
-    return idx;
+    return handle.get(value) ?? 0;
   }
 
   // Capture before nulling in finally.

@@ -10,7 +10,9 @@ RUN npm ci --workspaces --if-present
 
 # ── Build client ──────────────────────────────────────────
 FROM deps AS build-client
-COPY packages/client/ ./packages/client/
+COPY vendor/strand/       ./vendor/strand/
+COPY packages/strand/     ./packages/strand/
+COPY packages/client/     ./packages/client/
 RUN npm run build -w packages/client
 
 # ── Build server ──────────────────────────────────────────

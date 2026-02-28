@@ -841,7 +841,7 @@ export default function JsonStrandPreview({ url }: { url: string }) {
             <div className="flex" style={{ width: totalWidth }}>
               {tableFields.map(f => {
                 const w       = colWidths[f.name] ?? colW(f.type);
-                const sortDir = sort?.name === f.name ? sort.dir : null;
+                const sortDir = sort && sort.name === f.name ? sort.dir : null;
                 return (
                   <div key={f.name}
                     className="text-left font-semibold text-fg-2 select-none relative group cursor-pointer"

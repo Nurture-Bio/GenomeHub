@@ -31,14 +31,25 @@ export const FACET_MAX = 5;
 export const DROPDOWN_MAX = 50;
 
 export interface QueryParams {
-  filters: Record<string, string>;
-  sort?:   SortSpec | null;
+  filters:          Record<string, string>;
+  sort?:            SortSpec | null;
+  /**
+   * When provided alongside active filters, the query also computes per-field
+   * min/max on the filtered set (constrainedStats). Drives the Constrained
+   * Reality band and Amber Alert in RangeSlider.
+   */
+  numericColPaths?: string[];
 }
 
 export interface QueryResult {
-  rows:          Record<string, unknown>[];
-  filteredCount: number;
-  error?:        string;
+  rows:              Record<string, unknown>[];
+  filteredCount:     number;
+  /**
+   * Per-field min/max derived from records that pass the active filter set.
+   * Only present when numericColPaths was supplied and filters are active.
+   */
+  constrainedStats?: Record<string, ColumnStats>;
+  error?:            string;
 }
 
 export type DuckDbStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -77,13 +88,19 @@ async function ensureDb(): Promise<void> {
 
   _bootPromise = (async () => {
     try {
-      const bundle = await duckdb.selectBundle({
-        mvp: { mainModule: duckdb_wasm_mvp, mainWorker: duckdb_worker_mvp },
-        eh:  { mainModule: duckdb_wasm_eh,  mainWorker: duckdb_worker_eh  },
-      });
+      // In Vite dev, the EH bundle needs SharedArrayBuffer but the dev server's
+      // /@fs/ worker sub-requests don't inherit COOP/COEP headers — the worker
+      // crashes with an undefined error and instantiate() hangs without rejecting.
+      // Force MVP in dev; selectBundle picks EH in production where headers are set.
+      const bundle = import.meta.env.DEV
+        ? { mainModule: duckdb_wasm_mvp, mainWorker: duckdb_worker_mvp, pthreadWorker: null }
+        : await duckdb.selectBundle({
+            mvp: { mainModule: duckdb_wasm_mvp, mainWorker: duckdb_worker_mvp },
+            eh:  { mainModule: duckdb_wasm_eh,  mainWorker: duckdb_worker_eh  },
+          });
       const worker = new Worker(bundle.mainWorker!);
       _db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), worker);
-      await _db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+      await _db.instantiate(bundle.mainModule, bundle.pthreadWorker ?? undefined);
       _conn = await _db.connect();
     } catch (e) {
       _bootPromise = null;
@@ -302,19 +319,46 @@ export function useJsonDuckDb(
           : `"${path}"`;
         return `(${quoted} ${expr})`;
       });
-    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const where   = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const orderBy = params.sort
       ? `ORDER BY "${params.sort.column}" ${params.sort.direction.toUpperCase()}`
       : '';
 
+    // Build constrained-stats SELECT when filters are active and caller supplied
+    // the list of numeric column paths. All three queries run in parallel.
+    const conSelectParts = params.numericColPaths?.length && conditions.length > 0
+      ? params.numericColPaths.flatMap(p => [
+          `MIN("${p}")::DOUBLE AS "${p}_min"`,
+          `MAX("${p}")::DOUBLE AS "${p}_max"`,
+        ])
+      : null;
+
     try {
-      const [rows, cnt] = await Promise.all([
-        _conn.query(`SELECT * FROM result ${where} ${orderBy} LIMIT 1000`),
+      const [rows, cnt, conResult] = await Promise.all([
+        _conn.query(`SELECT * FROM result ${where} ${orderBy}`),
         _conn.query(`SELECT COUNT(*)::INTEGER AS n FROM result ${where}`),
+        conSelectParts
+          ? _conn.query(`SELECT ${conSelectParts.join(', ')} FROM result ${where}`)
+          : Promise.resolve(null),
       ]);
+
+      let constrainedStats: Record<string, ColumnStats> | undefined;
+      if (conResult && params.numericColPaths) {
+        const row = conResult.toArray()[0] as Record<string, unknown> | undefined;
+        if (row) {
+          constrainedStats = {};
+          for (const p of params.numericColPaths) {
+            const mn = Number(row[`${p}_min`]);
+            const mx = Number(row[`${p}_max`]);
+            if (!isNaN(mn) && !isNaN(mx)) constrainedStats[p] = { min: mn, max: mx };
+          }
+        }
+      }
+
       return {
         rows:          rows.toArray().map((r: unknown) => coerceBigInts(r) as Record<string, unknown>),
         filteredCount: Number((cnt.toArray()[0] as Record<string, unknown>).n),
+        constrainedStats,
       };
     } catch (e) {
       return { rows: [], filteredCount: 0, error: String(e) };

@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect, memo } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import type { ColumnInfo, SortSpec, ColumnStats, ColumnCardinality } from '../hooks/useJsonDuckDb';
 import { isNumericType, FACET_MAX, DROPDOWN_MAX } from '../hooks/useJsonDuckDb';
 import * as Popover from '@radix-ui/react-popover';
@@ -6,18 +7,29 @@ import * as Popover from '@radix-ui/react-popover';
 // ── Props ────────────────────────────────────────────────
 
 interface DataTableProps {
-  columns:           ColumnInfo[];
-  columnStats:       Record<string, ColumnStats>;
-  columnCardinality: Record<string, ColumnCardinality>;
-  rows:              Record<string, unknown>[];
-  totalRows:         number;
-  filteredCount:     number;
-  isQuerying:        boolean;
-  error?:            string | null;
-  filters:           Record<string, string>;
-  onFilterChange:    (path: string, value: string) => void;
-  sort:              SortSpec | null;
-  onSortChange:      (sort: SortSpec | null) => void;
+  columns:            ColumnInfo[];
+  columnStats:        Record<string, ColumnStats>;
+  columnCardinality:  Record<string, ColumnCardinality>;
+  rows:               Record<string, unknown>[];
+  totalRows:          number;
+  filteredCount:      number;
+  isQuerying:         boolean;
+  error?:             string | null;
+  filters:            Record<string, string>;
+  onFilterChange:     (path: string, value: string) => void;
+  sort:               SortSpec | null;
+  onSortChange:       (sort: SortSpec | null) => void;
+  /**
+   * Per-field min/max derived from records that pass the current filter set.
+   * Drives the Constrained Reality band on range sliders. Pass `{}` (or omit)
+   * when no filter is active — sliders stay all-cyan with no amber alerts.
+   */
+  constrainedRanges?: Record<string, ColumnStats>;
+  /**
+   * True while a constraint query is in flight — dims the Reality band and
+   * suppresses amber alerts until fresh data arrives.
+   */
+  pendingConstraints?: boolean;
 }
 
 // ── Helpers ──────────────────────────────────────────────
@@ -98,23 +110,66 @@ function SortChevron({ direction }: { direction: 'asc' | 'desc' | null }) {
   );
 }
 
-// ── Range slider (clean dual-handle) ─────────────────────
+// ── Range slider (dual-handle, Constrained Reality band, Amber Alert) ────────
 
 function RangeSlider({
   min, max, low, high, onRangeChange, path, colType,
+  constrainedMin, constrainedMax, pending,
 }: {
-  min: number;
-  max: number;
-  low: number;
-  high: number;
-  onRangeChange: (path: string, low: number, high: number) => void;
-  path: string;
-  colType: string;
+  min:             number;
+  max:             number;
+  low:             number;
+  high:            number;
+  onRangeChange:   (path: string, low: number, high: number) => void;
+  path:            string;
+  colType:         string;
+  /** Min of the Constrained Reality band — undefined when no filter active. */
+  constrainedMin?: number;
+  /** Max of the Constrained Reality band — undefined when no filter active. */
+  constrainedMax?: number;
+  /** True while a constraint query is in flight. Dims the Reality band. */
+  pending?:        boolean;
 }) {
-  const range = max - min || 1;
-  const lowPct = ((low - min) / range) * 100;
-  const highPct = ((high - min) / range) * 100;
+  const intCol      = isIntegerType(colType);
+  const step        = intCol ? Math.max(1, Math.round((max - min) / 200)) : ((max - min) / 200 || 1);
+  const coerce      = (v: number) => intCol ? Math.round(v) : v;
+  const range       = max - min || 1;
+  const lowPct      = ((low  - min) / range) * 100;
+  const highPct     = ((high - min) / range) * 100;
   const isFullRange = low <= min && high >= max;
+
+  // Constrained Reality: is the band defined?
+  const hasCon  = constrainedMin !== undefined && constrainedMax !== undefined;
+  const epsilon = (max - min) * 0.001;
+
+  // Amber Alert: thumb is outside the constrained band.
+  const lowOob  = !pending && hasCon && low  < constrainedMin! - epsilon;
+  const highOob = !pending && hasCon && high > constrainedMax! + epsilon;
+
+  // Band position in percent along the track.
+  const conLoPct = hasCon ? Math.max(0, ((constrainedMin! - min) / range) * 100) : 0;
+  const conHiPct = hasCon ? Math.min(100, ((constrainedMax! - min) / range) * 100) : 100;
+
+  // Double-click the Reality band → clip both handles to constrained bounds.
+  const handleClipToReality = () => {
+    if (hasCon) onRangeChange(path, constrainedMin!, constrainedMax!);
+  };
+
+  const lowThumbStyle = {
+    '--range-thumb-color': lowOob  ? 'var(--color-amber)' : 'var(--color-cyan)',
+    '--range-thumb-glow':  lowOob  ? 'oklch(0.750 0.185 60 / 0.28)' : 'oklch(0.750 0.180 195 / 0.25)',
+    zIndex: 3, opacity: lowOob ? 0.80 : 1,
+  } as React.CSSProperties;
+
+  const highThumbStyle = {
+    '--range-thumb-color': highOob ? 'var(--color-amber)' : 'var(--color-cyan)',
+    '--range-thumb-glow':  highOob ? 'oklch(0.750 0.185 60 / 0.28)' : 'oklch(0.750 0.180 195 / 0.25)',
+    zIndex: 4, opacity: highOob ? 0.80 : 1,
+  } as React.CSSProperties;
+
+  const oobLabel = hasCon
+    ? `${formatCompact(constrainedMin!, colType)} – ${formatCompact(constrainedMax!, colType)}`
+    : '';
 
   return (
     <div className="flex flex-col gap-0" style={{ minWidth: 80 }}>
@@ -124,50 +179,78 @@ function RangeSlider({
           className="absolute top-1/2 -translate-y-1/2 rounded-full w-full"
           style={{ height: 2, background: 'var(--color-line)' }}
         />
+
+        {/* Constrained Reality band — amber tint, double-click clips handles */}
+        {hasCon && (
+          <div
+            className="absolute top-1/2 -translate-y-1/2 rounded-full cursor-pointer"
+            title="Double-click to clip to constrained range"
+            style={{
+              left:       `${conLoPct}%`,
+              width:      `${Math.max(0, conHiPct - conLoPct)}%`,
+              height:     4,
+              background: pending ? 'var(--color-line)' : 'oklch(0.750 0.185 60 / 0.30)',
+              zIndex:     1,
+              transition: 'opacity 0.15s, background 0.15s',
+              opacity:    pending ? 0.5 : 1,
+            }}
+            onDoubleClick={handleClipToReality}
+          />
+        )}
+
         {/* Active range fill */}
         <div
           className="absolute top-1/2 -translate-y-1/2 rounded-full"
           style={{
-            left: `${lowPct}%`,
-            width: `${highPct - lowPct}%`,
-            height: 2,
+            left:       `${lowPct}%`,
+            width:      `${highPct - lowPct}%`,
+            height:     2,
             background: 'var(--color-cyan)',
-            opacity: isFullRange ? 0.3 : 1,
+            opacity:    isFullRange ? 0.3 : 1,
+            zIndex:     2,
           }}
         />
+
         <input
           type="range"
           className="range-thumb range-low absolute inset-0 w-full appearance-none bg-transparent cursor-pointer"
-          min={min}
-          max={max}
-          step={(max - min) / 200 || 1}
-          value={low}
+          min={min} max={max} step={step} value={low}
           onChange={e => {
-            const v = Number(e.target.value);
+            const v = coerce(Number(e.target.value));
             onRangeChange(path, Math.min(v, high), high);
           }}
-          style={{ zIndex: 3 }}
+          style={lowThumbStyle}
         />
         <input
           type="range"
           className="range-thumb range-high absolute inset-0 w-full appearance-none bg-transparent cursor-pointer"
-          min={min}
-          max={max}
-          step={(max - min) / 200 || 1}
-          value={high}
+          min={min} max={max} step={step} value={high}
           onChange={e => {
-            const v = Number(e.target.value);
+            const v = coerce(Number(e.target.value));
             onRangeChange(path, low, Math.max(v, low));
           }}
-          style={{ zIndex: 4 }}
+          style={highThumbStyle}
         />
       </div>
-      {!isFullRange && (
-        <div className="flex justify-between text-fg-2" style={{ fontSize: 'var(--font-size-xs)', fontFamily: 'var(--font-mono)' }}>
-          <span>{formatCompact(low, colType)}</span>
-          <span>{formatCompact(high, colType)}</span>
-        </div>
-      )}
+
+      {/* Value labels — amber + tooltip when outside Reality band */}
+      <div
+        className="flex justify-between"
+        style={{ fontSize: 'var(--font-size-xs)', fontFamily: 'var(--font-mono)' }}
+      >
+        <span
+          title={lowOob ? `Outside constrained range (${oobLabel})` : undefined}
+          style={{ color: lowOob ? 'var(--color-amber)' : isFullRange ? 'var(--color-fg-3)' : 'var(--color-fg-2)' }}
+        >
+          {formatCompact(coerce(low), colType)}
+        </span>
+        <span
+          title={highOob ? `Outside constrained range (${oobLabel})` : undefined}
+          style={{ color: highOob ? 'var(--color-amber)' : isFullRange ? 'var(--color-fg-3)' : 'var(--color-fg-2)' }}
+        >
+          {formatCompact(coerce(high), colType)}
+        </span>
+      </div>
     </div>
   );
 }
@@ -177,28 +260,22 @@ function RangeSlider({
 function TableSkeleton() {
   return (
     <div className="overflow-hidden rounded-md border border-line" style={{ background: 'var(--color-void)' }}>
-      <table className="w-full border-collapse font-mono text-body">
-        <thead>
-          <tr>
-            {Array.from({ length: 5 }, (_, i) => (
-              <th key={i} className="tbl-cell text-left" style={{ background: 'var(--color-raised)' }}>
-                <div className="skeleton h-3 rounded" style={{ width: `${50 + i * 10}%` }} />
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {Array.from({ length: 8 }, (_, r) => (
-            <tr key={r} className="stagger-item" style={{ '--i': Math.min(r, 15) } as React.CSSProperties}>
-              {Array.from({ length: 5 }, (_, c) => (
-                <td key={c} className="tbl-cell">
-                  <div className="skeleton h-3 rounded" style={{ width: `${40 + ((r + c) % 4) * 15}%` }} />
-                </td>
-              ))}
-            </tr>
+      <div className="flex" style={{ background: 'var(--color-raised)' }}>
+        {Array.from({ length: 5 }, (_, i) => (
+          <div key={i} className="tbl-cell text-left" style={{ flex: `${50 + i * 10}px 0 0` }}>
+            <div className="skeleton h-3 rounded" style={{ width: '80%' }} />
+          </div>
+        ))}
+      </div>
+      {Array.from({ length: 8 }, (_, r) => (
+        <div key={r} className="flex stagger-item" style={{ '--i': Math.min(r, 15) } as React.CSSProperties}>
+          {Array.from({ length: 5 }, (_, c) => (
+            <div key={c} className="tbl-cell" style={{ flex: `${50 + c * 10}px 0 0` }}>
+              <div className="skeleton h-3 rounded" style={{ width: `${40 + ((r + c) % 4) * 15}%` }} />
+            </div>
           ))}
-        </tbody>
-      </table>
+        </div>
+      ))}
     </div>
   );
 }
@@ -315,13 +392,16 @@ function FacetSelect({
 // ── Main component ───────────────────────────────────────
 
 export default function DataTable({
-  columns, columnStats, columnCardinality, rows, totalRows, filteredCount,
+  columns, columnStats, columnCardinality, rows,
   isQuerying, error, filters, onFilterChange, sort, onSortChange,
+  constrainedRanges, pendingConstraints,
 }: DataTableProps) {
-  const [colWidths, setColWidths] = useState<Record<string, number>>({});
-  const [rangeState, setRangeState] = useState<Record<string, [number, number]>>({});
-  const resizingRef = useRef<{ col: string; startX: number; startW: number } | null>(null);
-  const rangeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [colWidths, setColWidths]     = useState<Record<string, number>>({});
+  const [rangeState, setRangeState]   = useState<Record<string, [number, number]>>({});
+  const resizingRef                   = useRef<{ col: string; startX: number; startW: number } | null>(null);
+  const rangeDebounceRef              = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollRef                     = useRef<HTMLDivElement>(null);
+  const headerRef                     = useRef<HTMLDivElement>(null);
 
   const expanded = useMemo(() => expandColumns(columns), [columns]);
 
@@ -334,13 +414,15 @@ export default function DataTable({
       if (isBooleanType(col.type)) {
         facets.push(col);
       } else if (card && card.distinct >= 1 && card.distinct <= FACET_MAX) {
-        facets.push(col); // 1 = constant (static label), 2–FACET_MAX = popover select
+        facets.push(col);
       } else {
-        table.push(col); // numeric, >FACET_MAX distinct, or >DROPDOWN_MAX
+        table.push(col);
       }
     }
     return { facetColumns: facets, tableColumns: table };
   }, [expanded, columnCardinality]);
+
+  const totalWidth = tableColumns.reduce((sum, col) => sum + (colWidths[col.path] ?? defaultWidth(col.type)), 0);
 
   // Resize handlers
   const handleResizeStart = useCallback((col: string, startX: number, currentWidth: number) => {
@@ -378,8 +460,7 @@ export default function DataTable({
     }
   }, [sort, onSortChange]);
 
-  // Range filter change — visual update is immediate; parent notification is
-  // debounced so that dragging the slider doesn't re-render 1000 rows per pixel.
+  // Range filter change — visual update immediate; parent notification debounced
   const handleRangeChange = useCallback((path: string, low: number, high: number) => {
     const stats = columnStats[path] ?? columnStats[path.split('.').pop()!];
     setRangeState(prev => ({ ...prev, [path]: [low, high] }));
@@ -418,24 +499,22 @@ export default function DataTable({
 
   if (columns.length === 0) return <TableSkeleton />;
 
-  const totalWidth = tableColumns.reduce((sum, col) => sum + (colWidths[col.path] ?? defaultWidth(col.type)), 0);
-
   // Extract active pill/dropdown value from "= 'value'" filter format
-  const activeFilterValue = useCallback((path: string): string => {
+  const activeFilterValue = (path: string): string => {
     const raw = filters[path] ?? '';
     const m = raw.match(/^= '(.+)'$/);
     return m ? m[1] : '';
-  }, [filters]);
+  };
 
   // Emit "= 'value'" or "" for pill/dropdown controls
-  const handleSelectFilter = useCallback((path: string, value: string) => {
+  const handleSelectFilter = (path: string, value: string) => {
     onFilterChange(path, value ? `= '${value}'` : '');
-  }, [onFilterChange]);
+  };
 
   // Emit "= true"/"= false" or "" for boolean pills
-  const handleBoolFilter = useCallback((path: string, value: string) => {
+  const handleBoolFilter = (path: string, value: string) => {
     onFilterChange(path, value ? `= ${value}` : '');
-  }, [onFilterChange]);
+  };
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -484,214 +563,285 @@ export default function DataTable({
 
       {/* ── Table ────────────────────────────────────────── */}
       <div
-        className="relative overflow-auto rounded-md border border-line"
-        style={{ background: 'var(--color-void)', maxHeight: 480 }}
+        className="relative flex flex-col overflow-hidden rounded-md border border-line"
+        style={{ background: 'var(--color-void)', height: 480 }}
       >
-        {/* Progress stripe */}
+        {/* Progress stripe — absolute so it doesn't shift layout */}
         {isQuerying && (
-          <div className="absolute top-0 left-0 right-0 h-0.5 z-sticky progress-stripe" style={{ background: 'var(--color-cyan)' }} />
+          <div className="absolute top-0 left-0 right-0 h-0.5 z-10 progress-stripe" style={{ background: 'var(--color-cyan)' }} />
         )}
 
-        <table
-          className="border-collapse font-mono text-xs"
+        {/* Pinned header (outside scroll — avoids sticky + reflow issues) */}
+        <div
+          ref={headerRef}
+          className="shrink-0 overflow-hidden font-mono"
           style={{ width: totalWidth }}
         >
-          {/* ── Header row ────────────────────────────────── */}
-          <thead className="sticky top-0" style={{ zIndex: 'var(--z-index-sticky)' }}>
-            <tr>
-              {tableColumns.map(col => {
-                const w = colWidths[col.path] ?? defaultWidth(col.type);
-                const isFiltered = !!(filters[col.path] && filters[col.path].trim());
-                const sortDir = sort?.column === col.path ? sort.direction : null;
-                const badge = getTypeBadge(col.type);
+          {/* Column label row */}
+          <div className="flex">
+            {tableColumns.map(col => {
+              const w = colWidths[col.path] ?? defaultWidth(col.type);
+              const isFiltered = !!(filters[col.path] && filters[col.path].trim());
+              const sortDir = sort?.column === col.path ? sort.direction : null;
+              const badge = getTypeBadge(col.type);
 
-                return (
-                  <th
-                    key={col.path}
-                    className="tbl-cell text-left font-semibold text-fg-2 select-none relative group"
-                    style={{
-                      width: w,
-                      minWidth: 60,
-                      background: 'var(--color-raised)',
-                      borderBottom: isFiltered ? '2px solid var(--color-cyan)' : '1px solid var(--color-line)',
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap',
-                    }}
-                    onClick={() => handleSortClick(col.path)}
-                  >
-                    <div className="flex flex-col gap-0">
-                      <div className="flex items-center gap-1">
-                        <span className="truncate" style={{ fontSize: 'var(--font-size-sm)' }}>{col.label}</span>
-                        <SortChevron direction={sortDir} />
-                      </div>
-                      <span
-                        className="rounded-sm px-0.5 font-mono self-start"
-                        style={{
-                          fontSize: 'var(--font-size-xs)',
-                          background: badge.bg,
-                          color: 'var(--color-fg-2)',
-                          lineHeight: '1.4',
-                        }}
-                      >
-                        {badge.label}
-                      </span>
+              return (
+                <div
+                  key={col.path}
+                  className="text-left font-semibold text-fg-2 select-none relative group"
+                  style={{
+                    width: w,
+                    minWidth: 60,
+                    flexShrink: 0,
+                    padding: '2px 6px',
+                    background: 'var(--color-raised)',
+                    borderBottom: isFiltered ? '2px solid var(--color-cyan)' : '2px solid var(--color-line)',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                  }}
+                  onClick={() => handleSortClick(col.path)}
+                >
+                  <div className="flex flex-col gap-0">
+                    <div className="flex items-center gap-1">
+                      <span className="truncate" style={{ fontSize: 'var(--font-size-sm)' }}>{col.label}</span>
+                      <SortChevron direction={sortDir} />
                     </div>
-
-                    {/* Resize handle */}
-                    <div
-                      className="absolute top-0 right-0 bottom-0 opacity-0 group-hover:opacity-100 hover:!opacity-100"
+                    <span
+                      className="rounded-sm px-0.5 font-mono self-start"
                       style={{
-                        width: 3,
-                        cursor: 'col-resize',
-                        background: 'var(--color-line)',
-                        transition: 'opacity var(--t-fast), background var(--t-fast)',
+                        fontSize: 'var(--font-size-xs)',
+                        background: badge.bg,
+                        color: 'var(--color-fg-2)',
+                        lineHeight: '1.4',
                       }}
-                      onMouseDown={e => {
-                        e.stopPropagation();
-                        handleResizeStart(col.path, e.clientX, w);
-                      }}
-                      onMouseEnter={e => {
-                        (e.currentTarget as HTMLElement).style.background = 'var(--color-cyan)';
-                        (e.currentTarget as HTMLElement).style.boxShadow = 'var(--glow-cyan-sm)';
-                      }}
-                      onMouseLeave={e => {
-                        (e.currentTarget as HTMLElement).style.background = 'var(--color-line)';
-                        (e.currentTarget as HTMLElement).style.boxShadow = 'none';
-                      }}
-                    />
-                  </th>
-                );
-              })}
-            </tr>
+                    >
+                      {badge.label}
+                    </span>
+                  </div>
 
-            {/* ── Filter row ────────────────────────────────── */}
-            <tr>
-              {tableColumns.map(col => {
-                const numeric = isNumericType(col.type);
-                const stats = columnStats[col.path] ?? columnStats[col.path.split('.').pop()!];
-                const w = colWidths[col.path] ?? defaultWidth(col.type);
-                const card = columnCardinality[col.path];
-
-                return (
-                  <th
-                    key={`filter-${col.path}`}
-                    className="text-left font-normal px-1 py-0.5"
+                  {/* Resize handle */}
+                  <div
+                    className="absolute top-0 right-0 bottom-0 opacity-0 group-hover:opacity-100 hover:!opacity-100"
                     style={{
-                      width: w,
-                      minWidth: 60,
-                      background: 'var(--color-base)',
-                      borderBottom: '1px solid var(--color-line)',
+                      width: 3,
+                      cursor: 'col-resize',
+                      background: 'var(--color-line)',
+                      transition: 'opacity var(--t-fast), background var(--t-fast)',
                     }}
-                  >
-                    {numeric && stats ? (
-                      <RangeSlider
-                        min={stats.min}
-                        max={stats.max}
-                        low={rangeState[col.path]?.[0] ?? stats.min}
-                        high={rangeState[col.path]?.[1] ?? stats.max}
-                        onRangeChange={handleRangeChange}
-                        path={col.path}
-                        colType={col.type}
-                      />
-                    ) : card && card.distinct > FACET_MAX && card.distinct <= DROPDOWN_MAX ? (
-                      /* FACET_MAX+1 – DROPDOWN_MAX distinct values → popover select */
-                      <FacetSelect
-                        label="All"
-                        values={card.values}
-                        active={activeFilterValue(col.path)}
-                        onSelect={v => handleSelectFilter(col.path, v)}
-                      />
-                    ) : (
-                      /* >50 distinct or unknown → text search */
-                      <input
-                        className="w-full bg-transparent border-none text-fg-2 font-mono placeholder:text-fg-3 focus:outline-none"
-                        style={{ fontSize: 'var(--font-size-xs)' }}
-                        placeholder="Search…"
-                        value={filters[col.path] ?? ''}
-                        onChange={e => onFilterChange(col.path, e.target.value)}
-                        spellCheck={false}
-                      />
-                    )}
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-
-          {/* ── Data rows (memoized — skips re-render when only filters change) */}
-          <TableBody rows={rows} tableColumns={tableColumns} columnStats={columnStats} />
-        </table>
-
-        {/* Empty state */}
-        {rows.length === 0 && !isQuerying && (
-          <div className="flex items-center justify-center py-6 text-fg-3 text-body">
-            No rows match the current filters
+                    onMouseDown={e => {
+                      e.stopPropagation();
+                      handleResizeStart(col.path, e.clientX, w);
+                    }}
+                    onMouseEnter={e => {
+                      (e.currentTarget as HTMLElement).style.background = 'var(--color-cyan)';
+                      (e.currentTarget as HTMLElement).style.boxShadow = 'var(--glow-cyan-sm)';
+                    }}
+                    onMouseLeave={e => {
+                      (e.currentTarget as HTMLElement).style.background = 'var(--color-line)';
+                      (e.currentTarget as HTMLElement).style.boxShadow = 'none';
+                    }}
+                  />
+                </div>
+              );
+            })}
           </div>
-        )}
 
-        {/* Error */}
-        {error && (
-          <div className="px-2 py-1 text-sm font-mono" style={{ color: 'var(--color-red)' }}>
-            {error}
+          {/* Filter row */}
+          <div className="flex">
+            {tableColumns.map(col => {
+              const numeric = isNumericType(col.type);
+              const stats = columnStats[col.path] ?? columnStats[col.path.split('.').pop()!];
+              const w = colWidths[col.path] ?? defaultWidth(col.type);
+              const card = columnCardinality[col.path];
+
+              return (
+                <div
+                  key={`filter-${col.path}`}
+                  className="text-left font-normal"
+                  style={{
+                    width: w,
+                    minWidth: 60,
+                    flexShrink: 0,
+                    padding: '2px 4px',
+                    background: 'var(--color-base)',
+                    borderBottom: '1px solid var(--color-line)',
+                  }}
+                >
+                  {numeric && stats ? (
+                    <RangeSlider
+                      min={stats.min}
+                      max={stats.max}
+                      low={rangeState[col.path]?.[0] ?? stats.min}
+                      high={rangeState[col.path]?.[1] ?? stats.max}
+                      onRangeChange={handleRangeChange}
+                      path={col.path}
+                      colType={col.type}
+                      constrainedMin={
+                        constrainedRanges?.[col.path]?.min ??
+                        (col.path.includes('.')
+                          ? constrainedRanges?.[col.path.split('.').pop()!]?.min
+                          : undefined)
+                      }
+                      constrainedMax={
+                        constrainedRanges?.[col.path]?.max ??
+                        (col.path.includes('.')
+                          ? constrainedRanges?.[col.path.split('.').pop()!]?.max
+                          : undefined)
+                      }
+                      pending={pendingConstraints}
+                    />
+                  ) : card && card.distinct > FACET_MAX && card.distinct <= DROPDOWN_MAX ? (
+                    <FacetSelect
+                      label="All"
+                      values={card.values}
+                      active={activeFilterValue(col.path)}
+                      onSelect={v => handleSelectFilter(col.path, v)}
+                    />
+                  ) : (
+                    <input
+                      className="w-full bg-transparent border-none text-fg-2 font-mono placeholder:text-fg-3 focus:outline-none"
+                      style={{ fontSize: 'var(--font-size-xs)' }}
+                      placeholder="Search…"
+                      value={filters[col.path] ?? ''}
+                      onChange={e => onFilterChange(col.path, e.target.value)}
+                      spellCheck={false}
+                    />
+                  )}
+                </div>
+              );
+            })}
           </div>
-        )}
+        </div>
+
+        {/* Scrollable body — syncs horizontal scroll with pinned header */}
+        <div
+          ref={scrollRef}
+          className="flex-1 overflow-auto"
+          onScroll={() => {
+            if (headerRef.current && scrollRef.current) {
+              headerRef.current.scrollLeft = scrollRef.current.scrollLeft;
+            }
+          }}
+        >
+          <VirtualBody
+            rows={rows}
+            tableColumns={tableColumns}
+            columnStats={columnStats}
+            colWidths={colWidths}
+            totalWidth={totalWidth}
+            scrollRef={scrollRef}
+          />
+
+          {/* Empty state */}
+          {rows.length === 0 && !isQuerying && (
+            <div className="flex items-center justify-center py-6 text-fg-3 text-body">
+              No rows match the current filters
+            </div>
+          )}
+
+          {/* Error */}
+          {error && (
+            <div className="px-2 py-1 text-sm font-mono" style={{ color: 'var(--color-red)' }}>
+              {error}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-// ── Memoized table body (skips re-render when only filters change) ──
+// ── Virtualized body (only renders visible rows; skips re-render on slider/filter state) ──
 
-const TableBody = memo(function TableBody({
-  rows, tableColumns, columnStats,
+const ROW_HEIGHT = 28;
+
+const VirtualBody = memo(function VirtualBody({
+  rows, tableColumns, columnStats, colWidths, totalWidth, scrollRef,
 }: {
-  rows: Record<string, unknown>[];
+  rows:         Record<string, unknown>[];
   tableColumns: ExpandedColumn[];
-  columnStats: Record<string, ColumnStats>;
+  columnStats:  Record<string, ColumnStats>;
+  colWidths:    Record<string, number>;
+  totalWidth:   number;
+  scrollRef:    React.RefObject<HTMLDivElement | null>;
 }) {
+  const virtualizer = useVirtualizer({
+    count:            rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize:     () => ROW_HEIGHT,
+    overscan:         20,
+  });
+
+  const totalSize = virtualizer.getTotalSize();
+
   return (
-    <tbody>
-      {rows.map((row, ri) => (
-        <tr
-          key={ri}
-          className="stagger-item hover:brightness-110"
-          style={{
-            '--i': Math.min(ri, 15),
-            background: ri % 2 === 1 ? 'oklch(0.120 0.020 250 / 0.3)' : undefined,
-          } as React.CSSProperties}
-        >
-          {tableColumns.map(col => {
-            const val = getNestedValue(row, col.path);
-            const numeric = isNumericType(col.type);
-            const stats = numeric
-              ? (columnStats[col.path] ?? columnStats[col.path.split('.').pop()!])
-              : undefined;
-            const numVal = numeric ? Number(val) : NaN;
+    <>
+      {/* Spacer establishes total scroll height */}
+      <div style={{ height: totalSize, width: totalWidth }} />
 
-            let cellStyle: React.CSSProperties = {
-              borderBottom: '1px solid var(--color-line)',
-            };
-            if (numeric && stats && !isNaN(numVal)) {
-              cellStyle = { ...cellStyle, ...heatmapStyle(numVal, stats.min, stats.max) };
-            }
+      {/* Virtual rows — absolutely positioned, zero DOM overhead for offscreen rows */}
+      <div style={{ position: 'relative', width: totalWidth, marginTop: -totalSize }}>
+        {virtualizer.getVirtualItems().map(vRow => {
+          const row = rows[vRow.index];
+          return (
+            <div
+              key={vRow.key}
+              className="flex hover:brightness-110"
+              style={{
+                position:  'absolute',
+                top:       0,
+                left:      0,
+                width:     '100%',
+                height:    ROW_HEIGHT,
+                transform: `translateY(${vRow.start}px)`,
+                background: vRow.index % 2 === 1 ? 'oklch(0.120 0.020 250 / 0.3)' : undefined,
+              }}
+            >
+              {tableColumns.map(col => {
+                const w       = colWidths[col.path] ?? defaultWidth(col.type);
+                const val     = getNestedValue(row, col.path);
+                const numeric = isNumericType(col.type);
+                const stats   = numeric
+                  ? (columnStats[col.path] ?? columnStats[col.path.split('.').pop()!])
+                  : undefined;
+                const numVal = numeric ? Number(val) : NaN;
 
-            return (
-              <td
-                key={col.path}
-                className="tbl-cell dt-heat"
-                style={{
-                  ...cellStyle,
-                  textAlign: numeric ? 'right' : 'left',
-                  fontVariantNumeric: numeric ? 'tabular-nums' : undefined,
-                }}
-              >
-                {renderCell(val, col.type, numeric)}
-              </td>
-            );
-          })}
-        </tr>
-      ))}
-    </tbody>
+                let cellStyle: React.CSSProperties = {
+                  width:         w,
+                  minWidth:      60,
+                  flexShrink:    0,
+                  padding:       '2px 6px',
+                  overflow:      'hidden',
+                  textOverflow:  'ellipsis',
+                  whiteSpace:    'nowrap',
+                  borderBottom:  '1px solid var(--color-line)',
+                  fontSize:      'var(--font-size-xs)',
+                  lineHeight:    `${ROW_HEIGHT}px`,
+                };
+                if (numeric && stats && !isNaN(numVal)) {
+                  cellStyle = { ...cellStyle, ...heatmapStyle(numVal, stats.min, stats.max) };
+                }
+
+                return (
+                  <div
+                    key={col.path}
+                    className="dt-heat"
+                    style={{
+                      ...cellStyle,
+                      textAlign:          numeric ? 'right' : 'left',
+                      fontVariantNumeric: numeric ? 'tabular-nums' : undefined,
+                    }}
+                  >
+                    {renderCell(val, col.type, numeric)}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 });
 
