@@ -38,14 +38,75 @@ export type ParquetStatus =
   | 'failed'        // server conversion failed after retries
   | 'error';
 
+/** Discriminated union — no SQL strings cross this boundary. */
+export type FilterOp =
+  | { type: 'between'; low: number; high: number }
+  | { type: 'in';      values: string[] }
+  | { type: 'ilike';   pattern: string };
+
 export interface FilterSpec {
   column: string;
-  expr: string;  // SQL expression fragment, e.g. "BETWEEN 0 AND 100"
+  op: FilterOp;
 }
 
 export interface SortSpec {
   column: string;
   direction: 'asc' | 'desc';
+}
+
+// ── Parameterized query compiler ─────────────────────────
+
+const PARQUET_SRC = `read_parquet('preview.parquet')`;
+
+interface CompiledQuery {
+  sql:    string;
+  params: unknown[];
+}
+
+/**
+ * Compile typed filters into a parameterized WHERE clause.
+ * Column references (from the Parquet schema) are quoted identifiers.
+ * User values are $1, $2, ... parameters — never interpolated into SQL.
+ */
+function compileWhere(filters: FilterSpec[], startIdx = 1): { clause: string; params: unknown[]; nextIdx: number } {
+  if (filters.length === 0) return { clause: '', params: [], nextIdx: startIdx };
+
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  let idx = startIdx;
+
+  for (const f of filters) {
+    const col = colToSql(f.column);
+    switch (f.op.type) {
+      case 'between':
+        conditions.push(`${col} BETWEEN $${idx} AND $${idx + 1}`);
+        params.push(f.op.low, f.op.high);
+        idx += 2;
+        break;
+      case 'in': {
+        const placeholders = f.op.values.map((_, i) => `$${idx + i}`).join(', ');
+        conditions.push(`${col}::VARCHAR IN (${placeholders})`);
+        params.push(...f.op.values);
+        idx += f.op.values.length;
+        break;
+      }
+      case 'ilike':
+        conditions.push(`${col}::VARCHAR ILIKE $${idx}`);
+        params.push(`%${f.op.pattern}%`);
+        idx += 1;
+        break;
+    }
+  }
+
+  return { clause: `WHERE ${conditions.join(' AND ')}`, params, nextIdx: idx };
+}
+
+/** Execute a parameterized query via conn.prepare(). */
+async function execQuery(conn: duckdb.AsyncDuckDBConnection, { sql, params }: CompiledQuery) {
+  if (params.length === 0) return conn.query(sql);
+  const stmt = await conn.prepare(sql);
+  try { return await stmt.query(...params); }
+  finally { await stmt.close(); }
 }
 
 // ── Numeric type detection ────────────────────────────────
@@ -321,20 +382,6 @@ export function useParquetPreview(fileId: string) {
     };
   }, [fileId]);
 
-  // ── Build WHERE clause from filters ─────────────────────
-
-  const buildWhere = useCallback((filters: FilterSpec[]): string => {
-    if (filters.length === 0) return '';
-    const conditions = filters.map(f => {
-      const dot = f.column.indexOf('.');
-      const quoted = dot >= 0
-        ? `"${f.column.slice(0, dot)}".${f.column.slice(dot + 1)}`
-        : `"${f.column}"`;
-      return `(${quoted} ${f.expr})`;
-    });
-    return `WHERE ${conditions.join(' AND ')}`;
-  }, []);
-
   // ── Fetch a window of rows ──────────────────────────────
 
   const fetchWindow = useCallback(async (
@@ -356,14 +403,15 @@ export function useParquetPreview(fileId: string) {
     if (allCached && cached.length === limit) return cached;
 
     const { conn } = await ensureDb();
-    const where = buildWhere(filtersRef.current);
+    const { clause, params, nextIdx } = compileWhere(filtersRef.current);
     const orderBy = sortRef.current
       ? `ORDER BY ${colToSql(sortRef.current.column)} ${sortRef.current.direction.toUpperCase()}`
       : '';
 
-    const result = await conn.query(
-      `SELECT ${selectListRef.current} FROM read_parquet('preview.parquet') ${where} ${orderBy} LIMIT ${limit} OFFSET ${offset}`
-    );
+    const result = await execQuery(conn, {
+      sql: `SELECT ${selectListRef.current} FROM ${PARQUET_SRC} ${clause} ${orderBy} LIMIT $${nextIdx} OFFSET $${nextIdx + 1}`,
+      params: [...params, limit, offset],
+    });
 
     const rows = result.toArray().map(
       (r: unknown) => coerceBigInts(r) as Record<string, unknown>
@@ -375,7 +423,7 @@ export function useParquetPreview(fileId: string) {
     }
 
     return rows;
-  }, [buildWhere]);
+  }, []);
 
   // ── Apply filters ───────────────────────────────────────
 
@@ -394,9 +442,9 @@ export function useParquetPreview(fileId: string) {
       setCacheGen(g => g + 1);
 
       const { conn } = await ensureDb();
-      const where = buildWhere(filters);
+      const { clause, params } = compileWhere(filters);
 
-      // Count + constrained stats in parallel
+      // Count + constrained stats in parallel (same WHERE params for both)
       const numericCols = columns.filter(c => isNumericType(c.type));
       const conParts = filters.length > 0 && numericCols.length > 0
         ? numericCols.flatMap(c => [
@@ -406,9 +454,15 @@ export function useParquetPreview(fileId: string) {
         : null;
 
       const [countRes, conRes] = await Promise.all([
-        conn.query(`SELECT COUNT(*)::INTEGER AS n FROM read_parquet('preview.parquet') ${where}`),
+        execQuery(conn, {
+          sql: `SELECT COUNT(*)::INTEGER AS n FROM ${PARQUET_SRC} ${clause}`,
+          params,
+        }),
         conParts
-          ? conn.query(`SELECT ${conParts.join(', ')} FROM read_parquet('preview.parquet') ${where}`)
+          ? execQuery(conn, {
+              sql: `SELECT ${conParts.join(', ')} FROM ${PARQUET_SRC} ${clause}`,
+              params,
+            })
           : Promise.resolve(null),
       ]);
 
@@ -432,7 +486,7 @@ export function useParquetPreview(fileId: string) {
     } finally {
       setIsQuerying(false);
     }
-  }, [columns, buildWhere]);
+  }, [columns]);
 
   return {
     status,

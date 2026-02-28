@@ -11,7 +11,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import * as Popover from '@radix-ui/react-popover';
 import { Text, Badge } from '../ui';
 import { useParquetPreview, isNumericType, DROPDOWN_MAX } from '../hooks/useParquetPreview';
-import type { ColumnInfo, ColumnStats, ColumnCardinality, FilterSpec, SortSpec } from '../hooks/useParquetPreview';
+import type { ColumnInfo, ColumnStats, ColumnCardinality, FilterSpec, FilterOp, SortSpec } from '../hooks/useParquetPreview';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -620,21 +620,19 @@ export default function ParquetPreview({ fileId }: { fileId: string }) {
       const stats = columnStats[name];
       if (!stats) continue;
       if (lo <= stats.min && hi >= stats.max) continue;
-      filters.push({ column: name, expr: `BETWEEN ${lo} AND ${hi}` });
+      filters.push({ column: name, op: { type: 'between', low: lo, high: hi } });
     }
 
-    // Multi-select filters — expr must NOT include the column reference
-    // because buildWhere() already prepends it
+    // Multi-select filters
     for (const [name, set] of Object.entries(selected)) {
       if (set.size === 0) continue;
-      const values = [...set].map(v => `'${v.replace(/'/g, "''")}'`).join(', ');
-      filters.push({ column: name, expr: `IN (${values})` });
+      filters.push({ column: name, op: { type: 'in', values: [...set] } });
     }
 
-    // Text filters (ILIKE)
+    // Text filters
     for (const [name, text] of Object.entries(textFilters)) {
       if (!text.trim()) continue;
-      filters.push({ column: name, expr: `ILIKE '%${text.replace(/'/g, "''")}%'` });
+      filters.push({ column: name, op: { type: 'ilike', pattern: text.trim() } });
     }
 
     // Reset scroll to top — the filtered dataset starts at row 0
