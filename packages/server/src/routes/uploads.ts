@@ -7,9 +7,9 @@ import {
   BUCKET,
 } from '../lib/s3.js';
 import * as edges from '../lib/edge_service.js';
-import { detectFormat } from '@genome-hub/shared';
+import { detectFormat, isConvertible } from '@genome-hub/shared';
 import { asyncWrap } from '../lib/async_wrap.js';
-import { convertJsonToParquet } from '../lib/parquet.js';
+import { convertToParquet } from '../lib/parquet.js';
 
 const router = Router();
 
@@ -102,11 +102,11 @@ router.post('/complete', asyncWrap(async (req, res) => {
 
   // Fire-and-forget: convert JSON to Parquet sidecar
   const file = await repo.findOneBy({ id: fileId });
-  if (file && file.filename.toLowerCase().endsWith('.json')) {
+  if (file && isConvertible(file.filename)) {
     const parquetKey = file.s3Key + '.parquet';
     await repo.update(fileId, { parquetStatus: 'converting' });
 
-    convertJsonToParquet(BUCKET, file.s3Key, parquetKey, Number(actualSize), fileId)
+    convertToParquet(BUCKET, file.s3Key, parquetKey, detectFormat(file.filename), Number(actualSize), fileId)
       .then(() => repo.update(fileId, { parquetS3Key: parquetKey, parquetStatus: 'ready' }))
       .catch(async (err) => {
         console.error(JSON.stringify({
