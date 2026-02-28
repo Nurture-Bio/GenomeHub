@@ -131,9 +131,11 @@ export function useParquetPreview(fileId: string) {
 
         setStatus('loading');
 
-        // Register the Parquet file for HTTP range requests
+        // Register the Parquet file for HTTP range requests.
+        // Always drop first — presigned URLs rotate and React can re-run effects.
         if (_registeredParquetUrl !== parquetUrl) {
           try {
+            try { await db.dropFile('preview.parquet'); } catch { /* not registered — fine */ }
             await db.registerFileURL(
               'preview.parquet',
               parquetUrl,

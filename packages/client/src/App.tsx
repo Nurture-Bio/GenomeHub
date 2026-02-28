@@ -16,6 +16,7 @@ import CollectionsPage      from './pages/CollectionsPage';
 import CollectionDetailPage from './pages/CollectionDetailPage';
 import FileDetailPage       from './pages/FileDetailPage';
 import SettingsPage         from './pages/SettingsPage';
+import ErrorsPage           from './pages/ErrorsPage';
 
 import { lazy, Suspense } from 'react';
 import PageErrorBoundary    from './components/PageErrorBoundary';
@@ -78,6 +79,14 @@ const icons: Record<string, ReactNode> = {
       <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
     </svg>
   ),
+  errors: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+      <line x1="12" y1="9" x2="12" y2="13" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+  ),
   dev: (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
       strokeWidth="2" strokeLinecap="round">
@@ -100,6 +109,7 @@ const NAV_ITEMS: { to: string; label: string; icon: string; end?: boolean }[] = 
   { to: '/files',        label: 'Files',        icon: 'files' },
   { to: '/upload',       label: 'Upload',       icon: 'upload' },
   { to: '/settings',     label: 'Settings',     icon: 'settings' },
+  { to: '/errors',       label: 'Errors',       icon: 'errors' },
   { to: '/dev/table',    label: 'Dev Table',    icon: 'dev' },
   { to: '/dev/json',     label: 'Dev JSON',     icon: 'dev' },
 ];
@@ -293,6 +303,7 @@ export default function App() {
           <Route path="/files/:fileId" element={<PageErrorBoundary><FileDetailPage /></PageErrorBoundary>} />
           <Route path="/upload" element={<PageErrorBoundary><UploadPage /></PageErrorBoundary>} />
           <Route path="/settings" element={<PageErrorBoundary><SettingsPage /></PageErrorBoundary>} />
+          <Route path="/errors" element={<PageErrorBoundary><ErrorsPage /></PageErrorBoundary>} />
           <Route path="/collections/:collectionId" element={<PageErrorBoundary><CollectionDetailPage /></PageErrorBoundary>} />
           <Route path="/dev/table" element={<PageErrorBoundary><Suspense fallback={null}><DevTablePage /></Suspense></PageErrorBoundary>} />
           <Route path="/dev/range" element={<PageErrorBoundary><Suspense fallback={null}><DevRangePage /></Suspense></PageErrorBoundary>} />

@@ -10,6 +10,7 @@ const ROUTE_LABELS: Record<string, string> = {
   files: 'Files',
   upload: 'Upload',
   settings: 'Settings',
+  errors: 'Errors',
 };
 
 export default function Breadcrumbs() {

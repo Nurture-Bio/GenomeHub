@@ -30,6 +30,28 @@ async function getCfPrivateKey(): Promise<string> {
 
 const router = Router();
 
+// ─── Pipeline errors ────────────────────────────────────────
+
+router.get('/errors', asyncWrap(async (_req, res) => {
+  const repo = AppDataSource.getRepository(GenomicFile);
+  const files = await repo.createQueryBuilder('f')
+    .where('f.parquet_status = :status', { status: 'failed' })
+    .orderBy('f.updated_at', 'DESC')
+    .getMany();
+
+  res.json(files.map(f => ({
+    id:            f.id,
+    filename:      f.filename,
+    sizeBytes:     Number(f.sizeBytes),
+    format:        f.format,
+    status:        f.status,
+    parquetStatus: f.parquetStatus,
+    parquetError:  f.parquetError,
+    uploadedAt:    f.uploadedAt,
+    updatedAt:     f.updatedAt,
+  })));
+}));
+
 // ─── List files ─────────────────────────────────────────────
 
 router.get('/', asyncWrap(async (req, res) => {

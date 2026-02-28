@@ -5,6 +5,7 @@ export const queryKeys = {
       ['files', 'list', filters] as const,
     detail: (id: string) => ['files', 'detail', id] as const,
     preview: (id: string) => ['files', 'preview', id] as const,
+    errors: () => ['files', 'errors'] as const,
   },
   collections: {
     all: ['collections'] as const,

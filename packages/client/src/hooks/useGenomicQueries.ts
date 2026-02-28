@@ -1141,3 +1141,24 @@ export function useRunMethodMutation() {
   });
   return { runMethod: mutation.mutateAsync, pending: mutation.isPending };
 }
+
+// ─── Pipeline errors ───────────────────────────────────────
+
+export interface PipelineError {
+  id:            string;
+  filename:      string;
+  sizeBytes:     number;
+  format:        string;
+  status:        string;
+  parquetStatus: string;
+  parquetError:  string | null;
+  uploadedAt:    string;
+  updatedAt:     string;
+}
+
+export function usePipelineErrors() {
+  return useQuery({
+    queryKey: queryKeys.files.errors(),
+    queryFn: () => fetchApi<PipelineError[]>('/api/files/errors'),
+  });
+}
