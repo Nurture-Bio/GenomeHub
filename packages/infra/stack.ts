@@ -10,6 +10,8 @@
  * @module
  */
 
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import * as cdk     from 'aws-cdk-lib';
 import * as ec2     from 'aws-cdk-lib/aws-ec2';
 import * as ecs     from 'aws-cdk-lib/aws-ecs';
@@ -22,6 +24,11 @@ import * as logs    from 'aws-cdk-lib/aws-logs';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import { Construct } from 'constructs';
+
+// Absolute paths — never depend on CWD
+const __dirname  = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT  = path.resolve(__dirname, '../..');
+const SEQCHAIN   = path.resolve(REPO_ROOT, '../SeqChain');
 
 export class GenomeHubStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -148,7 +155,7 @@ export class GenomeHubStack extends cdk.Stack {
 
     // GenomeHub container — Express API + React client
     const appContainer = taskDef.addContainer('genomehub', {
-      image: ecs.ContainerImage.fromAsset('../..', {
+      image: ecs.ContainerImage.fromAsset(REPO_ROOT, {
         exclude: ['**/cdk.out'],
         buildArgs: {
           VITE_GOOGLE_CLIENT_ID: '631098657995-b6gm7u609caa7si5h8ep3tj1cf8m9in2.apps.googleusercontent.com',
@@ -183,7 +190,7 @@ export class GenomeHubStack extends cdk.Stack {
     taskDef.addContainer('seqchain', {
       // To use a pre-built image from ECR instead:
       //   image: ecs.ContainerImage.fromEcrRepository(repo, 'latest'),
-      image: ecs.ContainerImage.fromAsset('../../../SeqChain', {
+      image: ecs.ContainerImage.fromAsset(SEQCHAIN, {
         file: 'Dockerfile.api',
       }),
       portMappings: [{ containerPort: 8001 }],

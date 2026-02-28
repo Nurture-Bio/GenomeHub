@@ -133,6 +133,7 @@ export function useParquetPreview(fileId: string) {
   const [columnCardinality, setColumnCardinality] = useState<Record<string, ColumnCardinality>>({});
   const [error,             setError]             = useState<string | null>(null);
   const [isQuerying,        setIsQuerying]        = useState(false);
+  const [cacheGen,          setCacheGen]          = useState(0);
 
   // Row cache: offset → row data
   const rowCache = useRef<Map<number, Record<string, unknown>>>(new Map());
@@ -390,6 +391,7 @@ export function useParquetPreview(fileId: string) {
       filtersRef.current = filters;
       sortRef.current = sort;
       rowCache.current.clear();
+      setCacheGen(g => g + 1);
 
       const { conn } = await ensureDb();
       const where = buildWhere(filters);
@@ -443,5 +445,6 @@ export function useParquetPreview(fileId: string) {
     fetchWindow,
     applyFilters,
     isQuerying,
+    cacheGen,
   };
 }

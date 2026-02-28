@@ -565,7 +565,7 @@ export default function ParquetPreview({ fileId }: { fileId: string }) {
   const {
     status, columns, totalRows, filteredCount,
     columnStats, columnCardinality, error,
-    fetchWindow, applyFilters, isQuerying,
+    fetchWindow, applyFilters, isQuerying, cacheGen,
   } = useParquetPreview(fileId);
 
   const scrollRef   = useRef<HTMLDivElement>(null);
@@ -636,6 +636,9 @@ export default function ParquetPreview({ fileId }: { fileId: string }) {
       if (!text.trim()) continue;
       filters.push({ column: name, expr: `ILIKE '%${text.replace(/'/g, "''")}%'` });
     }
+
+    // Reset scroll to top — the filtered dataset starts at row 0
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
 
     setPendingConstraints(true);
     applyFilters(filters, sort).then(result => {
@@ -926,6 +929,7 @@ export default function ParquetPreview({ fileId }: { fileId: string }) {
 
             {filteredCount > 0 && (
               <VirtualRows
+                key={cacheGen}
                 scrollRef={scrollRef}
                 rowCount={filteredCount}
                 fetchWindow={fetchWindow}
