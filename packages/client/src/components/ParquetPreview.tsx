@@ -18,9 +18,8 @@ import type { ColumnInfo, ColumnStats, ColumnCardinality, FilterSpec, SortSpec }
 const ROW_H       = 28;
 const PANEL_H     = 560;
 const PX_PER_CHAR = 7.5;
-const MIN_COL_W       = 50;
-const MAX_COL_W       = 300;
-const MAX_COL_W_WIDE  = 480;
+const MIN_COL_W   = 50;
+const MAX_COL_W   = 300;
 const COL_PADDING = 20;
 const WINDOW_SIZE = 200;  // rows per fetch window
 
@@ -39,12 +38,8 @@ function fmt(value: unknown, type: string): string {
     if (a >= 10_000)    return (n / 1_000).toFixed(1) + 'K';
     return n.toLocaleString();
   }
-  if (typeof value === 'object') {
-    const s = JSON.stringify(value);
-    return s.length > 80 ? s.slice(0, 78) + '…' : s;
-  }
-  const s = String(value);
-  return s.length > 48 ? s.slice(0, 46) + '…' : s;
+  const s = typeof value === 'object' ? JSON.stringify(value) : String(value);
+  return s.length > 32 ? s.slice(0, 30) + '…' : s;
 }
 
 function heatStyle(v: number, min: number, max: number): CSSProperties {
@@ -53,18 +48,11 @@ function heatStyle(v: number, min: number, max: number): CSSProperties {
   return { background: `oklch(0.750 0.180 195 / ${(t * 0.14).toFixed(3)})` };
 }
 
-function isStructType(type: string): boolean {
-  const base = type.replace(/\(.+\)/, '').trim().toUpperCase();
-  return base === 'STRUCT' || base === 'JSON' || base === 'MAP' || base === 'LIST';
-}
-
 function colW(type: string): number {
-  if (isStructType(type)) return MAX_COL_W_WIDE;
   return isNumericType(type) ? 92 : 140;
 }
 
 function colWFromName(name: string, type: string): number {
-  if (isStructType(type)) return MAX_COL_W_WIDE;
   const chars = Math.max(8, name.length);
   const px    = Math.round(chars * PX_PER_CHAR) + COL_PADDING;
   return Math.min(MAX_COL_W, Math.max(MIN_COL_W, px));

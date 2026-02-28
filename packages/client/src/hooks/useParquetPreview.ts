@@ -64,6 +64,60 @@ export function isNumericType(type: string): boolean {
 /** Columns with ≤ DROPDOWN_MAX distinct values get a dropdown selector */
 export const DROPDOWN_MAX = 50;
 
+// ── STRUCT expansion ──────────────────────────────────────
+
+function parseStructFields(structType: string): { name: string; type: string }[] {
+  const inner = structType.match(/^STRUCT\((.+)\)$/s)?.[1];
+  if (!inner) return [];
+  const fields: { name: string; type: string }[] = [];
+  let depth = 0, start = 0;
+  for (let i = 0; i < inner.length; i++) {
+    if (inner[i] === '(') depth++;
+    else if (inner[i] === ')') depth--;
+    else if (inner[i] === ',' && depth === 0) {
+      fields.push(parseField(inner.slice(start, i).trim()));
+      start = i + 1;
+    }
+  }
+  fields.push(parseField(inner.slice(start).trim()));
+  return fields;
+}
+
+function parseField(s: string): { name: string; type: string } {
+  const m = s.match(/^"?(\w+)"?\s+(.+)$/);
+  return m ? { name: m[1], type: m[2] } : { name: s, type: 'VARCHAR' };
+}
+
+/** Expand STRUCT columns into flat dot-notation columns. */
+function expandColumns(rawCols: ColumnInfo[]): {
+  flatColumns: ColumnInfo[];
+  selectExprs: string[];
+} {
+  const flatColumns: ColumnInfo[] = [];
+  const selectExprs: string[] = [];
+
+  for (const c of rawCols) {
+    if (c.type.startsWith('STRUCT(')) {
+      for (const f of parseStructFields(c.type)) {
+        const flatName = `${c.name}.${f.name}`;
+        flatColumns.push({ name: flatName, type: f.type });
+        selectExprs.push(`"${c.name}"."${f.name}" AS "${flatName}"`);
+      }
+    } else {
+      flatColumns.push(c);
+      selectExprs.push(`"${c.name}"`);
+    }
+  }
+
+  return { flatColumns, selectExprs };
+}
+
+/** Convert a flat column name (possibly dot-notation) to SQL expression. */
+function colToSql(name: string): string {
+  const dot = name.indexOf('.');
+  return dot >= 0 ? `"${name.slice(0, dot)}"."${name.slice(dot + 1)}"` : `"${name}"`;
+}
+
 // ── File registration tracking ────────────────────────────
 
 let _registeredParquetUrl: string | null = null;
@@ -84,6 +138,7 @@ export function useParquetPreview(fileId: string) {
   const rowCache = useRef<Map<number, Record<string, unknown>>>(new Map());
   const filtersRef = useRef<FilterSpec[]>([]);
   const sortRef = useRef<SortSpec | null>(null);
+  const selectListRef = useRef<string>('*');
 
   // ── Poll for Parquet URL, then init DuckDB ─────────────
 
@@ -159,10 +214,14 @@ export function useParquetPreview(fileId: string) {
           _registeredParquetUrl = null;
           throw new Error(`Failed to read dataset metadata: ${footerErr instanceof Error ? footerErr.message : String(footerErr)}`);
         }
-        const cols: ColumnInfo[] = desc.toArray().map((r: unknown) => {
+        const rawCols: ColumnInfo[] = desc.toArray().map((r: unknown) => {
           const row = r as Record<string, unknown>;
           return { name: String(row.column_name), type: String(row.column_type) };
         });
+
+        // Expand STRUCT columns into flat dot-notation columns
+        const { flatColumns: cols, selectExprs } = expandColumns(rawCols);
+        selectListRef.current = selectExprs.join(', ');
 
         if (cancelled) return;
 
@@ -180,8 +239,8 @@ export function useParquetPreview(fileId: string) {
 
         if (numericCols.length > 0) {
           const selectParts = numericCols.flatMap(c => [
-            `MIN("${c.name}")::DOUBLE AS "${c.name}_min"`,
-            `MAX("${c.name}")::DOUBLE AS "${c.name}_max"`,
+            `MIN(${colToSql(c.name)})::DOUBLE AS "${c.name}_min"`,
+            `MAX(${colToSql(c.name)})::DOUBLE AS "${c.name}_max"`,
           ]);
           const statsResult = await conn.query(
             `SELECT ${selectParts.join(', ')} FROM read_parquet('preview.parquet')`
@@ -201,25 +260,8 @@ export function useParquetPreview(fileId: string) {
         const cardTargets: { path: string; sqlExpr: string }[] = [];
 
         for (const c of cols) {
-          if (c.type.startsWith('STRUCT(')) {
-            const inner = c.type.match(/^STRUCT\((.+)\)$/s)?.[1];
-            if (!inner) continue;
-            const parts: string[] = [];
-            let depth = 0, start = 0;
-            for (let i = 0; i < inner.length; i++) {
-              if (inner[i] === '(') depth++;
-              else if (inner[i] === ')') depth--;
-              else if (inner[i] === ',' && depth === 0) { parts.push(inner.slice(start, i).trim()); start = i + 1; }
-            }
-            parts.push(inner.slice(start).trim());
-            for (const part of parts) {
-              const m = part.match(/^"?(\w+)"?\s+(.+)$/);
-              if (m && !isNumericType(m[2])) {
-                cardTargets.push({ path: `${c.name}.${m[1]}`, sqlExpr: `"${c.name}".${m[1]}` });
-              }
-            }
-          } else if (!isNumericType(c.type)) {
-            cardTargets.push({ path: c.name, sqlExpr: `"${c.name}"` });
+          if (!isNumericType(c.type)) {
+            cardTargets.push({ path: c.name, sqlExpr: colToSql(c.name) });
           }
         }
 
@@ -315,11 +357,11 @@ export function useParquetPreview(fileId: string) {
     const { conn } = await ensureDb();
     const where = buildWhere(filtersRef.current);
     const orderBy = sortRef.current
-      ? `ORDER BY "${sortRef.current.column}" ${sortRef.current.direction.toUpperCase()}`
+      ? `ORDER BY ${colToSql(sortRef.current.column)} ${sortRef.current.direction.toUpperCase()}`
       : '';
 
     const result = await conn.query(
-      `SELECT * FROM read_parquet('preview.parquet') ${where} ${orderBy} LIMIT ${limit} OFFSET ${offset}`
+      `SELECT ${selectListRef.current} FROM read_parquet('preview.parquet') ${where} ${orderBy} LIMIT ${limit} OFFSET ${offset}`
     );
 
     const rows = result.toArray().map(
@@ -356,8 +398,8 @@ export function useParquetPreview(fileId: string) {
       const numericCols = columns.filter(c => isNumericType(c.type));
       const conParts = filters.length > 0 && numericCols.length > 0
         ? numericCols.flatMap(c => [
-            `MIN("${c.name}")::DOUBLE AS "${c.name}_min"`,
-            `MAX("${c.name}")::DOUBLE AS "${c.name}_max"`,
+            `MIN(${colToSql(c.name)})::DOUBLE AS "${c.name}_min"`,
+            `MAX(${colToSql(c.name)})::DOUBLE AS "${c.name}_max"`,
           ])
         : null;
 
