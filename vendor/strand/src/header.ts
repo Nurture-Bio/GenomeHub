@@ -108,20 +108,13 @@ function isPowerOfTwo(n: number): boolean {
  * initStrandHeader returns will see the correctly initialized header.
  *
  * Field names are NOT stored in the binary schema bytes (v5). Instead,
- * a `columns` string array is always auto-injected into the metadata region.
- * If `meta` is a plain object, it is merged: `{ columns: [...], ...meta }`.
- * Non-object meta values (strings, numbers, arrays) are silently ignored —
- * only `{ columns: [...] }` is stored.
- *
- * @param meta  Optional producer metadata. Must be a plain JSON-serializable
- *              object. Use for intern tables, query context, or any
- *              producer-side information. Retrieved by readStrandHeader() as
- *              StrandMap.meta (with `columns` stripped — it is consumed
- *              internally to reconstruct named FieldDescriptors).
+ * a `columns` string array is always auto-injected into the metadata region
+ * so that readStrandHeader() can reconstruct named FieldDescriptors without
+ * them being encoded in the compact binary schema bytes.
  *
  * Call this exactly once, before sharing the SAB with any Worker.
  */
-export function initStrandHeader(sab: SharedArrayBuffer, map: StrandMap, meta?: unknown): void {
+export function initStrandHeader(sab: SharedArrayBuffer, map: StrandMap): void {
 
   // ── Pre-flight: endianness ─────────────────────────────────────────────────
   //
@@ -194,16 +187,11 @@ export function initStrandHeader(sab: SharedArrayBuffer, map: StrandMap, meta?: 
     );
   }
 
-  // Build effective metadata: always inject `columns` from schema field names.
-  // Merge with caller meta if it is a plain object; ignore non-object meta.
-  const columns = map.schema.fields.map(f => f.name);
-  let effectiveMeta: Record<string, unknown> = { columns };
-  if (
-    meta !== undefined && meta !== null &&
-    typeof meta === 'object' && !Array.isArray(meta)
-  ) {
-    effectiveMeta = { columns, ...(meta as Record<string, unknown>) };
-  }
+  // Metadata: always inject `columns` from schema field names so that
+  // readStrandHeader() can reconstruct named FieldDescriptors. This is the
+  // only metadata written — no user-supplied data is accepted.
+  const columns     = map.schema.fields.map(f => f.name);
+  const effectiveMeta = { columns };
 
   const metaEncoder = new TextEncoder();
   const metaBytes   = metaEncoder.encode(JSON.stringify(effectiveMeta));
@@ -458,20 +446,8 @@ export function readStrandHeader(sab: SharedArrayBuffer): StrandMap {
   }
 
   // ── Reconstruct StrandMap ──────────────────────────────────────────────────
-  //
-  // Strip `columns` from user-visible meta — it is an internal transport key
-  // for schema reconstruction, not producer-supplied data. If the remaining
-  // object is empty, meta is absent.
 
-  let meta: unknown;
-  if (parsedMeta !== null) {
-    const { columns: _cols, ...rest } = parsedMeta;
-    if (Object.keys(rest).length > 0) {
-      meta = rest;
-    }
-  }
-
-  const strandMap: StrandMap = {
+  return {
     schema_fingerprint,
     record_stride,
     index_capacity,
@@ -482,10 +458,6 @@ export function readStrandHeader(sab: SharedArrayBuffer): StrandMap {
     estimated_records: 0,
     schema,
   };
-  if (meta !== undefined) {
-    return { ...strandMap, meta };
-  }
-  return strandMap;
 }
 
 // ─── computeStrandMap ─────────────────────────────────────────────────────────

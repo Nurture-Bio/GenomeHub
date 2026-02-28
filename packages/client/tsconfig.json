@@ -10,7 +10,8 @@
     "moduleDetection":     "force",
     "noEmit":              true,
     "paths": {
-      "@strand/core": ["../../vendor/strand/src/index.ts"]
+      "@strand/core":      ["../../vendor/strand/src/index.ts"],
+      "@strand/inference": ["../../packages/strand/src/inference.ts"]
     }
   },
   "include": ["src"]

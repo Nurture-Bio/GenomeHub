@@ -43,6 +43,8 @@ import {
   type FilterPredicate,
   type ConstrainedRanges,
 } from '@strand/core';
+import { inferFields } from '@strand/inference';
+import type { FieldDef as InferredFieldDef } from '@strand/inference';
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -53,15 +55,11 @@ import {
  *   - a dot-notation string: 'chrom', 'tags.off_targets', 'metadata.source'
  *   - a string array describing the explicit key path: ['tags', 'off_targets']
  *     (useful when keys contain dots or are dynamically constructed)
+ *
+ * Re-exported from @strand/inference for backwards compatibility with
+ * consumers (useJsonStrand, DevJsonPage) that import FieldDef from here.
  */
-export interface FieldDef {
-  /** Field name — used as the WritableRecord key and in buildSchema. */
-  name: string;
-  /** Strand field type. Drives stat collection and value mapping in Phase 2. */
-  type: FieldType;
-  /** How to extract this field's value from each raw JSON record. */
-  jsonPath: string | string[];
-}
+export type { FieldDef } from '@strand/inference';
 
 export interface StatsPayload {
   type:        'stats';
@@ -80,10 +78,32 @@ export interface StatsPayload {
 
 // ── Message types ─────────────────────────────────────────────────────────────
 
+/**
+ * Phase 0 (optional): auto-infer schema from the first N records.
+ *
+ * The worker fetches the JSON, runs inferFields() on the first N records,
+ * caches the parsed array in _records (so Phase 1 scan skips the re-fetch),
+ * and posts back { type: 'schema', fields: FieldDef[] }.
+ *
+ * The main thread then sends a scan message with those fields to proceed.
+ */
+interface InferMessage {
+  type:       'infer';
+  url:        string;
+  /** Override the default sample size passed to inferFields(). Default: 500. */
+  sampleSize?: number;
+}
+
+/** Posted in response to an InferMessage. */
+export interface SchemaPayload {
+  type:   'schema';
+  fields: InferredFieldDef[];
+}
+
 interface ScanMessage {
   type:   'scan';
   url:    string;
-  fields: FieldDef[];
+  fields: InferredFieldDef[];
 }
 
 interface StreamMessage {
@@ -114,16 +134,20 @@ interface GetConstraintsMessage {
 // Phase 1→2 state: parsed records and field definitions.
 // Phase 2→3 state: SAB reference and intern table kept for constraint queries.
 
-let _records:    unknown[]          | null = null;
-let _fields:     FieldDef[]         | null = null;
+let _records:    unknown[]              | null = null;
+let _fields:     InferredFieldDef[]    | null = null;
 let _sab:        SharedArrayBuffer  | null = null;
 let _internTable: string[]          | null = null;
 
 // ── Worker message handler ────────────────────────────────────────────────────
 
-self.onmessage = (e: MessageEvent<ScanMessage | StreamMessage | GetConstraintsMessage>) => {
+self.onmessage = (
+  e: MessageEvent<InferMessage | ScanMessage | StreamMessage | GetConstraintsMessage>,
+) => {
   const msg = e.data;
-  if (msg.type === 'scan') {
+  if (msg.type === 'infer') {
+    void handleInfer(msg.url, msg.sampleSize);
+  } else if (msg.type === 'scan') {
     void handleScan(msg.url, msg.fields);
   } else if (msg.type === 'stream') {
     handleStream(msg.sab, msg.internTable, msg.batchSize);
@@ -178,16 +202,51 @@ function resolve(obj: unknown, jsonPath: string | string[]): unknown {
 
 const NUMERIC_TYPES = new Set<FieldType>(['i32', 'u32', 'f32', 'f64', 'u8', 'u16']);
 
-// ── Phase 1: fetch, parse, scan ───────────────────────────────────────────────
+// ── Phase 0: schema inference ─────────────────────────────────────────────────
 
-async function handleScan(url: string, fields: FieldDef[]): Promise<void> {
+/**
+ * Fetch the JSON array, run inferFields() on the first sampleSize records,
+ * cache the parsed array so Phase 1 (scan) can reuse it without re-fetching,
+ * and post { type: 'schema', fields }.
+ *
+ * Failure posts { type: 'error', message }.
+ */
+async function handleInfer(url: string, sampleSize = 500): Promise<void> {
   try {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Fetch failed: ${res.status} ${res.statusText}`);
 
-    // JSON.parse runs off the main thread — no GC pressure on the UI.
-    _records = await res.json() as unknown[];
-    _fields  = fields;
+    const parsed = await res.json() as unknown;
+    if (!Array.isArray(parsed)) {
+      throw new Error('Expected a JSON array at the top level.');
+    }
+
+    // Cache for Phase 1 — avoids a second HTTP round-trip.
+    _records = parsed;
+
+    const fields = inferFields(parsed, { sampleSize });
+    const payload: SchemaPayload = { type: 'schema', fields };
+    self.postMessage(payload);
+
+  } catch (err) {
+    self.postMessage({ type: 'error', message: String(err) });
+  }
+}
+
+// ── Phase 1: fetch, parse, scan ───────────────────────────────────────────────
+
+async function handleScan(url: string, fields: InferredFieldDef[]): Promise<void> {
+  try {
+    // If Phase 0 (handleInfer) already fetched and cached _records, skip the
+    // HTTP round-trip. Otherwise fetch now (direct scan without prior infer).
+    if (!_records) {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Fetch failed: ${res.status} ${res.statusText}`);
+      // JSON.parse runs off the main thread — no GC pressure on the UI.
+      _records = await res.json() as unknown[];
+    }
+
+    _fields = fields;
 
     if (!Array.isArray(_records)) {
       throw new Error('Expected a JSON array at the top level.');

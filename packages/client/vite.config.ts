@@ -8,7 +8,8 @@ export default defineConfig({
   plugins: [react(), tailwind()],
   resolve: {
     alias: {
-      '@strand/core': path.resolve(__dirname, '../..', 'vendor/strand/src/index.ts'),
+      '@strand/core':      path.resolve(__dirname, '../..', 'vendor/strand/src/index.ts'),
+      '@strand/inference': path.resolve(__dirname, '../..', 'packages/strand/src/inference.ts'),
     },
   },
   worker: {

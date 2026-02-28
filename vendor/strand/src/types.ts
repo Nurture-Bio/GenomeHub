@@ -155,21 +155,6 @@ export interface StrandMap {
   readonly estimated_records: number;
 
   readonly schema: BinarySchemaDescriptor;
-
-  /**
-   * Optional producer metadata stored in the header tail region (v5+).
-   *
-   * `initStrandHeader()` always writes a `columns: string[]` key to carry
-   * field names through the header (binary schema bytes no longer contain
-   * names in v5). If the caller also passes a plain `meta` object, it is
-   * merged: `{ columns: [...], ...meta }`. The `columns` key is consumed
-   * internally by `readStrandHeader()` to reconstruct named FieldDescriptors
-   * and is then stripped — only caller-supplied keys appear here.
-   *
-   * Absent when the producer did not supply metadata beyond the auto-injected
-   * columns, or when metadata was corrupt or unreadable.
-   */
-  readonly meta?: unknown;
 }
 
 // ─── Stream Status ────────────────────────────────────────────────────────────

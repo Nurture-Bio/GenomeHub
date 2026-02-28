@@ -20,11 +20,11 @@ import {
   type ConstrainedRanges,
 } from '@strand/core';
 import type { FieldType } from '@strand/core';
-import type { FieldDef, StatsPayload } from '../workers/jsonStrandWorker';
+import type { FieldDef, StatsPayload, SchemaPayload } from '../workers/jsonStrandWorker';
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
-export type JsonStrandStatus = 'init' | 'scanning' | 'streaming' | 'ready' | 'error';
+export type JsonStrandStatus = 'init' | 'inferring' | 'scanning' | 'streaming' | 'ready' | 'error';
 
 export interface UseJsonStrandResult {
   status:          JsonStrandStatus;
@@ -79,8 +79,13 @@ const NUMERIC_TYPES = new Set<FieldType>(['i32', 'u32', 'f32', 'f64', 'u8', 'u16
 
 // ── Hook ─────────────────────────────────────────────────────────────────────
 
-export function useJsonStrand(url: string, fields: FieldDef[]): UseJsonStrandResult {
-  const [status,       setStatus]     = useState<JsonStrandStatus>('init');
+export function useJsonStrand(url: string, fieldsOrAuto: FieldDef[] | 'auto'): UseJsonStrandResult {
+  const auto         = fieldsOrAuto === 'auto';
+  const staticFields = auto ? null : fieldsOrAuto;
+
+  const [status,         setStatus]       = useState<JsonStrandStatus>('init');
+  // Resolved fields: caller-supplied immediately, or inferred after Phase 0.
+  const [resolvedFields, setResolvedFields] = useState<FieldDef[]>(staticFields ?? []);
   const [totalRecords, setTotal]       = useState(0);
   const [numericStats, setNumStats]    = useState<Record<string, { min: number; max: number }>>({});
   const [cardinality,  setCard]        = useState<Record<string, string[]>>({});
@@ -91,10 +96,13 @@ export function useJsonStrand(url: string, fields: FieldDef[]): UseJsonStrandRes
   const [constrainedRanges, setConstrainedRanges] = useState<ConstrainedRanges>({});
   const [constrainedCount,  setConstrainedCount]  = useState(0);
 
-  const viewRef   = useRef<StrandView   | null>(null);
-  const cursorRef = useRef<RecordCursor | null>(null);
-  const workerRef = useRef<Worker       | null>(null);
-  const debRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const viewRef     = useRef<StrandView   | null>(null);
+  const cursorRef   = useRef<RecordCursor | null>(null);
+  const workerRef   = useRef<Worker       | null>(null);
+  const debRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Ref so the worker message closure always sees the current field list even
+  // before React has re-rendered (avoids stale-closure bugs in auto mode).
+  const fieldsRef   = useRef<FieldDef[]>(staticFields ?? []);
 
   // ── Spawn worker, run Phase 1 + Phase 2 ────────────────────────────────────
 
@@ -106,7 +114,9 @@ export function useJsonStrand(url: string, fields: FieldDef[]): UseJsonStrandRes
     }
 
     let cancelled = false;
-    setStatus('scanning');
+
+    // Reset inferred fields when url changes in auto mode.
+    if (auto) setResolvedFields([]);
 
     const worker = new Worker(
       new URL('../workers/jsonStrandWorker.ts', import.meta.url),
@@ -115,8 +125,38 @@ export function useJsonStrand(url: string, fields: FieldDef[]): UseJsonStrandRes
 
     workerRef.current = worker;
 
+    // ── Worker crash handler ─────────────────────────────────────────────────
+    // Without this, any unhandled exception inside the worker (OOM, unrecoverable
+    // error outside a try/catch) silently kills it and the UI hangs forever.
+    worker.onerror = (e: ErrorEvent) => {
+      if (!cancelled) {
+        setError(`Worker error: ${e.message ?? 'unknown'}`);
+        setStatus('error');
+      }
+    };
+
     worker.onmessage = (e: MessageEvent) => {
-      const msg = e.data as { type: string } & Record<string, unknown>;
+      // ── Outer guard ────────────────────────────────────────────────────────
+      // buildSchema / computeStrandMap / initStrandHeader / SharedArrayBuffer
+      // can all throw. Without this guard, any exception in the 'stats' block
+      // silently swallows itself — setStatus('streaming') is never called and
+      // the UI hangs at 'scanning' indefinitely.
+      let msg!: { type: string } & Record<string, unknown>;
+      try { msg = e.data as typeof msg; } catch { return; }
+
+      try {
+
+      // ── Phase 0 complete: schema inferred, kick off Phase 1 scan ──────────
+      if (msg.type === 'schema') {
+        const schema = msg as unknown as SchemaPayload;
+        if (cancelled) return;
+        // Write ref first so the stats handler sees the fields synchronously.
+        fieldsRef.current = schema.fields;
+        setResolvedFields(schema.fields);
+        setStatus('scanning');
+        worker.postMessage({ type: 'scan', url, fields: schema.fields });
+        return;
+      }
 
       if (msg.type === 'stats') {
         const stats = msg as unknown as StatsPayload;
@@ -129,7 +169,7 @@ export function useJsonStrand(url: string, fields: FieldDef[]): UseJsonStrandRes
 
         // ── Build schema with real field names (Strand v5) ───────────────────
         const schema = buildSchema(
-          fields.map(f => ({ name: f.name, type: f.type })),
+          fieldsRef.current.map(f => ({ name: f.name, type: f.type })),
         );
 
         // ── Allocate SAB — must happen on the main thread ────────────────────
@@ -142,7 +182,7 @@ export function useJsonStrand(url: string, fields: FieldDef[]): UseJsonStrandRes
         });
 
         const sab = new SharedArrayBuffer(map.total_bytes);
-        initStrandHeader(sab, map, { internTable: table });
+        initStrandHeader(sab, map);
 
         // ── Consumer side — allocate view + cursor before handing SAB over ───
         const view   = new StrandView(sab, table);
@@ -156,7 +196,7 @@ export function useJsonStrand(url: string, fields: FieldDef[]): UseJsonStrandRes
         setStatus('streaming');
 
         // ── Drain loop ───────────────────────────────────────────────────────
-        const numDefs = fields.filter(f => NUMERIC_TYPES.has(f.type));
+        const numDefs = fieldsRef.current.filter(f => NUMERIC_TYPES.has(f.type));
 
         const accStats: Record<string, { min: number; max: number }> = {};
         for (const f of numDefs) accStats[f.name] = { min: Infinity, max: -Infinity };
@@ -231,9 +271,25 @@ export function useJsonStrand(url: string, fields: FieldDef[]): UseJsonStrandRes
           setConstrainedCount(c.filteredCount);
         }
       }
+
+      } catch (err) {
+        // Surface any synchronous exception thrown while processing worker messages.
+        // This is the "catch" for the outer try added above the message handlers.
+        if (!cancelled) {
+          setError(`[strand] ${err instanceof Error ? err.message : String(err)}`);
+          setStatus('error');
+        }
+      }
     };
 
-    worker.postMessage({ type: 'scan', url, fields });
+    // Phase 0 (auto) or Phase 1 (static schema).
+    if (auto) {
+      setStatus('inferring');
+      worker.postMessage({ type: 'infer', url });
+    } else {
+      setStatus('scanning');
+      worker.postMessage({ type: 'scan', url, fields: staticFields! });
+    }
 
     return () => {
       cancelled = true;
@@ -291,7 +347,7 @@ export function useJsonStrand(url: string, fields: FieldDef[]): UseJsonStrandRes
       | { name: string; kind: 'search';  needle: string };
 
     const parsed: ParsedFilter[] = [];
-    const fieldMap = new Map(fields.map(f => [f.name, f]));
+    const fieldMap = new Map(resolvedFields.map(f => [f.name, f]));
 
     for (const [name, raw] of active) {
       const f = fieldMap.get(name);
@@ -341,7 +397,7 @@ export function useJsonStrand(url: string, fields: FieldDef[]): UseJsonStrandRes
     }
 
     return indices;
-  }, [totalRecords, debFilters, fields]);
+  }, [totalRecords, debFilters, resolvedFields]);
 
   return {
     status,
@@ -352,7 +408,7 @@ export function useJsonStrand(url: string, fields: FieldDef[]): UseJsonStrandRes
     numericStats,
     cardinality,
     internTable,
-    fields,
+    fields:          resolvedFields,
     error,
     filters,
     debFilters,
