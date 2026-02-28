@@ -288,6 +288,10 @@ export class GenomicFile {
   @Column({ name: 'parquet_status', type: 'text', nullable: true })
   parquetStatus!: string | null;
 
+  /** Error message from failed Parquet conversion (null when status != 'failed') */
+  @Column({ name: 'parquet_error', type: 'text', nullable: true })
+  parquetError!: string | null;
+
   @CreateDateColumn({ name: 'uploaded_at' })
   uploadedAt!: Date;
 

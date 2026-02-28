@@ -159,7 +159,7 @@ router.get('/:id/parquet-url', asyncWrap(async (req, res) => {
   const status = file.parquetStatus ?? (file.parquetS3Key ? 'ready' : null);
 
   if (status === 'failed') {
-    res.json({ status: 'failed' });
+    res.json({ status: 'failed', error: file.parquetError ?? 'Unknown error' });
     return;
   }
 
@@ -185,7 +185,8 @@ router.get('/:id/parquet-url', asyncWrap(async (req, res) => {
             error: err instanceof Error ? err.message : String(err),
             timestamp: new Date().toISOString(),
           }));
-          await repo.update(file.id, { parquetStatus: 'failed' });
+          const errMsg = err instanceof Error ? err.message : String(err);
+          await repo.update(file.id, { parquetStatus: 'failed', parquetError: errMsg });
         });
     }
 

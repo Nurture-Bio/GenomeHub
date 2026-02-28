@@ -15,13 +15,24 @@ interface FilePreviewProps {
 
 const LARGE_FILE_THRESHOLD = 50 * 1024 * 1024; // 50 MB
 
-// ── Dataset error state — premium error UX ──────────────────────────────────
+function formatBytes(bytes: number): string {
+  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
+  if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(0)} MB`;
+  if (bytes >= 1e3) return `${(bytes / 1e3).toFixed(0)} KB`;
+  return `${bytes} B`;
+}
 
-function DatasetErrorState() {
+// ── Dataset error state ─────────────────────────────────────────────────────
+
+function DatasetErrorState({ error, sizeBytes, fileId }: {
+  error:     string;
+  sizeBytes: number;
+  fileId:    string;
+}) {
   return (
     <div className="flex items-center justify-center rounded-md border border-line"
       style={{ background: 'var(--color-base)', minHeight: 280 }}>
-      <div className="flex flex-col items-center gap-4 px-8 py-10" style={{ maxWidth: 420, textAlign: 'center' }}>
+      <div className="flex flex-col items-center gap-4 px-8 py-10" style={{ maxWidth: 480, textAlign: 'center' }}>
         <div className="flex items-center justify-center rounded-full"
           style={{ width: 48, height: 48, background: 'oklch(0.350 0.100 30 / 0.25)' }}>
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" strokeWidth="1.5"
@@ -31,14 +42,26 @@ function DatasetErrorState() {
             <line x1="12" y1="17" x2="12.01" y2="17" />
           </svg>
         </div>
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-2">
           <span className="font-semibold" style={{ fontSize: 'var(--font-size-md)', color: 'var(--color-fg)' }}>
-            Dataset Optimization Failed
+            Dataset Preview Unavailable
           </span>
           <Text variant="dim" style={{ lineHeight: 1.5 }}>
-            This dataset encountered an error during indexing and is too large
-            for the legacy viewer. Our engineering team has been notified.
-            Please try re-uploading the file or contact support.
+            This {formatBytes(sizeBytes)} file failed to convert to a queryable format.
+            Re-uploading the file will retry the conversion automatically.
+          </Text>
+          <div className="font-mono rounded border border-line px-3 py-2 mt-1"
+            style={{
+              fontSize: 'calc(var(--font-size-xs) - 1px)',
+              color: 'var(--color-fg-3)',
+              background: 'var(--color-void)',
+              textAlign: 'left',
+              wordBreak: 'break-word',
+            }}>
+            {error}
+          </div>
+          <Text variant="dim" style={{ fontSize: 'var(--font-size-xs)' }}>
+            File ID: {fileId}
           </Text>
         </div>
       </div>
@@ -50,6 +73,7 @@ function DatasetErrorState() {
 
 function JsonPreview({ fileId, sizeBytes }: { fileId: string; sizeBytes: number }) {
   const [mode, setMode] = useState<'checking' | 'parquet' | 'strand' | 'fatal'>('checking');
+  const [fatalError, setFatalError] = useState<string>('');
   const { getUrl }      = usePresignedUrl();
   const [url, setUrl]   = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,16 +92,20 @@ function JsonPreview({ fileId, sizeBytes }: { fileId: string; sizeBytes: number 
         if (data.status === 'ready' || data.status === 'converting') {
           setMode('parquet');
         } else if ((data.status === 'failed' || data.status === 'error') && isLarge) {
-          // Large file + failed conversion = fatal — no Strand fallback
+          setFatalError(data.error ?? 'Conversion failed — no details available');
           setMode('fatal');
         } else {
           // Small file or unavailable → Strand fallback is safe
           setMode('strand');
         }
-      } catch {
+      } catch (err) {
         if (!cancelled) {
-          if (isLarge) setMode('fatal');
-          else setMode('strand');
+          if (isLarge) {
+            setFatalError(err instanceof Error ? err.message : String(err));
+            setMode('fatal');
+          } else {
+            setMode('strand');
+          }
         }
       }
     }
@@ -103,7 +131,7 @@ function JsonPreview({ fileId, sizeBytes }: { fileId: string; sizeBytes: number 
   }
 
   if (mode === 'fatal') {
-    return <DatasetErrorState />;
+    return <DatasetErrorState error={fatalError} sizeBytes={sizeBytes} fileId={fileId} />;
   }
 
   if (mode === 'parquet') {

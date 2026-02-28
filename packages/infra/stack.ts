@@ -73,7 +73,7 @@ export class GenomeHubStack extends cdk.Stack {
           allowedMethods:  [s3.HttpMethods.GET, s3.HttpMethods.PUT, s3.HttpMethods.HEAD],
           allowedOrigins:  ['*'],       // Tighten to your domain in production
           allowedHeaders:  ['*'],
-          exposedHeaders:  ['ETag'],    // Required for multipart upload completion
+          exposedHeaders:  ['ETag', 'Content-Range', 'Content-Length', 'Accept-Ranges'],
           maxAge:          3000,
         },
       ],
@@ -234,14 +234,14 @@ export class GenomeHubStack extends cdk.Stack {
     });
 
     // Cross-origin isolation headers (enables SharedArrayBuffer globally)
-    // restrict-properties allows OAuth popups (postMessage + window.closed still work)
-    // credentialless avoids breaking cross-origin resources (profile images, etc.)
+    // same-origin COOP + require-corp COEP = crossOriginIsolated in all browsers
+    // (credentialless is Chromium-only; Safari requires require-corp)
     const coopCoepHeaders = new cloudfront.ResponseHeadersPolicy(this, 'CoopCoep', {
       responseHeadersPolicyName: `GenomeHub-CoopCoep-${this.account}`,
       customHeadersBehavior: {
         customHeaders: [
-          { header: 'Cross-Origin-Opener-Policy',   value: 'same-origin',    override: true },
-          { header: 'Cross-Origin-Embedder-Policy',  value: 'credentialless', override: true },
+          { header: 'Cross-Origin-Opener-Policy',   value: 'same-origin',   override: true },
+          { header: 'Cross-Origin-Embedder-Policy',  value: 'require-corp', override: true },
         ],
       },
     });

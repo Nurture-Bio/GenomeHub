@@ -116,7 +116,8 @@ router.post('/complete', asyncWrap(async (req, res) => {
           error: err instanceof Error ? err.message : String(err),
           timestamp: new Date().toISOString(),
         }));
-        await repo.update(fileId, { parquetStatus: 'failed' });
+        const errMsg = err instanceof Error ? err.message : String(err);
+        await repo.update(fileId, { parquetStatus: 'failed', parquetError: errMsg });
       });
   }
 
