@@ -92,17 +92,6 @@ export async function convertToParquet(
   throw lastError ?? new Error('Parquet conversion failed');
 }
 
-/** @deprecated Use `convertToParquet` instead. */
-export async function convertJsonToParquet(
-  bucket: string,
-  s3Key: string,
-  parquetS3Key: string,
-  sizeBytes?: number,
-  fileId?: string,
-): Promise<void> {
-  return convertToParquet(bucket, s3Key, parquetS3Key, 'json', sizeBytes, fileId);
-}
-
 function duckDbReader(src: string, format: string): string {
   const safeSrc = src.replace(/'/g, "''");
   switch (format) {
