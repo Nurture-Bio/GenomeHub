@@ -1,14 +1,14 @@
 /**
- * JSON → Parquet conversion via DuckDB native S3-to-S3.
+ * File → Parquet conversion via DuckDB native S3-to-S3.
  *
- * Uses DuckDB's httpfs + aws extensions to read JSON directly from S3
+ * Uses DuckDB's httpfs + aws extensions to read files directly from S3
  * and write Parquet back to S3 — zero Node.js I/O, zero temp files.
  * ZSTD compression + 122,880 row groups (Parquet default).
  *
  * @module
  */
 
-const MAX_JSON_BYTES = 1.5 * 1024 * 1024 * 1024;
+const MAX_CONVERSION_BYTES = 1.5 * 1024 * 1024 * 1024;
 const MAX_RETRIES = 3;
 const BACKOFF_BASE_MS = 1000;
 const CONVERSION_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
@@ -18,6 +18,7 @@ interface ConversionContext {
   bucket: string;
   s3Key: string;
   parquetS3Key: string;
+  format: string;
   fileSizeBytes?: number;
 }
 
@@ -37,13 +38,14 @@ function logConversionError(ctx: ConversionContext, err: Error, extra?: Record<s
 }
 
 /**
- * Convert a JSON file in S3 to Parquet via DuckDB's native S3 support.
+ * Convert a file in S3 to Parquet via DuckDB's native S3 support.
  * Retries up to 3 times with exponential backoff (1s, 4s, 16s).
  */
-export async function convertJsonToParquet(
+export async function convertToParquet(
   bucket: string,
   s3Key: string,
   parquetS3Key: string,
+  format: string,
   sizeBytes?: number,
   fileId?: string,
 ): Promise<void> {
@@ -52,12 +54,13 @@ export async function convertJsonToParquet(
     bucket,
     s3Key,
     parquetS3Key,
+    format,
     fileSizeBytes: sizeBytes,
   };
 
-  if (sizeBytes && sizeBytes > MAX_JSON_BYTES) {
+  if (sizeBytes && sizeBytes > MAX_CONVERSION_BYTES) {
     const err = new Error(`File too large for Parquet conversion (${sizeBytes} bytes)`);
-    logConversionError(ctx, err, { reason: 'size_exceeded', maxBytes: MAX_JSON_BYTES });
+    logConversionError(ctx, err, { reason: 'size_exceeded', maxBytes: MAX_CONVERSION_BYTES });
     throw err;
   }
 
@@ -89,6 +92,38 @@ export async function convertJsonToParquet(
   throw lastError ?? new Error('Parquet conversion failed');
 }
 
+/** @deprecated Use `convertToParquet` instead. */
+export async function convertJsonToParquet(
+  bucket: string,
+  s3Key: string,
+  parquetS3Key: string,
+  sizeBytes?: number,
+  fileId?: string,
+): Promise<void> {
+  return convertToParquet(bucket, s3Key, parquetS3Key, 'json', sizeBytes, fileId);
+}
+
+function duckDbReader(src: string, format: string): string {
+  const safeSrc = src.replace(/'/g, "''");
+  switch (format) {
+    case 'json':
+      return `read_json_auto('${safeSrc}', maximum_object_size=104857600)`;
+    case 'csv':
+      return `read_csv_auto('${safeSrc}')`;
+    case 'tsv':
+      return `read_csv_auto('${safeSrc}', delim='\\t')`;
+    case 'bed':
+      return `read_csv_auto('${safeSrc}', delim='\\t', header=false)`;
+    case 'vcf':
+      return `read_csv_auto('${safeSrc}', delim='\\t', comment='#')`;
+    case 'gff':
+    case 'gtf':
+      return `read_csv_auto('${safeSrc}', delim='\\t', comment='#', header=false)`;
+    default:
+      return `read_csv_auto('${safeSrc}')`;
+  }
+}
+
 async function runDuckDbS3Conversion(ctx: ConversionContext): Promise<void> {
   const duckdb = await import('duckdb');
   const db = new (duckdb as any).default.Database(':memory:');
@@ -97,15 +132,15 @@ async function runDuckDbS3Conversion(ctx: ConversionContext): Promise<void> {
     const conn = db.connect();
     const src = `s3://${ctx.bucket}/${ctx.s3Key}`;
     const dst = `s3://${ctx.bucket}/${ctx.parquetS3Key}`;
-    const safeSrc = src.replace(/'/g, "''");
     const safeDst = dst.replace(/'/g, "''");
 
+    const reader = duckDbReader(src, ctx.format);
     const sql = `
       INSTALL httpfs; LOAD httpfs;
       INSTALL aws; LOAD aws;
       CALL load_aws_credentials();
       COPY (
-        SELECT * FROM read_json_auto('${safeSrc}', maximum_object_size=104857600)
+        SELECT * FROM ${reader}
       ) TO '${safeDst}' (FORMAT PARQUET, ROW_GROUP_SIZE 122880, COMPRESSION 'ZSTD');
     `;
 
