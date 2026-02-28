@@ -3,6 +3,7 @@ WORKDIR /app
 
 # ── Install all deps ──────────────────────────────────────
 FROM base AS deps
+RUN apk add --no-cache python3 make g++
 COPY package*.json ./
 COPY packages/shared/package*.json ./packages/shared/
 COPY packages/client/package*.json  ./packages/client/

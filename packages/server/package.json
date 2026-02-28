@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.600.0",
+    "@aws-sdk/client-ssm": "^3.600.0",
+    "@aws-sdk/cloudfront-signer": "^3.600.0",
     "@aws-sdk/lib-storage": "^3.998.0",
     "@aws-sdk/s3-request-presigner": "^3.600.0",
     "@genome-hub/shared": "*",
@@ -19,6 +21,7 @@
     "express-rate-limit": "^8.2.1",
     "express-session": "^1.19.0",
     "google-auth-library": "^10.5.0",
+    "duckdb": "^1.4.4",
     "pg": "^8.12.0",
     "typeorm": "^0.3.20"
   },

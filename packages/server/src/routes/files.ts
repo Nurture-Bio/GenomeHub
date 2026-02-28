@@ -2,11 +2,31 @@ import { Router } from 'express';
 import { AppDataSource } from '../app_data.js';
 import { User, GenomicFile, EntityEdge, Organism, Collection, type EdgeRelation } from '../entities/index.js';
 import { createGunzip, constants } from 'zlib';
-import { deleteObject, presignDownloadUrl, fetchS3Head, fetchS3Range } from '../lib/s3.js';
+import { deleteObject, presignDownloadUrl, fetchS3Head, fetchS3Range, headObject, BUCKET } from '../lib/s3.js';
 import { detectFormat } from '@genome-hub/shared';
 import * as edges from '../lib/edge_service.js';
 import { asyncWrap } from '../lib/async_wrap.js';
 import { organismDisplay } from '../lib/display.js';
+import { convertJsonToParquet } from '../lib/parquet.js';
+import { getSignedUrl as getCloudFrontSignedUrl } from '@aws-sdk/cloudfront-signer';
+import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
+
+// ── CloudFront signing for Parquet URLs ─────────────────────
+
+let _cfPrivateKey: string | null = null;
+const CF_DOMAIN      = process.env.CF_DOMAIN;
+const CF_KEY_PAIR_ID = process.env.CF_KEY_PAIR_ID;
+
+async function getCfPrivateKey(): Promise<string> {
+  if (_cfPrivateKey) return _cfPrivateKey;
+  const ssm = new SSMClient({ region: process.env.AWS_REGION ?? 'us-west-2' });
+  const res = await ssm.send(new GetParameterCommand({
+    Name: '/genome-hub/cloudfront-private-key',
+    WithDecryption: true,
+  }));
+  _cfPrivateKey = res.Parameter!.Value!;
+  return _cfPrivateKey;
+}
 
 const router = Router();
 
@@ -117,6 +137,81 @@ router.get('/', asyncWrap(async (req, res) => {
       uploadedBy:  f.uploadedBy,
     };
   }));
+}));
+
+// ─── Parquet presigned URL ──────────────────────────────────
+
+router.get('/:id/parquet-url', asyncWrap(async (req, res) => {
+  const repo = AppDataSource.getRepository(GenomicFile);
+  const file = await repo.findOneBy({ id: req.params.id });
+  if (!file) { res.status(404).json({ error: 'not found' }); return; }
+
+  if (!file.filename.toLowerCase().endsWith('.json')) {
+    res.json({ status: 'unavailable', reason: 'not a JSON file' });
+    return;
+  }
+  if (Number(file.sizeBytes) > 1.5 * 1024 * 1024 * 1024) {
+    res.json({ status: 'unavailable', reason: 'file too large' });
+    return;
+  }
+
+  // Use parquetStatus if set, otherwise infer from parquetS3Key
+  const status = file.parquetStatus ?? (file.parquetS3Key ? 'ready' : null);
+
+  if (status === 'failed') {
+    res.json({ status: 'failed' });
+    return;
+  }
+
+  // No status and no parquetS3Key → file predates the Parquet feature.
+  // Atomically claim the conversion so only one DuckDB process spawns per file.
+  if (!status && !file.parquetS3Key) {
+    const updateResult = await repo.createQueryBuilder()
+      .update(GenomicFile)
+      .set({ parquetStatus: 'converting' })
+      .where('id = :id AND parquet_status IS NULL', { id: file.id })
+      .execute();
+
+    // Only the single request that won the race gets to run DuckDB
+    if (updateResult.affected === 1) {
+      const parquetKey = file.s3Key + '.parquet';
+      convertJsonToParquet(BUCKET, file.s3Key, parquetKey, Number(file.sizeBytes), file.id)
+        .then(() => repo.update(file.id, { parquetS3Key: parquetKey, parquetStatus: 'ready' }))
+        .catch(async (err) => {
+          console.error(JSON.stringify({
+            tag: '[PARQUET_PIPELINE_FAILED]',
+            fileId: file.id,
+            s3Key: file.s3Key,
+            error: err instanceof Error ? err.message : String(err),
+            timestamp: new Date().toISOString(),
+          }));
+          await repo.update(file.id, { parquetStatus: 'failed' });
+        });
+    }
+
+    res.json({ status: 'converting' });
+    return;
+  }
+
+  if (status !== 'ready' || !file.parquetS3Key) {
+    res.json({ status: 'converting' });
+    return;
+  }
+
+  // CloudFront signed URL (production) or S3 presigned URL (local dev fallback)
+  if (CF_DOMAIN && CF_KEY_PAIR_ID) {
+    const privateKey = await getCfPrivateKey();
+    const url = getCloudFrontSignedUrl({
+      url: `https://${CF_DOMAIN}/parquet/${file.parquetS3Key}`,
+      keyPairId: CF_KEY_PAIR_ID,
+      privateKey,
+      dateLessThan: new Date(Date.now() + 3600 * 1000).toISOString(),
+    });
+    res.json({ status: 'ready', url });
+  } else {
+    const url = await presignDownloadUrl(file.parquetS3Key, 'preview.parquet');
+    res.json({ status: 'ready', url });
+  }
 }));
 
 // ─── File preview (first N lines) ──────────────────────────
@@ -414,6 +509,9 @@ router.delete('/:id', asyncWrap(async (req, res) => {
   if (!file) { res.status(404).json({ error: 'not found' }); return; }
 
   await deleteObject(file.s3Key);
+  if (file.parquetS3Key) {
+    await deleteObject(file.parquetS3Key).catch(() => {});
+  }
   await edges.cascadeDelete({ type: 'file', id: file.id });
   await repo.remove(file);
   res.json({ ok: true });

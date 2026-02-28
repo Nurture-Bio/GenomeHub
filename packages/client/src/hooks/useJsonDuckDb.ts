@@ -1,9 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import * as duckdb from '@duckdb/duckdb-wasm';
-import duckdb_wasm_mvp from '@duckdb/duckdb-wasm/dist/duckdb-mvp.wasm?url';
-import duckdb_worker_mvp from '@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.js?url';
-import duckdb_wasm_eh from '@duckdb/duckdb-wasm/dist/duckdb-eh.wasm?url';
-import duckdb_worker_eh from '@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js?url';
+import { duckdb, ensureDb, coerceBigInts } from '../lib/duckdb.js';
 
 export interface ColumnInfo {
   name: string;
@@ -74,44 +70,10 @@ export function isNumericType(type: string): boolean {
   return NUMERIC_TYPES.has(base);
 }
 
-// ── Module-level singleton ────────────────────────────────
+// ── Module-level table cache ──────────────────────────────
 
-let _db:           duckdb.AsyncDuckDB | null = null;
-let _conn:         duckdb.AsyncDuckDBConnection | null = null;
 let _loadedFileId: string | null = null;
-let _bootPromise:  Promise<void> | null = null;
 let _loadPromise:  Promise<void> | null = null;
-
-async function ensureDb(): Promise<void> {
-  if (_db && _conn) return;
-  if (_bootPromise) { await _bootPromise; return; }
-
-  _bootPromise = (async () => {
-    try {
-      // In Vite dev, the EH bundle needs SharedArrayBuffer but the dev server's
-      // /@fs/ worker sub-requests don't inherit COOP/COEP headers — the worker
-      // crashes with an undefined error and instantiate() hangs without rejecting.
-      // Force MVP in dev; selectBundle picks EH in production where headers are set.
-      const bundle = import.meta.env.DEV
-        ? { mainModule: duckdb_wasm_mvp, mainWorker: duckdb_worker_mvp, pthreadWorker: null }
-        : await duckdb.selectBundle({
-            mvp: { mainModule: duckdb_wasm_mvp, mainWorker: duckdb_worker_mvp },
-            eh:  { mainModule: duckdb_wasm_eh,  mainWorker: duckdb_worker_eh  },
-          });
-      const worker = new Worker(bundle.mainWorker!);
-      _db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), worker);
-      await _db.instantiate(bundle.mainModule, bundle.pthreadWorker ?? undefined);
-      _conn = await _db.connect();
-    } catch (e) {
-      _bootPromise = null;
-      _db = null;
-      _conn = null;
-      throw e;
-    }
-  })();
-
-  await _bootPromise;
-}
 
 async function ensureTable(fileId: string, getUrl: () => Promise<string>): Promise<void> {
   if (_loadedFileId === fileId) return;
@@ -119,15 +81,16 @@ async function ensureTable(fileId: string, getUrl: () => Promise<string>): Promi
 
   _loadPromise = (async () => {
     try {
-      await _conn!.query(`DROP TABLE IF EXISTS result`);
+      const { db, conn } = await ensureDb();
+      await conn.query(`DROP TABLE IF EXISTS result`);
       const url = await getUrl();
-      await _db!.registerFileURL(
+      await db.registerFileURL(
         'result_data.json',
         url,
         duckdb.DuckDBDataProtocol.HTTP,
         true,
       );
-      await _conn!.query(`
+      await conn.query(`
         CREATE TABLE result AS
         SELECT * FROM read_json_auto('result_data.json', maximum_object_size=104857600)
       `);
@@ -138,22 +101,6 @@ async function ensureTable(fileId: string, getUrl: () => Promise<string>): Promi
   })();
 
   await _loadPromise;
-}
-
-// ── BigInt coercion (avoids JSON round-trip) ─────────────
-
-function coerceBigInts(obj: unknown): unknown {
-  if (typeof obj === 'bigint') return Number(obj);
-  if (obj === null || obj === undefined) return obj;
-  if (Array.isArray(obj)) return obj.map(coerceBigInts);
-  if (typeof obj === 'object') {
-    const result: Record<string, unknown> = {};
-    for (const key of Object.keys(obj as Record<string, unknown>)) {
-      result[key] = coerceBigInts((obj as Record<string, unknown>)[key]);
-    }
-    return result;
-  }
-  return obj;
 }
 
 // ── Hook ─────────────────────────────────────────────────
@@ -180,7 +127,7 @@ export function useJsonDuckDb(
       setStatus('loading');
       setStage('initializing');
       try {
-        await ensureDb();
+        const { conn } = await ensureDb();
         if (cancelled) return;
 
         setStage('loading-json');
@@ -189,8 +136,8 @@ export function useJsonDuckDb(
 
         setStage('analyzing');
         const [desc, count] = await Promise.all([
-          _conn!.query(`DESCRIBE result`),
-          _conn!.query(`SELECT COUNT(*)::INTEGER AS n FROM result`),
+          conn.query(`DESCRIBE result`),
+          conn.query(`SELECT COUNT(*)::INTEGER AS n FROM result`),
         ]);
 
         const cols: ColumnInfo[] = desc.toArray().map((r: unknown) => {
@@ -209,7 +156,7 @@ export function useJsonDuckDb(
             `MIN("${c.name}")::DOUBLE AS "${c.name}_min"`,
             `MAX("${c.name}")::DOUBLE AS "${c.name}_max"`,
           ]);
-          const statsResult = await _conn!.query(
+          const statsResult = await conn.query(
             `SELECT ${selectParts.join(', ')} FROM result`
           );
           const statsRow = statsResult.toArray()[0] as Record<string, unknown>;
@@ -255,7 +202,7 @@ export function useJsonDuckDb(
           const selectParts = cardTargets.map(
             (t, i) => `COUNT(DISTINCT ${t.sqlExpr}::VARCHAR)::INTEGER AS c${i}`
           );
-          const cardResult = await _conn!.query(`SELECT ${selectParts.join(', ')} FROM result`);
+          const cardResult = await conn.query(`SELECT ${selectParts.join(', ')} FROM result`);
           const cardRow = cardResult.toArray()[0] as Record<string, unknown>;
 
           // For low-cardinality columns, fetch actual distinct values
@@ -267,7 +214,7 @@ export function useJsonDuckDb(
           const valueResults: Record<string, string[]> = {};
           // Batch value fetches in parallel
           await Promise.all(lowCardTargets.map(async (t) => {
-            const vResult = await _conn!.query(
+            const vResult = await conn.query(
               `SELECT DISTINCT ${t.sqlExpr}::VARCHAR AS v FROM result ORDER BY v`
             );
             valueResults[t.path] = vResult.toArray().map(
@@ -306,7 +253,8 @@ export function useJsonDuckDb(
   }, [fileId, getUrl]);
 
   const query = useCallback(async (params: QueryParams): Promise<QueryResult | null> => {
-    if (!_conn) return null;
+    let conn: Awaited<ReturnType<typeof ensureDb>>['conn'];
+    try { conn = (await ensureDb()).conn; } catch { return null; }
 
     const conditions = Object.entries(params.filters)
       .filter(([, v]) => v.trim())
@@ -335,10 +283,10 @@ export function useJsonDuckDb(
 
     try {
       const [rows, cnt, conResult] = await Promise.all([
-        _conn.query(`SELECT * FROM result ${where} ${orderBy}`),
-        _conn.query(`SELECT COUNT(*)::INTEGER AS n FROM result ${where}`),
+        conn.query(`SELECT * FROM result ${where} ${orderBy}`),
+        conn.query(`SELECT COUNT(*)::INTEGER AS n FROM result ${where}`),
         conSelectParts
-          ? _conn.query(`SELECT ${conSelectParts.join(', ')} FROM result ${where}`)
+          ? conn.query(`SELECT ${conSelectParts.join(', ')} FROM result ${where}`)
           : Promise.resolve(null),
       ]);
 

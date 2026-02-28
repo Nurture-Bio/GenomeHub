@@ -280,6 +280,14 @@ export class GenomicFile {
   @Column({ name: 'uploaded_by', type: 'text', nullable: true })
   uploadedBy!: string | null;
 
+  /** S3 key for the Parquet sidecar (converted from JSON at upload time) */
+  @Column({ name: 'parquet_s3_key', type: 'text', nullable: true })
+  parquetS3Key!: string | null;
+
+  /** Parquet conversion status: converting → ready | failed */
+  @Column({ name: 'parquet_status', type: 'text', nullable: true })
+  parquetStatus!: string | null;
+
   @CreateDateColumn({ name: 'uploaded_at' })
   uploadedAt!: Date;
 

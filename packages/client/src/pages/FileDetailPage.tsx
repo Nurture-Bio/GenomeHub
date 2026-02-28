@@ -140,7 +140,7 @@ export default function FileDetailPage() {
       {/* File preview — first thing after the title */}
       {file.status === 'ready' && (
         <Suspense fallback={<div className="skeleton h-32 rounded-md" />}>
-          <FilePreview fileId={fileId!} filename={file.filename} />
+          <FilePreview fileId={fileId!} filename={file.filename} sizeBytes={file.sizeBytes} />
         </Suspense>
       )}
 

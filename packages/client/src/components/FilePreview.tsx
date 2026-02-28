@@ -2,32 +2,115 @@ import { useRef, useEffect, useCallback, useState } from 'react';
 import { useInfiniteFilePreview } from '../hooks/useGenomicQueries';
 import type { FilePreviewPage } from '../hooks/useGenomicQueries';
 import { usePresignedUrl } from '../hooks/useGenomicQueries';
+import { apiFetch } from '../lib/api';
 import JsonStrandPreview from './JsonStrandPreview';
+import ParquetPreview from './ParquetPreview';
 import { Text, Badge } from '../ui';
 
 interface FilePreviewProps {
-  fileId:   string;
-  filename: string;
+  fileId:    string;
+  filename:  string;
+  sizeBytes: number;
 }
 
-// ── JSON preview: resolves presigned URL then hands off to Strand pipeline ───
+const LARGE_FILE_THRESHOLD = 50 * 1024 * 1024; // 50 MB
 
-function JsonPreview({ fileId }: { fileId: string }) {
-  const { getUrl }             = usePresignedUrl();
-  const [url,   setUrl]        = useState<string | null>(null);
-  const [error, setError]      = useState<string | null>(null);
+// ── Dataset error state — premium error UX ──────────────────────────────────
 
+function DatasetErrorState() {
+  return (
+    <div className="flex items-center justify-center rounded-md border border-line"
+      style={{ background: 'var(--color-base)', minHeight: 280 }}>
+      <div className="flex flex-col items-center gap-4 px-8 py-10" style={{ maxWidth: 420, textAlign: 'center' }}>
+        <div className="flex items-center justify-center rounded-full"
+          style={{ width: 48, height: 48, background: 'oklch(0.350 0.100 30 / 0.25)' }}>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" strokeWidth="1.5"
+            stroke="oklch(0.650 0.180 30)" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            <line x1="12" y1="9" x2="12" y2="13" />
+            <line x1="12" y1="17" x2="12.01" y2="17" />
+          </svg>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <span className="font-semibold" style={{ fontSize: 'var(--font-size-md)', color: 'var(--color-fg)' }}>
+            Dataset Optimization Failed
+          </span>
+          <Text variant="dim" style={{ lineHeight: 1.5 }}>
+            This dataset encountered an error during indexing and is too large
+            for the legacy viewer. Our engineering team has been notified.
+            Please try re-uploading the file or contact support.
+          </Text>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── JSON preview: Parquet path with Strand fallback ─────────────────────────
+
+function JsonPreview({ fileId, sizeBytes }: { fileId: string; sizeBytes: number }) {
+  const [mode, setMode] = useState<'checking' | 'parquet' | 'strand' | 'fatal'>('checking');
+  const { getUrl }      = usePresignedUrl();
+  const [url, setUrl]   = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const isLarge = sizeBytes > LARGE_FILE_THRESHOLD;
+
+  // Check if Parquet sidecar is available
   useEffect(() => {
     let cancelled = false;
-    const fn = getUrl;
-    fn(fileId).then(u => {
+
+    async function check() {
+      try {
+        const res = await apiFetch(`/api/files/${fileId}/parquet-url`);
+        const data = await res.json();
+        if (cancelled) return;
+
+        if (data.status === 'ready' || data.status === 'converting') {
+          setMode('parquet');
+        } else if ((data.status === 'failed' || data.status === 'error') && isLarge) {
+          // Large file + failed conversion = fatal — no Strand fallback
+          setMode('fatal');
+        } else {
+          // Small file or unavailable → Strand fallback is safe
+          setMode('strand');
+        }
+      } catch {
+        if (!cancelled) {
+          if (isLarge) setMode('fatal');
+          else setMode('strand');
+        }
+      }
+    }
+
+    check();
+    return () => { cancelled = true; };
+  }, [fileId, isLarge]);
+
+  // Strand fallback: resolve presigned URL
+  useEffect(() => {
+    if (mode !== 'strand') return;
+    let cancelled = false;
+    getUrl(fileId).then(u => {
       if (!cancelled) setUrl(u);
     }).catch(e => {
       if (!cancelled) setError(String(e));
     });
     return () => { cancelled = true; };
-  }, [fileId, getUrl]);
+  }, [fileId, getUrl, mode]);
 
+  if (mode === 'checking') {
+    return <div className="skeleton h-1 rounded-full w-1/2" />;
+  }
+
+  if (mode === 'fatal') {
+    return <DatasetErrorState />;
+  }
+
+  if (mode === 'parquet') {
+    return <ParquetPreview fileId={fileId} />;
+  }
+
+  // Strand fallback
   if (error) return <Text variant="dim" style={{ color: 'var(--color-red)' }}>{error}</Text>;
   if (!url)  return <div className="skeleton h-1 rounded-full w-1/2" />;
   return <JsonStrandPreview url={url} />;
@@ -93,7 +176,7 @@ function TextPreview({ pages, isFetchingNextPage, hasNextPage, fetchNextPage }: 
 
 // ── Main preview component ───────────────────────────────
 
-export default function FilePreview({ fileId, filename }: FilePreviewProps) {
+export default function FilePreview({ fileId, filename, sizeBytes }: FilePreviewProps) {
   const isJson = filename.toLowerCase().endsWith('.json');
 
   const {
@@ -105,7 +188,7 @@ export default function FilePreview({ fileId, filename }: FilePreviewProps) {
   } = useInfiniteFilePreview(!isJson ? fileId : undefined);
 
   if (isJson) {
-    return <JsonPreview fileId={fileId} />;
+    return <JsonPreview fileId={fileId} sizeBytes={sizeBytes} />;
   }
 
   if (isLoading) return <div className="skeleton h-32 rounded-md" />;

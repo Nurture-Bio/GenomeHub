@@ -4,10 +4,12 @@ import { User, GenomicFile } from '../entities/index.js';
 import {
   buildS3Key, initiateMultipartUpload, presignPartUrl,
   completeMultipartUpload, abortMultipartUpload, headObject,
+  BUCKET,
 } from '../lib/s3.js';
 import * as edges from '../lib/edge_service.js';
 import { detectFormat } from '@genome-hub/shared';
 import { asyncWrap } from '../lib/async_wrap.js';
+import { convertJsonToParquet } from '../lib/parquet.js';
 
 const router = Router();
 
@@ -91,11 +93,32 @@ router.post('/complete', asyncWrap(async (req, res) => {
   const head = await headObject(s3Key);
 
   const repo = AppDataSource.getRepository(GenomicFile);
+  const actualSize = head.ContentLength ?? 0;
   await repo.update(fileId, {
     status:   'ready',
     uploadId: null,
-    sizeBytes: head.ContentLength ?? 0,
+    sizeBytes: actualSize,
   });
+
+  // Fire-and-forget: convert JSON to Parquet sidecar
+  const file = await repo.findOneBy({ id: fileId });
+  if (file && file.filename.toLowerCase().endsWith('.json')) {
+    const parquetKey = file.s3Key + '.parquet';
+    await repo.update(fileId, { parquetStatus: 'converting' });
+
+    convertJsonToParquet(BUCKET, file.s3Key, parquetKey, Number(actualSize), fileId)
+      .then(() => repo.update(fileId, { parquetS3Key: parquetKey, parquetStatus: 'ready' }))
+      .catch(async (err) => {
+        console.error(JSON.stringify({
+          tag: '[PARQUET_PIPELINE_FAILED]',
+          fileId,
+          s3Key: file.s3Key,
+          error: err instanceof Error ? err.message : String(err),
+          timestamp: new Date().toISOString(),
+        }));
+        await repo.update(fileId, { parquetStatus: 'failed' });
+      });
+  }
 
   res.json({ ok: true });
 }));

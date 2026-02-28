@@ -147,6 +147,7 @@ function SidebarFooter({ user, logout }: { user: { name: string; email: string; 
         <img
           src={user.picture}
           alt=""
+          crossOrigin="anonymous"
           referrerPolicy="no-referrer"
           className="w-6 h-6 rounded-full shrink-0"
         />
