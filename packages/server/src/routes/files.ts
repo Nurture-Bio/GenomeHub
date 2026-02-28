@@ -3,11 +3,11 @@ import { AppDataSource } from '../app_data.js';
 import { User, GenomicFile, EntityEdge, Organism, Collection, type EdgeRelation } from '../entities/index.js';
 import { createGunzip, constants } from 'zlib';
 import { deleteObject, presignDownloadUrl, fetchS3Head, fetchS3Range, headObject, BUCKET } from '../lib/s3.js';
-import { detectFormat } from '@genome-hub/shared';
+import { detectFormat, isConvertible } from '@genome-hub/shared';
 import * as edges from '../lib/edge_service.js';
 import { asyncWrap } from '../lib/async_wrap.js';
 import { organismDisplay } from '../lib/display.js';
-import { convertJsonToParquet } from '../lib/parquet.js';
+import { convertToParquet } from '../lib/parquet.js';
 import { getSignedUrl as getCloudFrontSignedUrl } from '@aws-sdk/cloudfront-signer';
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 
@@ -168,8 +168,8 @@ router.get('/:id/parquet-url', asyncWrap(async (req, res) => {
   const file = await repo.findOneBy({ id: req.params.id });
   if (!file) { res.status(404).json({ error: 'not found' }); return; }
 
-  if (!file.filename.toLowerCase().endsWith('.json')) {
-    res.json({ status: 'unavailable', reason: 'not a JSON file' });
+  if (!isConvertible(file.filename)) {
+    res.json({ status: 'unavailable', reason: 'format not supported for dataset preview' });
     return;
   }
   if (Number(file.sizeBytes) > 1.5 * 1024 * 1024 * 1024) {
@@ -197,7 +197,7 @@ router.get('/:id/parquet-url', asyncWrap(async (req, res) => {
     // Only the single request that won the race gets to run DuckDB
     if (updateResult.affected === 1) {
       const parquetKey = file.s3Key + '.parquet';
-      convertJsonToParquet(BUCKET, file.s3Key, parquetKey, Number(file.sizeBytes), file.id)
+      convertToParquet(BUCKET, file.s3Key, parquetKey, detectFormat(file.filename), Number(file.sizeBytes), file.id)
         .then(() => repo.update(file.id, { parquetS3Key: parquetKey, parquetStatus: 'ready' }))
         .catch(async (err) => {
           console.error(JSON.stringify({
