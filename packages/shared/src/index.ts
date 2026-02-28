@@ -1,1 +1,1 @@
-export { detectFormat } from './formats.js';
+export { detectFormat, isConvertible } from './formats.js';
