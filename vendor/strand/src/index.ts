@@ -54,8 +54,12 @@ export {
   initStrandHeader,
   readStrandHeader,
   computeStrandMap,
+  capacityForRecordCount,
   StrandHeaderError,
 } from './header';
+
+// ─── Intern table ─────────────────────────────────────────────────────────────
+export { StrandInternTable } from './intern';
 
 // ─── View ─────────────────────────────────────────────────────────────────────
 export { StrandView, RecordCursor } from './view';

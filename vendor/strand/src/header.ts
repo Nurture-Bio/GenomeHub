@@ -488,6 +488,34 @@ export function readStrandHeader(sab: SharedArrayBuffer): StrandMap {
   return strandMap;
 }
 
+// ─── capacityForRecordCount ───────────────────────────────────────────────────
+
+/**
+ * Returns the smallest power-of-2 index_capacity that can hold `n` records
+ * without the ring lapping, capped at 2^22 (~4 M records).
+ *
+ * Use this instead of hardcoding a capacity when the record count is known
+ * ahead of time (e.g. from a Phase 1 stats scan):
+ *
+ * ```typescript
+ * const map = computeStrandMap({
+ *   schema,
+ *   index_capacity: capacityForRecordCount(stats.recordCount),
+ *   ...
+ * });
+ * ```
+ *
+ * **Why power-of-two matters:** the ring uses bitwise masking
+ * (`seq & (capacity - 1)`) for O(1) slot arithmetic. A capacity that is
+ * not a power of 2 is rejected by `computeStrandMap` and `initStrandHeader`.
+ */
+export function capacityForRecordCount(n: number): number {
+  if (n <= 1) return 1;
+  let p = 1;
+  while (p < n) p <<= 1;
+  return Math.min(p, 1 << 22); // cap at ~4 M
+}
+
 // ─── computeStrandMap ─────────────────────────────────────────────────────────
 
 /**
@@ -497,6 +525,13 @@ export function readStrandHeader(sab: SharedArrayBuffer): StrandMap {
  * The returned StrandMap is ready to:
  *   1. Embed in HTML as window.__STRAND_MAP__
  *   2. Pass to initStrandHeader() to write the binary header
+ *
+ * **Capacity footgun:** `index_capacity` must be ≥ the total number of records
+ * you intend to stream. If the capacity is smaller than the record count and
+ * `acknowledgeRead()` is called during streaming, the ring laps: the producer
+ * overwrites slots that the consumer has released, and `cursor.seek()` throws a
+ * `RangeError` on any evicted sequence number. Use `capacityForRecordCount(n)`
+ * to compute a safe value from a known record count.
  */
 export function computeStrandMap(params: {
   schema:            BinarySchemaDescriptor;
@@ -510,6 +545,15 @@ export function computeStrandMap(params: {
   if (!isPowerOfTwo(index_capacity)) {
     throw new StrandHeaderError(
       `index_capacity must be a power of 2; got ${index_capacity}.`,
+    );
+  }
+
+  if (estimated_records > 0 && index_capacity < estimated_records) {
+    throw new StrandHeaderError(
+      `index_capacity (${index_capacity}) is less than estimated_records (${estimated_records}). ` +
+      `The ring will lap: once acknowledgeRead() is called, the producer can overwrite ` +
+      `slots the consumer has not yet seeked, causing RangeError on cursor.seek(). ` +
+      `Use capacityForRecordCount(${estimated_records}) = ${capacityForRecordCount(estimated_records)}.`,
     );
   }
 
