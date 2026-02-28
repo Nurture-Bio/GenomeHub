@@ -38,8 +38,8 @@ function fmt(value: unknown, type: string): string {
     if (a >= 10_000)    return (n / 1_000).toFixed(1) + 'K';
     return n.toLocaleString();
   }
-  const s = String(value);
-  return s.length > 32 ? s.slice(0, 30) + '…' : s;
+  const s = typeof value === 'object' ? JSON.stringify(value) : String(value);
+  return s.length > 48 ? s.slice(0, 46) + '…' : s;
 }
 
 function heatStyle(v: number, min: number, max: number): CSSProperties {
