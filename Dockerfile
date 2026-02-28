@@ -1,9 +1,9 @@
-FROM node:22-alpine AS base
+FROM node:22-slim AS base
 WORKDIR /app
 
 # ── Install all deps ──────────────────────────────────────
 FROM base AS deps
-RUN apk add --no-cache python3 make g++
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
 COPY package*.json ./
 COPY packages/shared/package*.json ./packages/shared/
 COPY packages/client/package*.json  ./packages/client/
@@ -31,7 +31,7 @@ COPY packages/server/ ./packages/server/
 RUN npm run build -w packages/server
 
 # ── Production image ──────────────────────────────────────
-FROM node:22-alpine AS production
+FROM node:22-slim AS production
 WORKDIR /app
 ENV NODE_ENV=production
 
