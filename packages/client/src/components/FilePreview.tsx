@@ -3,8 +3,9 @@ import { useInfiniteFilePreview } from '../hooks/useGenomicQueries';
 import type { FilePreviewPage } from '../hooks/useGenomicQueries';
 import { usePresignedUrl } from '../hooks/useGenomicQueries';
 import { apiFetch } from '../lib/api';
-import JsonStrandPreview from './JsonStrandPreview';
+import JsonHeadPreview from './JsonHeadPreview';
 import ParquetPreview from './ParquetPreview';
+import { detectFormat, isConvertible } from '../lib/formats';
 import { Text, Badge } from '../ui';
 
 interface FilePreviewProps {
@@ -69,10 +70,12 @@ function DatasetErrorState({ error, sizeBytes, fileId }: {
   );
 }
 
-// ── JSON preview: Parquet path with Strand fallback ─────────────────────────
+// ── Dataset preview: Parquet path with head-preview fallback ─────────────────
 
-function JsonPreview({ fileId, sizeBytes }: { fileId: string; sizeBytes: number }) {
-  const [mode, setMode] = useState<'checking' | 'parquet' | 'strand' | 'fatal'>('checking');
+function DatasetPreview({ fileId, sizeBytes, filename }: {
+  fileId: string; sizeBytes: number; filename: string;
+}) {
+  const [mode, setMode] = useState<'checking' | 'parquet' | 'head' | 'fatal'>('checking');
   const [fatalError, setFatalError] = useState<string>('');
   const { getUrl }      = usePresignedUrl();
   const [url, setUrl]   = useState<string | null>(null);
@@ -95,8 +98,8 @@ function JsonPreview({ fileId, sizeBytes }: { fileId: string; sizeBytes: number 
           setFatalError(data.error ?? 'Conversion failed — no details available');
           setMode('fatal');
         } else {
-          // Small file or unavailable → Strand fallback is safe
-          setMode('strand');
+          // Head streamer handles any size safely — reads first 1,000 rows, aborts.
+          setMode('head');
         }
       } catch (err) {
         if (!cancelled) {
@@ -104,7 +107,7 @@ function JsonPreview({ fileId, sizeBytes }: { fileId: string; sizeBytes: number 
             setFatalError(err instanceof Error ? err.message : String(err));
             setMode('fatal');
           } else {
-            setMode('strand');
+            setMode('head');
           }
         }
       }
@@ -114,9 +117,9 @@ function JsonPreview({ fileId, sizeBytes }: { fileId: string; sizeBytes: number 
     return () => { cancelled = true; };
   }, [fileId, isLarge]);
 
-  // Strand fallback: resolve presigned URL
+  // Head preview: resolve presigned URL
   useEffect(() => {
-    if (mode !== 'strand') return;
+    if (mode !== 'head') return;
     let cancelled = false;
     getUrl(fileId).then(u => {
       if (!cancelled) setUrl(u);
@@ -138,10 +141,15 @@ function JsonPreview({ fileId, sizeBytes }: { fileId: string; sizeBytes: number 
     return <ParquetPreview fileId={fileId} />;
   }
 
-  // Strand fallback
+  // Head preview fallback — format-specific
   if (error) return <Text variant="dim" style={{ color: 'var(--color-red)' }}>{error}</Text>;
   if (!url)  return <div className="skeleton h-1 rounded-full w-1/2" />;
-  return <JsonStrandPreview url={url} />;
+  if (detectFormat(filename) === 'json') {
+    return <JsonHeadPreview url={url} />;
+  }
+  // Non-JSON convertible formats: no head preview available, show nothing
+  // (parent will not reach here — TextPreview is the fallback for non-convertible)
+  return null;
 }
 
 // ── Plain text preview with infinite scroll ──────────────
@@ -205,7 +213,7 @@ function TextPreview({ pages, isFetchingNextPage, hasNextPage, fetchNextPage }: 
 // ── Main preview component ───────────────────────────────
 
 export default function FilePreview({ fileId, filename, sizeBytes }: FilePreviewProps) {
-  const isJson = filename.toLowerCase().endsWith('.json');
+  const convertible = isConvertible(filename);
 
   const {
     data,
@@ -213,10 +221,10 @@ export default function FilePreview({ fileId, filename, sizeBytes }: FilePreview
     isFetchingNextPage,
     hasNextPage,
     fetchNextPage,
-  } = useInfiniteFilePreview(!isJson ? fileId : undefined);
+  } = useInfiniteFilePreview(!convertible ? fileId : undefined);
 
-  if (isJson) {
-    return <JsonPreview fileId={fileId} sizeBytes={sizeBytes} />;
+  if (convertible) {
+    return <DatasetPreview fileId={fileId} sizeBytes={sizeBytes} filename={filename} />;
   }
 
   if (isLoading) return <div className="skeleton h-32 rounded-md" />;
