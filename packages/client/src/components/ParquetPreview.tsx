@@ -575,6 +575,7 @@ export default function ParquetPreview({ fileId }: { fileId: string }) {
 
   const [colWidths,          setColWidths]          = useState<Record<string, number>>({});
   const [rangeState,         setRangeState]         = useState<Record<string, [number, number]>>({});
+  const triggerRef = useRef<() => void>(() => {});
   const [selected,           setSelected]           = useState<Record<string, Set<string>>>({});
   const [textFilters,        setTextFilters]        = useState<Record<string, string>>({});
   const [sort,               setSort]               = useState<SortSpec | null>(null);
@@ -644,19 +645,22 @@ export default function ParquetPreview({ fileId }: { fileId: string }) {
     }).catch(() => setPendingConstraints(false));
   }, [rangeState, selected, textFilters, sort, columnStats, applyFilters]);
 
+  // Keep ref synced so debounced callbacks always call the latest version
+  triggerRef.current = triggerFilters;
+
   // ── Filter handlers ──────────────────────────────────────────────────────────
 
   const handleRangeChange = useCallback((name: string, lo: number, hi: number) => {
     setRangeState(prev => ({ ...prev, [name]: [lo, hi] }));
     if (debRef.current) clearTimeout(debRef.current);
-    debRef.current = setTimeout(triggerFilters, 120);
-  }, [triggerFilters]);
+    debRef.current = setTimeout(() => triggerRef.current(), 120);
+  }, []);
 
   const handleTextChange = useCallback((name: string, value: string) => {
     setTextFilters(prev => ({ ...prev, [name]: value }));
     if (debRef.current) clearTimeout(debRef.current);
-    debRef.current = setTimeout(triggerFilters, 300);
-  }, [triggerFilters]);
+    debRef.current = setTimeout(() => triggerRef.current(), 300);
+  }, []);
 
   const handleToggleSelect = useCallback((name: string, value: string) => {
     setSelected(prev => {
@@ -665,14 +669,13 @@ export default function ParquetPreview({ fileId }: { fileId: string }) {
       if (set.size === 0) { const next = { ...prev }; delete next[name]; return next; }
       return { ...prev, [name]: set };
     });
-    // Trigger on next tick after state update
-    setTimeout(triggerFilters, 0);
-  }, [triggerFilters]);
+    setTimeout(() => triggerRef.current(), 0);
+  }, []);
 
   const handleClearSelect = useCallback((name: string) => {
     setSelected(prev => { const next = { ...prev }; delete next[name]; return next; });
-    setTimeout(triggerFilters, 0);
-  }, [triggerFilters]);
+    setTimeout(() => triggerRef.current(), 0);
+  }, []);
 
   const handleClearAll = useCallback(() => {
     setRangeState({});
