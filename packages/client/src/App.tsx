@@ -25,6 +25,8 @@ import ConfirmDialog        from './components/ConfirmDialog';
 import EnginePanel          from './components/EnginePanel';
 
 const DevTablePage = lazy(() => import('./pages/DevTablePage'));
+const DevRangePage = lazy(() => import('./pages/DevRangePage'));
+const DevJsonPage  = lazy(() => import('./pages/DevJsonPage'));
 
 // ── Hub icon ─────────────────────────────────────────────
 import { AppLogo } from './components/AppLogo';
@@ -99,6 +101,7 @@ const NAV_ITEMS: { to: string; label: string; icon: string; end?: boolean }[] = 
   { to: '/upload',       label: 'Upload',       icon: 'upload' },
   { to: '/settings',     label: 'Settings',     icon: 'settings' },
   { to: '/dev/table',    label: 'Dev Table',    icon: 'dev' },
+  { to: '/dev/json',     label: 'Dev JSON',     icon: 'dev' },
 ];
 
 // ── Sidebar content (shared between desktop static + mobile drawer) ──
@@ -291,6 +294,8 @@ export default function App() {
           <Route path="/settings" element={<PageErrorBoundary><SettingsPage /></PageErrorBoundary>} />
           <Route path="/collections/:collectionId" element={<PageErrorBoundary><CollectionDetailPage /></PageErrorBoundary>} />
           <Route path="/dev/table" element={<PageErrorBoundary><Suspense fallback={null}><DevTablePage /></Suspense></PageErrorBoundary>} />
+          <Route path="/dev/range" element={<PageErrorBoundary><Suspense fallback={null}><DevRangePage /></Suspense></PageErrorBoundary>} />
+          <Route path="/dev/json"  element={<PageErrorBoundary><Suspense fallback={null}><DevJsonPage  /></Suspense></PageErrorBoundary>} />
           {/* Legacy redirects */}
           <Route path="/experiments/:collectionId" element={<LegacyCollectionRedirect />} />
           <Route path="*" element={<Navigate to="/" replace />} />

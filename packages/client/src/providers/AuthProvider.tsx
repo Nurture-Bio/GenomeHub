@@ -2,22 +2,21 @@ import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import { AuthContext, type AuthUser } from '../hooks/useAuth';
 import { apiFetch, getToken, setToken, clearToken } from '../lib/api';
 
-const DEV_MODE = import.meta.env.DEV && !import.meta.env.VITE_GOOGLE_CLIENT_ID;
-
-const DEV_USER: AuthUser = {
-  id: 'dev-user',
-  email: 'dev@localhost',
-  name: 'Dev User',
-  picture: null,
-};
-
 export default function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(DEV_MODE ? DEV_USER : null);
-  const [loading, setLoading] = useState(!DEV_MODE);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [loading, setLoading] = useState(true);
 
   // Check existing token on mount
   useEffect(() => {
-    if (DEV_MODE) return;
+    // Dev bypass: if VITE_DEV_AUTH_TOKEN is set, skip Google OAuth and use it directly.
+    const devToken = import.meta.env.VITE_DEV_AUTH_TOKEN as string | undefined;
+    if (devToken) {
+      setToken(devToken);
+      setUser({ id: 'dev', email: 'dev@local', name: 'Dev User', picture: null });
+      setLoading(false);
+      return;
+    }
+
     const token = getToken();
     if (!token) {
       setLoading(false);
@@ -32,7 +31,6 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
 
   // Listen for 401s from apiFetch and clear user state
   useEffect(() => {
-    if (DEV_MODE) return;
     const handler = () => setUser(null);
     window.addEventListener('auth:unauthorized', handler);
     return () => window.removeEventListener('auth:unauthorized', handler);

@@ -130,7 +130,10 @@ packages/
   client/            React SPA (Vite)
     src/
       pages/         Dashboard, Files, Upload, Organisms, Collections, Settings
+                     DevJsonPage — JSON → Strand analytical pipeline (dev route)
       hooks/         TanStack Query data-fetching hooks
+                     useJsonStrand — three-phase SAB pipeline + constraint engine hook
+      workers/       jsonStrandWorker — Phase 1 scan, Phase 2 stream, Phase 3 constraints
       ui/            CVA component recipes (Button, Badge, Card, Input, ...)
       lib/           API fetch wrapper, query keys, format detection
       components/    FilePreview, Breadcrumbs, EnginePanel, ...
@@ -142,6 +145,9 @@ packages/
       lib/           S3 helpers (putObject, putObjectStream), edge service
       migrations/    Sequential SQL schema migrations
   infra/             AWS CDK stack
+vendor/
+  strand/src/        Vendored @strand/core (TypeScript source, path-aliased)
+                     Synced from github.com/ryandward/strand
 concertina/          Vendored UI library (dist only — source at github.com/ryandward/concertina)
 docs/
   engine-methods-schema.json   JSON Schema for the engine method catalog contract
@@ -290,6 +296,65 @@ Engine result (sync 200 body, or async GET /api/jobs/:id/stream)
 
 The result file is never materialized in Node memory. `Content-Disposition: attachment; filename="result.ext"` on the engine response determines the stored filename and format.
 
+### JSON → Strand analytical pipeline
+
+Large JSON datasets (library files, annotation tables) are analyzed in-browser through a three-phase SharedArrayBuffer pipeline. No server query, no DuckDB, no heap allocation per row.
+
+```
+JSON array (network)
+  │
+  ▼  Phase 1 — Worker: fetch + parse + one-pass stats
+jsonStrandWorker (off-thread)
+  │  Records → JSON.parse (off main thread, no GC pressure)
+  │  One pass: numeric min/max, utf8_ref cardinality sets, global intern table
+  │  Posts: { recordCount, internTable, numericStats, cardinality }
+  │
+  ▼  Phase 2 — Main thread allocates SAB; worker streams records into it
+SharedArrayBuffer  ←─── StrandWriter.writeRecordBatch()
+  │                        Atomics.wait() for backpressure (ring-full stall)
+  │  StrandView.waitForCommit() ───► drain loop on main thread
+  │  acknowledgeRead(count) after EVERY record — omitting this deadlocks
+  │
+  ▼  Phase 3 — Worker: vectorized constraint queries (on-demand, off-thread)
+get_constraints { predicates: FilterPredicate[] }
+  │  StrandView.getFilterBitset(field, predicate) — O(N) per predicate
+  │  computeIntersection(bitsets)               — O(N/32), 32 records/op
+  │  StrandView.getConstrainedRanges(intersection) — O(matches × numericFields)
+  │  popcount(intersection)                     — O(N/32) match count
+  │  Posts: { ranges: ConstrainedRanges, filteredCount }
+  │
+  ▼  React state: constrainedRanges, constrainedCount
+FilterSidebar (UI projection)
+```
+
+**Phase 1→2 handoff**: the worker builds the global intern table (all utf8_ref distinct values, deduped, alphabetically stable). The main thread allocates the SAB, calls `initStrandHeader`, constructs a `StrandView`, and reflects the SAB + intern table back to the worker in the `stream` message.
+
+**Phase 2 drain loop**: `view.acknowledgeRead(count)` is called unconditionally for every committed record, including records that will be filtered out. Gating it on filter results lets the ring fill and permanently deadlocks the producer — see [strand `acknowledgeRead()` docs](https://github.com/ryandward/strand).
+
+**Phase 3 constraint queries**: fired by a debounced `useEffect` on the main thread whenever `debFilters` or multi-select state changes. The worker answers from the already-live SAB — no re-parse, no re-stream. Numeric `BETWEEN` predicates and utf8_ref `in` predicates (handles pre-resolved from the intern table) are bitset-able and go through Phase 3. Free-text `utf8` substring filters are not bitset-able and stay on the main thread via the existing zero-copy seq scan.
+
+#### FilterSidebar — UI as projection
+
+The sidebar renders a faithful projection of the constraint engine output. It never "thinks."
+
+| Element | Source | Notes |
+|---|---|---|
+| Result counter | `constrainedCount / totalRecords` | Powered by `popcount(intersection)` — O(N/32) on the worker thread |
+| Constraint band | `constrainedRanges[field].min/.max` | Faint cyan overlay on the Physical Limits track; shows where values exist given the current intersection |
+| Amber Alert | `high > constrainedMax + ε` | Handle sits in empty space — no data exists there for the current filter set |
+| "No results" dim | `constrainedCount === 0 && status === 'ready'` | Controls section dims to 35% opacity; "Clear all" in the header stays bright |
+| Pending band | `pendingConstraints` | Constraint band dims to 10% opacity between request and worker reply |
+
+**Three-layer false-amber defense:**
+
+1. `hasAnyFilter` guard in `FilterSidebar` — constraint band undefined when engine is idle; `hasCon = false` → no amber possible
+2. `hasCon` check in `RangeSlider` — undefined props → no amber before first worker reply
+3. Dynamic epsilon `ε = (max − min) × 0.001` — 0.1% slack absorbs sub-LSB precision drift between the worker's DataView reads and the main thread's drain-loop accumulator
+
+**Clip to Reality**: double-click the constraint band to snap both handles to the constrained bounds without auto-clipping. User intent (the explicit filter value) is preserved until the user acts.
+
+---
+
 ### Core Stability Engine integration
 
 The Files page virtualizes genomic file metadata using the Core Stability Engine (`concertina/core`). All data processing runs in a dedicated Web Worker; the main thread only handles DOM updates for the ~15–20 visible rows.
@@ -338,6 +403,7 @@ VirtualChamber (main thread)
 
 ### GenomeHub
 
+- [x] In-browser analytics: JSON → Strand SAB pipeline with vectorized bitset constraint engine, zero-copy virtualizer, and reactive FilterSidebar projection
 - [ ] Search and filtering: full-text search over filenames, tags, and descriptions
 - [ ] Batch operations: multi-file download (zip) and bulk tag editing
 - [ ] File validation: post-upload format verification (samtools quickcheck, vcf-validator)

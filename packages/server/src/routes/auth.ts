@@ -12,6 +12,14 @@ export async function resolveUser(req: Request): Promise<User | null> {
   if (!header?.startsWith('Bearer ')) return null;
   const token = header.slice(7);
   if (!token) return null;
+
+  // Dev bypass: DEV_AUTH_TOKEN in env lets local dev skip Google OAuth entirely.
+  // Never set this in production.
+  const devToken = process.env.DEV_AUTH_TOKEN;
+  if (devToken && token === devToken) {
+    return { id: 'dev', email: 'dev@local', name: 'Dev User', picture: null } as unknown as User;
+  }
+
   const repo = AppDataSource.getRepository(User);
   return repo.findOneBy({ authToken: token });
 }
