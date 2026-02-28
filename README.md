@@ -371,6 +371,34 @@ SQL:  SELECT "pam"."pattern" AS "pam.pattern",
 
 Nested struct expansion is recursive-safe (tracks parenthesis depth for `STRUCT(a STRUCT(b INTEGER))`). All filter, sort, and stats queries use `colToSql()` to convert dot-notation back to struct access expressions.
 
+#### Typed filter AST + parameterized queries
+
+No SQL strings are concatenated from user input. The UI produces a typed filter AST (`FilterOp` discriminated union), and `compileWhere()` compiles it into parameterized SQL executed via DuckDB's `conn.prepare()`:
+
+```
+UI interaction (slider, dropdown, text input)
+  │
+  ▼  Component builds typed filter objects — no SQL, no escaping
+  { column: "gc_content", op: { type: "between", low: 0.3, high: 0.6 } }
+  { column: "strand",     op: { type: "in",      values: ["+", "-"] } }
+  { column: "gene_name",  op: { type: "ilike",   pattern: "O'Brien" } }
+  │
+  ▼  compileWhere() — AST → parameterized SQL
+  {
+    clause: 'WHERE "gc_content" BETWEEN $1 AND $2
+             AND "strand"::VARCHAR IN ($3, $4)
+             AND "gene_name"::VARCHAR ILIKE $5',
+    params: [0.3, 0.6, "+", "-", "%O'Brien%"]
+  }
+  │
+  ▼  execQuery() — DuckDB prepared statement
+  const stmt = await conn.prepare(sql);
+  try { return await stmt.query(...params); }
+  finally { await stmt.close(); }
+```
+
+`FilterOp` is a discriminated union with exhaustive `switch` in the compiler — adding a new filter type is a compile error until handled. `execQuery()` fast-paths to `conn.query()` when there are no parameters (metadata queries), and closes prepared statements in a `finally` block to prevent resource leaks.
+
 #### Windowed virtualization
 
 The virtualizer (`@tanstack/react-virtual`) renders ~40 overscan rows. `VirtualRows` fetches 200-row windows from DuckDB and caches them in a local `Map<number, Record<string, unknown>>`. Uncached rows render skeleton placeholders until the fetch resolves.
