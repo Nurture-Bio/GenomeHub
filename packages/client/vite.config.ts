@@ -3,6 +3,11 @@ import { defineConfig } from 'vite';
 import react    from '@vitejs/plugin-react';
 import tailwind from '@tailwindcss/vite';
 
+const useProdApi = process.env.VITE_USE_PROD_API === 'true';
+const apiTarget = useProdApi
+  ? 'https://dnryzh3ckbrvh.cloudfront.net'
+  : 'http://localhost:3000';
+
 export default defineConfig({
   envDir: '../..',
   plugins: [react(), tailwind()],
@@ -22,7 +27,11 @@ export default defineConfig({
       'Cross-Origin-Embedder-Policy': 'credentialless',
     },
     proxy: {
-      '/api': { target: 'http://localhost:3000', changeOrigin: true },
+      '/api': {
+        target: apiTarget,
+        changeOrigin: true,
+        secure: useProdApi,
+      },
     },
   },
   build: {

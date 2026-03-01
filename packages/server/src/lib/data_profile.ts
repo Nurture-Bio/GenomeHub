@@ -28,6 +28,7 @@ import type {
   EnrichableAttributes,
 } from '@genome-hub/shared';
 import { AppDataSource } from '../app_data.js';
+import { duckdbSrc, duckdbSetup } from './storage.js';
 
 // ── Public API ──────────────────────────────────────────────────────────────
 
@@ -50,20 +51,25 @@ export function validateAttributeKeys(raw: string[]): (keyof EnrichableAttribute
  * This is free — no data scan, just metadata reads.
  */
 export async function extractBaseProfile(
-  bucket: string,
   parquetS3Key: string,
 ): Promise<DataProfile> {
-  const { session, close } = await openDuckDbSession(bucket, parquetS3Key);
+  const { session, close } = await openDuckDbSession(parquetS3Key);
   try {
+    // Use DESCRIBE (logical types) instead of parquet_schema (physical types).
+    // parquet_schema returns BYTE_ARRAY/INT64/group nodes — unusable by the client.
+    // DESCRIBE returns VARCHAR/BIGINT/STRUCT(...) — matches client-side WASM output.
     const schemaRows = await session.query(
-      `SELECT name, type FROM parquet_schema('${session.safeSrc}') WHERE name != 'duckdb_schema'`
+      `DESCRIBE SELECT * FROM read_parquet('${session.safeSrc}')`
     );
-    const schema = schemaRows.map(r => ({ name: r.name, type: r.type }));
+    const schema = schemaRows.map((r: any) => ({
+      name: r.column_name,
+      type: r.column_type,
+    }));
 
     const countRows = await session.query(
-      `SELECT num_rows FROM parquet_file_metadata('${session.safeSrc}')`
+      `SELECT COUNT(*)::INTEGER AS n FROM read_parquet('${session.safeSrc}')`
     );
-    const rowCount = countRows.reduce((sum: number, r: any) => sum + Number(r.num_rows), 0);
+    const rowCount = Number(countRows[0]?.n ?? 0);
 
     return { schema, rowCount, profiledAt: new Date().toISOString() };
   } finally {
@@ -78,13 +84,12 @@ export async function extractBaseProfile(
  * File-level request coalescing: one DuckDB session per file at a time.
  */
 export async function hydrateAttributes(
-  bucket: string,
   parquetS3Key: string,
   fileId: string,
   existing: DataProfile | null,
   requestedKeys: (keyof EnrichableAttributes)[],
 ): Promise<DataProfile> {
-  let profile = existing ?? await extractBaseProfile(bucket, parquetS3Key);
+  let profile = existing ?? await extractBaseProfile(parquetS3Key);
 
   // Fast path: all requested keys already present (not undefined)
   let missing = requestedKeys.filter(k => profile[k] === undefined);
@@ -100,7 +105,7 @@ export async function hydrateAttributes(
 
   // We are the leader — compute in ONE DuckDB session, share the promise
   const promise = (async () => {
-    const { session, close } = await openDuckDbSession(bucket, parquetS3Key);
+    const { session, close } = await openDuckDbSession(parquetS3Key);
     try {
       for (const key of missing) {
         await hydrateAttribute(key, session, profile);
@@ -183,14 +188,14 @@ interface DuckDbSession {
   safeSrc: string;
 }
 
-async function openDuckDbSession(bucket: string, parquetS3Key: string): Promise<{
+async function openDuckDbSession(parquetS3Key: string): Promise<{
   session: DuckDbSession;
   close: () => Promise<void>;
 }> {
   const duckdb = await import('duckdb');
   const db = new (duckdb as any).default.Database(':memory:');
   const conn = db.connect();
-  const src = `s3://${bucket}/${parquetS3Key}`;
+  const src = duckdbSrc(parquetS3Key);
   const safeSrc = src.replace(/'/g, "''");
 
   const query = (sql: string): Promise<any[]> =>
@@ -207,7 +212,8 @@ async function openDuckDbSession(bucket: string, parquetS3Key: string): Promise<
       });
     });
 
-  await exec('INSTALL httpfs; LOAD httpfs; INSTALL aws; LOAD aws; CALL load_aws_credentials();');
+  const setup = duckdbSetup();
+  if (setup) await exec(setup);
 
   return {
     session: { query, exec, safeSrc },
@@ -234,23 +240,71 @@ function safeName(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
 }
 
+// ── STRUCT expansion ─────────────────────────────────────────────────────────
+
+interface FlatColumn {
+  name: string;     // e.g. "tags.offset" — used as key in results
+  type: string;     // e.g. "BIGINT"
+  sqlExpr: string;  // e.g. "tags"."offset" — used in SQL
+}
+
+/** Parse STRUCT(foo VARCHAR, bar BIGINT, ...) into field list. */
+function parseStructFields(structType: string): { name: string; type: string }[] {
+  const inner = structType.match(/^STRUCT\((.+)\)$/s)?.[1];
+  if (!inner) return [];
+  const fields: { name: string; type: string }[] = [];
+  let depth = 0, start = 0;
+  for (let i = 0; i < inner.length; i++) {
+    if (inner[i] === '(') depth++;
+    else if (inner[i] === ')') depth--;
+    else if (inner[i] === ',' && depth === 0) {
+      fields.push(parseField(inner.slice(start, i).trim()));
+      start = i + 1;
+    }
+  }
+  fields.push(parseField(inner.slice(start).trim()));
+  return fields;
+}
+
+function parseField(s: string): { name: string; type: string } {
+  const m = s.match(/^"?(\w+)"?\s+(.+)$/);
+  return m ? { name: m[1], type: m[2] } : { name: s, type: 'VARCHAR' };
+}
+
+/** Expand STRUCT columns into flat dot-notation columns with SQL expressions. */
+function expandSchema(schema: { name: string; type: string }[]): FlatColumn[] {
+  const result: FlatColumn[] = [];
+  for (const col of schema) {
+    if (col.type.startsWith('STRUCT(')) {
+      for (const f of parseStructFields(col.type)) {
+        result.push({
+          name: `${col.name}.${f.name}`,
+          type: f.type,
+          sqlExpr: `${safeName(col.name)}.${safeName(f.name)}`,
+        });
+      }
+    } else {
+      result.push({ name: col.name, type: col.type, sqlExpr: safeName(col.name) });
+    }
+  }
+  return result;
+}
+
 // ── Enrichment Functions ────────────────────────────────────────────────────
 
 async function enrichColumnStats(
   session: DuckDbSession,
   profile: DataProfile,
 ): Promise<Record<string, DataProfileStats>> {
-  const numericCols = profile.schema.filter(c => isNumeric(c.type));
+  const flatCols = expandSchema(profile.schema);
+  const numericCols = flatCols.filter(c => isNumeric(c.type));
   if (numericCols.length === 0 || profile.rowCount === 0) return {};
 
-  const selectParts = numericCols.flatMap(col => {
-    const s = safeName(col.name);
-    return [
-      `MIN(${s}) AS "min_${col.name}"`,
-      `MAX(${s}) AS "max_${col.name}"`,
-      `SUM(CASE WHEN ${s} IS NULL THEN 1 ELSE 0 END) AS "nc_${col.name}"`,
-    ];
-  });
+  const selectParts = numericCols.flatMap(col => [
+    `MIN(${col.sqlExpr}) AS "min_${col.name}"`,
+    `MAX(${col.sqlExpr}) AS "max_${col.name}"`,
+    `SUM(CASE WHEN ${col.sqlExpr} IS NULL THEN 1 ELSE 0 END) AS "nc_${col.name}"`,
+  ]);
 
   const rows = await session.query(
     `SELECT ${selectParts.join(', ')} FROM read_parquet('${session.safeSrc}')`
@@ -273,11 +327,11 @@ async function enrichCardinality(
   session: DuckDbSession,
   profile: DataProfile,
 ): Promise<Record<string, DataProfileCardinality>> {
-  if (profile.schema.length === 0 || profile.rowCount === 0) return {};
+  const flatCols = expandSchema(profile.schema);
+  if (flatCols.length === 0 || profile.rowCount === 0) return {};
 
-  const cols = profile.schema;
-  const selectParts = cols.map(col =>
-    `COUNT(DISTINCT ${safeName(col.name)}) AS "cd_${col.name}"`
+  const selectParts = flatCols.map(col =>
+    `COUNT(DISTINCT ${col.sqlExpr}) AS "cd_${col.name}"`
   );
 
   const rows = await session.query(
@@ -287,23 +341,22 @@ async function enrichCardinality(
 
   const row = rows[0];
   const result: Record<string, DataProfileCardinality> = {};
-  for (const col of cols) {
+  for (const col of flatCols) {
     result[col.name] = { distinct: Number(row[`cd_${col.name}`]) };
   }
 
   // Top values for low-cardinality columns
-  const lowCard = cols.filter(c => {
+  const lowCard = flatCols.filter(c => {
     const d = result[c.name]?.distinct ?? 0;
     return d > 0 && d <= LOW_CARDINALITY_MAX;
   });
 
   for (const col of lowCard) {
-    const s = safeName(col.name);
     const topRows = await session.query(
-      `SELECT ${s}::VARCHAR AS value, COUNT(*) AS cnt
+      `SELECT ${col.sqlExpr}::VARCHAR AS value, COUNT(*) AS cnt
        FROM read_parquet('${session.safeSrc}')
-       WHERE ${s} IS NOT NULL
-       GROUP BY ${s}
+       WHERE ${col.sqlExpr} IS NOT NULL
+       GROUP BY ${col.sqlExpr}
        ORDER BY cnt DESC
        LIMIT ${LOW_CARDINALITY_MAX}`
     );
@@ -320,15 +373,13 @@ async function enrichCharLengths(
   session: DuckDbSession,
   profile: DataProfile,
 ): Promise<Record<string, DataProfileCharLengths>> {
-  if (profile.schema.length === 0 || profile.rowCount === 0) return {};
+  const flatCols = expandSchema(profile.schema);
+  if (flatCols.length === 0 || profile.rowCount === 0) return {};
 
-  const selectParts = profile.schema.flatMap(col => {
-    const s = safeName(col.name);
-    return [
-      `MIN(LENGTH(${s}::VARCHAR)) AS "cmin_${col.name}"`,
-      `MAX(LENGTH(${s}::VARCHAR)) AS "cmax_${col.name}"`,
-    ];
-  });
+  const selectParts = flatCols.flatMap(col => [
+    `MIN(LENGTH(${col.sqlExpr}::VARCHAR)) AS "cmin_${col.name}"`,
+    `MAX(LENGTH(${col.sqlExpr}::VARCHAR)) AS "cmax_${col.name}"`,
+  ]);
 
   const rows = await session.query(
     `SELECT ${selectParts.join(', ')} FROM read_parquet('${session.safeSrc}')`
@@ -337,7 +388,7 @@ async function enrichCharLengths(
 
   const row = rows[0];
   const result: Record<string, DataProfileCharLengths> = {};
-  for (const col of profile.schema) {
+  for (const col of flatCols) {
     const mn = Number(row[`cmin_${col.name}`]);
     const mx = Number(row[`cmax_${col.name}`]);
     if (!isNaN(mn) && !isNaN(mx)) result[col.name] = { min: mn, max: mx };

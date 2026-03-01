@@ -8,6 +8,8 @@
  * @module
  */
 
+import { duckdbSrc, duckdbSetup, ensureDir, isLocal } from './storage.js';
+
 const MAX_CONVERSION_BYTES = 1.5 * 1024 * 1024 * 1024;
 const MAX_RETRIES = 3;
 const BACKOFF_BASE_MS = 1000;
@@ -15,7 +17,6 @@ const CONVERSION_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
 
 interface ConversionContext {
   fileId: string;
-  bucket: string;
   s3Key: string;
   parquetS3Key: string;
   format: string;
@@ -42,7 +43,6 @@ function logConversionError(ctx: ConversionContext, err: Error, extra?: Record<s
  * Retries up to 3 times with exponential backoff (1s, 4s, 16s).
  */
 export async function convertToParquet(
-  bucket: string,
   s3Key: string,
   parquetS3Key: string,
   format: string,
@@ -51,7 +51,6 @@ export async function convertToParquet(
 ): Promise<void> {
   const ctx: ConversionContext = {
     fileId: fileId ?? 'unknown',
-    bucket,
     s3Key,
     parquetS3Key,
     format,
@@ -119,15 +118,16 @@ async function runDuckDbS3Conversion(ctx: ConversionContext): Promise<void> {
 
   try {
     const conn = db.connect();
-    const src = `s3://${ctx.bucket}/${ctx.s3Key}`;
-    const dst = `s3://${ctx.bucket}/${ctx.parquetS3Key}`;
+    const src = duckdbSrc(ctx.s3Key);
+    const dst = duckdbSrc(ctx.parquetS3Key);
     const safeDst = dst.replace(/'/g, "''");
 
+    if (isLocal) await ensureDir(ctx.parquetS3Key);
+
     const reader = duckDbReader(src, ctx.format);
+    const setup = duckdbSetup();
     const sql = `
-      INSTALL httpfs; LOAD httpfs;
-      INSTALL aws; LOAD aws;
-      CALL load_aws_credentials();
+      ${setup}
       COPY (
         SELECT * FROM ${reader}
       ) TO '${safeDst}' (FORMAT PARQUET, ROW_GROUP_SIZE 122880, COMPRESSION 'ZSTD');

@@ -1,18 +1,19 @@
-import { lazy, Suspense, useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   useFileDetailQuery, useFilesQuery, useUpdateFileMutation,
   useAddFilesToCollection, useRemoveFilesFromCollection,
   useAddProvenance, useRemoveProvenance,
   usePresignedUrl, useDeleteFileMutation,
   useAddFileOrganism, useRemoveFileOrganism,
+  type GenomicFile,
 } from '../hooks/useGenomicQueries';
 import { detectFormat, FORMAT_META, formatBytes, formatRelativeTime } from '../lib/formats';
 import { Heading, Text, Card, Badge, Button, InlineInput, Input, ChipEditor, HashPill, iconAction } from '../ui';
 import { CollectionPicker, OrganismPicker, FileTypePicker, RelationPicker } from '../ui';
 import LinksList from '../components/LinksList';
-
-const FilePreview = lazy(() => import('../components/FilePreview'));
+import FilePreview from '../components/FilePreview';
 import { useAppStore } from '../stores/useAppStore';
 
 const RELATION_LABELS: Record<string, string> = {
@@ -39,7 +40,32 @@ function FormatPill({ filename }: { filename: string }) {
 
 export default function FileDetailPage() {
   const { fileId } = useParams<{ fileId: string }>();
-  const { data: file, isLoading } = useFileDetailQuery(fileId);
+  const queryClient = useQueryClient();
+
+  // ── Synchronous list-cache lookup ────────────────────────────
+  // Pull file metadata from any cached useFilesQuery response.
+  // Resolves in 0ms after navigating from the file list.
+  const cachedFile = useMemo(() => {
+    if (!fileId) return null;
+    const queries = queryClient.getQueriesData<GenomicFile[]>({
+      queryKey: ['files', 'list'],
+    });
+    for (const [, files] of queries) {
+      if (!files) continue;
+      const found = files.find(f => f.id === fileId);
+      if (found) return found;
+    }
+    return null;
+  }, [fileId, queryClient]);
+
+  // Detail query — provides provenance + links.
+  // Runs in background; does NOT gate preview or metadata render.
+  const { data: fileDetail } = useFileDetailQuery(fileId);
+
+  // Prefer detail (richer), fall back to list cache
+  const file = fileDetail ?? cachedFile;
+  const isLoading = !file;
+
   const { updateFile } = useUpdateFileMutation();
   const setBreadcrumbLabel = useAppStore(s => s.setBreadcrumbLabel);
   const { getUrl } = usePresignedUrl();
@@ -137,12 +163,8 @@ export default function FileDetailPage() {
         <Button intent="primary" size="sm" onClick={handleDownload}>Download</Button>
       </div>
 
-      {/* File preview — first thing after the title */}
-      {file.status === 'ready' && (
-        <Suspense fallback={<div className="skeleton h-32 rounded-md" />}>
-          <FilePreview fileId={fileId!} filename={file.filename} sizeBytes={file.sizeBytes} />
-        </Suspense>
-      )}
+      {/* File preview — mounts immediately, handles its own status polling */}
+      <FilePreview fileId={fileId!} filename={file.filename} sizeBytes={file.sizeBytes} />
 
       {/* Metadata — below the data where it belongs */}
       <div className="flex flex-col gap-2">
@@ -192,7 +214,7 @@ export default function FileDetailPage() {
       <div>
         <Text variant="muted" className="mb-1.5 block">Collections</Text>
         <ChipEditor
-          items={file.collections.map(c => ({ id: c.id, label: c.name }))}
+          items={file.collections.map(c => ({ id: c.id, label: c.name ?? '' }))}
           onAdd={id => handleAddToCollection(id, [fileId!])}
           onRemove={id => handleRemoveFromCollection(id, [fileId!])}
           renderPicker={p => <CollectionPicker {...p} variant="surface" size="sm" className="w-44" />}
@@ -272,11 +294,11 @@ export default function FileDetailPage() {
           </div>
         )}
 
-        {file.provenance.upstream.length > 0 && (
+        {fileDetail && fileDetail.provenance.upstream.length > 0 && (
           <div className="mb-2">
             <Text variant="dim" className="mb-1 block text-fg-3">This file was created from:</Text>
             <div className="flex flex-col gap-1">
-              {file.provenance.upstream.map(p => p.file && (
+              {fileDetail.provenance.upstream.map(p => p.file && (
                 <Card key={p.edgeId} className="p-2 flex items-center gap-2 group">
                   <RelationLabel relation={p.relation} />
                   <FormatPill filename={p.file.filename} />
@@ -298,11 +320,11 @@ export default function FileDetailPage() {
           </div>
         )}
 
-        {file.provenance.downstream.length > 0 && (
+        {fileDetail && fileDetail.provenance.downstream.length > 0 && (
           <div className="mb-2">
             <Text variant="dim" className="mb-1 block text-fg-3">Files created from this:</Text>
             <div className="flex flex-col gap-1">
-              {file.provenance.downstream.map(p => p.file && (
+              {fileDetail.provenance.downstream.map(p => p.file && (
                 <Card key={p.edgeId} className="p-2 flex items-center gap-2 group">
                   <RelationLabel relation={p.relation} />
                   <FormatPill filename={p.file.filename} />
@@ -324,7 +346,7 @@ export default function FileDetailPage() {
           </div>
         )}
 
-        {file.provenance.upstream.length === 0 && file.provenance.downstream.length === 0 && !addingProv && (
+        {fileDetail && fileDetail.provenance.upstream.length === 0 && fileDetail.provenance.downstream.length === 0 && !addingProv && (
           <Text variant="dim" className="animate-fade-up">No data links.</Text>
         )}
       </div>

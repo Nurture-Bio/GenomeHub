@@ -25,6 +25,9 @@ Thumbs.db
 # Worktrees
 .worktrees/
 
+# Local storage (dev mode)
+data/
+
 # Archives (original zip)
 *.zip
 

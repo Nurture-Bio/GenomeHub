@@ -9,10 +9,13 @@
     "packages/infra"
   ],
   "scripts": {
-    "dev":     "concurrently -n client,server -c cyan,green \"npm run dev -w packages/client\" \"npm run dev -w packages/server\"",
-    "build":   "npm run build -w packages/shared && npm run build -w packages/client && npm run build -w packages/server",
-    "deploy":  "npm run build && npm run deploy -w packages/infra",
-    "db:up":   "docker-compose up -d"
+    "dev":         "concurrently -n client,server -c cyan,green \"npm run dev:client\" \"npm run dev:server\"",
+    "dev:server":  "npm run build -w packages/server && S3_BUCKET= node --watch --env-file=.env packages/server/dist/server.js",
+    "dev:client":  "npm run dev -w packages/client",
+    "dev:ui":      "VITE_USE_PROD_API=true VITE_DEV_AUTH_TOKEN= npm run dev -w packages/client",
+    "build":       "npm run build -w packages/shared && npm run build -w packages/client && npm run build -w packages/server",
+    "deploy":      "npm run build && npm run deploy -w packages/infra",
+    "db:up":       "docker-compose up -d"
   },
   "devDependencies": {
     "concurrently": "^9.0.0"

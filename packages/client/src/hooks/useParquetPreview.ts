@@ -126,7 +126,8 @@ const NUMERIC_TYPES = new Set([
   'FLOAT', 'DOUBLE', 'DECIMAL',
 ]);
 
-export function isNumericType(type: string): boolean {
+export function isNumericType(type: string | null | undefined): boolean {
+  if (!type) return false;
   const base = type.replace(/\(.+\)/, '').trim().toUpperCase();
   return NUMERIC_TYPES.has(base);
 }
@@ -167,14 +168,15 @@ function expandColumns(rawCols: ColumnInfo[]): {
   const selectExprs: string[] = [];
 
   for (const c of rawCols) {
-    if (c.type.startsWith('STRUCT(')) {
-      for (const f of parseStructFields(c.type)) {
+    const colType = c.type || 'VARCHAR';
+    if (colType.startsWith('STRUCT(')) {
+      for (const f of parseStructFields(colType)) {
         const flatName = `${c.name}.${f.name}`;
         flatColumns.push({ name: flatName, type: f.type });
         selectExprs.push(`"${c.name}"."${f.name}" AS "${flatName}"`);
       }
     } else {
-      flatColumns.push(c);
+      flatColumns.push({ name: c.name, type: colType });
       selectExprs.push(`"${c.name}"`);
     }
   }
@@ -201,8 +203,15 @@ export function useParquetPreview(fileId: string) {
   const cachedEntry = getValidFileProfile(fileId);
   const cachedProfile = cachedEntry?.dataProfile ?? null;
   const cachedExpanded = cachedProfile?.schema?.length
-    ? expandColumns(cachedProfile.schema.map((c: { name: string; type: string }) => ({ name: c.name, type: c.type })))
+    ? expandColumns(cachedProfile.schema.map((c: { name: string; type: string }) => ({ name: c.name, type: c.type || 'VARCHAR' })))
     : null;
+
+  console.log('[PQ:mount]', {
+    hasCachedEntry: !!cachedEntry,
+    hasCachedProfile: !!cachedProfile,
+    cachedCols: cachedExpanded?.flatColumns.length ?? 0,
+    cachedUrl: !!cachedEntry?.parquetUrl,
+  });
 
   // Profile axis — seeded from Zustand if available, NOT from a useEffect
   const [profileStatus,     setProfileStatus]     = useState<ProfileStatus>(cachedProfile ? 'ready' : 'polling');
@@ -232,6 +241,12 @@ export function useParquetPreview(fileId: string) {
 
     /** Hydrate profile axis from a DataProfile (for slow path only). */
     function hydrateProfile(profile: DataProfile) {
+      console.log('[PQ:hydrateProfile]', {
+        schemaCols: profile.schema?.length ?? 0,
+        rowCount: profile.rowCount,
+        hasStats: !!profile.columnStats,
+        hasCardinality: !!profile.cardinality,
+      });
       setBaseProfile(profile);
       if (profile.schema?.length) {
         const rawCols = profile.schema.map((c: { name: string; type: string }) => ({
@@ -249,6 +264,7 @@ export function useParquetPreview(fileId: string) {
     // ── Fast path: Zustand has profile + parquetUrl ──
     // State already seeded in useState above — just kick off WASM.
     if (cachedEntry?.parquetUrl) {
+      console.log('[PQ:fastPath] Zustand has URL, skipping poll, going to initWasm');
       initWasm(cachedEntry.parquetUrl, cachedProfile);
       return () => { cancelled = true; };
     }
@@ -259,33 +275,49 @@ export function useParquetPreview(fileId: string) {
 
     // ── Slow path (or medium path URL fetch): hit the server ──
     async function poll() {
+      console.log('[PQ:poll] Fetching parquet-url...');
       try {
         const res = await apiFetch(`/api/files/${fileId}/parquet-url`);
         const data = await res.json();
 
         if (cancelled) return;
+        console.log('[PQ:poll] Response:', {
+          status: data.status,
+          hasProfile: !!data.dataProfile,
+          profileKeys: data.dataProfile ? Object.keys(data.dataProfile) : [],
+          schemaCols: data.dataProfile?.schema?.length ?? 0,
+        });
 
         if (data.status === 'ready') {
           const serverProfile: DataProfile | null = data.dataProfile ?? null;
 
           // Only hydrate profile if we didn't already seed from Zustand
           if (!cachedProfile) {
+            console.log('[PQ:poll] No cached profile, hydrating from server');
             if (serverProfile) {
               hydrateProfile(serverProfile);
             } else {
+              console.log('[PQ:poll] No server profile either, setting ready with no data');
               setProfileStatus('ready');
             }
+          } else {
+            console.log('[PQ:poll] Already have cached profile, skipping hydrate');
           }
+
+          // Resolve relative URLs to absolute (local dev serves /api/storage/...)
+          const parquetUrl = data.url.startsWith('/')
+            ? `${window.location.origin}${data.url}`
+            : data.url;
 
           // Write full entry (with parquetUrl) to Zustand
           setFileProfile(fileId, {
             dataProfile: serverProfile ?? cachedProfile ?? { schema: [], rowCount: 0 },
-            parquetUrl: data.url,
+            parquetUrl,
             cachedAt: Date.now(),
           });
 
           // WASM boot (background)
-          initWasm(data.url, serverProfile ?? cachedProfile ?? null);
+          initWasm(parquetUrl, serverProfile ?? cachedProfile ?? null);
 
         } else if (data.status === 'converting') {
           setProfileStatus('polling');
@@ -304,8 +336,15 @@ export function useParquetPreview(fileId: string) {
     }
 
     async function initWasm(parquetUrl: string, serverProfile: DataProfile | null) {
+      console.log('[PQ:wasm] Starting WASM init', {
+        serverSchemaCols: serverProfile?.schema?.length ?? 0,
+      });
       try {
-        setWasmStatus('booting');
+        // Only update wasmStatusRef during boot — don't call setWasmStatus
+        // for intermediate states. Each setState after an await creates a new
+        // microtask → separate React render → unnecessary layout thrash.
+        // Only set React state at the end (ready/error).
+        console.log('[PQ:wasm] → booting');
         wasmStatusRef.current = 'booting';
 
         let db, conn;
@@ -317,7 +356,7 @@ export function useParquetPreview(fileId: string) {
 
         if (cancelled) return;
 
-        setWasmStatus('registering');
+        console.log('[PQ:wasm] → registering');
         wasmStatusRef.current = 'registering';
 
         // Register the Parquet file for HTTP range requests.
@@ -337,8 +376,8 @@ export function useParquetPreview(fileId: string) {
           }
         }
 
-        // Edge case: no schema from server — read from Parquet footer via WASM
-        if (!serverProfile?.schema?.length) {
+        // Always read actual schema from Parquet footer — server profile may be stale
+        {
           let desc;
           try {
             desc = await conn.query(
@@ -353,24 +392,73 @@ export function useParquetPreview(fileId: string) {
             return { name: String(row.column_name), type: String(row.column_type) };
           });
 
-          const countResult = await conn.query(
-            `SELECT COUNT(*)::INTEGER AS n FROM read_parquet('preview.parquet')`
-          );
-          const total = Number((countResult.toArray()[0] as Record<string, unknown>).n);
-
           const { flatColumns: cols, selectExprs } = expandColumns(rawCols);
           selectListRef.current = selectExprs.join(', ');
+          console.log('[PQ:wasm] DESCRIBE returned', cols.length, 'columns:', cols.map(c => c.name).join(', '));
 
-          if (!cancelled) {
-            setColumns(cols);
-            setTotalRows(total);
-            setFilteredCount(total);
+          // Only update columns state if the actual data changed —
+          // prevents unnecessary re-renders that cause sidebar flashing.
+          const stableSetColumns = (next: ColumnInfo[]) => {
+            setColumns(prev => {
+              const same = prev.length === next.length &&
+                  prev.every((c, i) => c.name === next[i].name && c.type === next[i].type);
+              console.log('[PQ:wasm] stableSetColumns:', same ? 'SAME (no re-render)' : 'CHANGED (will re-render)');
+              return same ? prev : next;
+            });
+          };
+
+          if (!serverProfile?.schema?.length) {
+            console.log('[PQ:wasm] No server schema, reading count from WASM');
+            // No server schema — read row count from WASM too
+            const countResult = await conn.query(
+              `SELECT COUNT(*)::INTEGER AS n FROM read_parquet('preview.parquet')`
+            );
+            const total = Number((countResult.toArray()[0] as Record<string, unknown>).n);
+            if (!cancelled) {
+              stableSetColumns(cols);
+              setTotalRows(total);
+              setFilteredCount(total);
+            }
+          } else if (!cancelled) {
+            stableSetColumns(cols);
+
+            // Check if server schema is stale (different columns than actual file)
+            // Compare RAW columns (before STRUCT expansion) against server schema
+            // — both are from DESCRIBE SELECT * and should match exactly.
+            // Using expanded cols here would always mismatch for STRUCT columns
+            // (e.g. 26 expanded vs 7 raw), triggering reprofile every page load.
+            const actualNames = new Set(rawCols.map(c => c.name));
+            const serverNames = new Set(
+              serverProfile.schema.map((c: { name: string }) => c.name)
+            );
+            const stale = actualNames.size !== serverNames.size ||
+              [...actualNames].some(n => !serverNames.has(n));
+            console.log('[PQ:wasm] Schema comparison:', { stale, actual: actualNames.size, server: serverNames.size, actualCols: [...actualNames], serverCols: [...serverNames] });
+
+            if (stale) {
+              console.log('[PQ:wasm] STALE schema detected, firing background reprofile');
+              // Server profile has wrong columns — reprofile in the background.
+              // Do NOT strip enriched attrs (that causes a visual flash).
+              apiFetch(`/api/files/${fileId}/reprofile`, { method: 'POST' })
+                .then(r => r.json())
+                .then(data => {
+                  if (cancelled || !data.profile) return;
+                  setBaseProfile(data.profile);
+                  setFileProfile(fileId, {
+                    dataProfile: data.profile,
+                    parquetUrl: _registeredParquetUrl!,
+                    cachedAt: Date.now(),
+                  });
+                })
+                .catch(() => {}); // non-fatal
+            }
           }
         }
 
         if (cancelled) return;
 
         rowCache.current.clear();
+        console.log('[PQ:wasm] → ready');
         setWasmStatus('ready');
         wasmStatusRef.current = 'ready';
       } catch (err) {
@@ -418,8 +506,8 @@ export function useParquetPreview(fileId: string) {
       : '';
 
     const result = await execQuery(conn, {
-      sql: `SELECT ${selectListRef.current} FROM ${PARQUET_SRC} ${clause} ${orderBy} LIMIT $${nextIdx} OFFSET $${nextIdx + 1}`,
-      params: [...params, limit, offset],
+      sql: `SELECT ${selectListRef.current} FROM ${PARQUET_SRC} ${clause} ${orderBy} LIMIT ${Number(limit)} OFFSET ${Number(offset)}`,
+      params,
     });
 
     const rows = result.toArray().map(

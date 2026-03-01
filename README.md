@@ -94,12 +94,58 @@ Metadata tags (file types, organisms, sequencing techniques) are rendered as col
 
 ### Local development
 
+GenomeHub supports two development modes. Neither requires AWS credentials for UI work.
+
+#### Full-stack local mode (`npm run dev`)
+
+Runs the Express server and Vite dev server together. Files are stored on the local filesystem instead of S3 — the full upload → Parquet conversion → DuckDB WASM preview pipeline works without AWS.
+
 ```bash
 docker compose up -d          # PostgreSQL on :5432
 npm install                   # Install all workspaces
-cp .env.example .env          # Configure AWS credentials + bucket
+cp .env.example .env          # Set DATABASE_URL, VITE_GOOGLE_CLIENT_ID, DEV_AUTH_TOKEN
 npm run dev                   # Client (:5173) + Server (:3000)
 ```
+
+**How it works:** The `dev:server` script sets `S3_BUCKET=` (empty), which activates local filesystem mode via `packages/server/src/lib/storage.ts`. All file I/O that would normally go through S3 goes to `data/storage/` instead. The `.env` file can keep `S3_BUCKET` set for production deploys — the inline override takes precedence.
+
+| Concern | S3 mode (production) | Local mode (`npm run dev`) |
+|---|---|---|
+| File storage | S3 bucket | `data/storage/` on disk |
+| Upload transport | Presigned S3 multipart URLs | `PUT /api/uploads/local-part/:fileId/:partNumber` (Vite proxy) |
+| Parquet serving | CloudFront signed URL or presigned S3 URL | `GET /api/storage/:key` (Express static) |
+| DuckDB conversion | `s3://bucket/key` paths + httpfs/aws extensions | Local filesystem paths, no extensions needed |
+| Auth bypass | Google OAuth | `DEV_AUTH_TOKEN` / `VITE_DEV_AUTH_TOKEN` in `.env` |
+
+**Unauthenticated routes:** Two routes are mounted before the auth guard so they work without Bearer tokens, matching the presigned-URL pattern used in production:
+
+- `/api/uploads/local-part` — the client uploads file chunks via plain `fetch()` (no auth header), just like S3 presigned PUTs
+- `/api/storage` — DuckDB WASM runs in a Web Worker that cannot attach auth headers to HTTP range requests
+
+Both routes set `Cross-Origin-Resource-Policy: cross-origin` and CORS headers required by the Cross-Origin Isolated browser context (needed for `SharedArrayBuffer` / DuckDB WASM).
+
+**Required `.env` values for local mode:**
+
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `DEV_AUTH_TOKEN` | Server-side auth bypass token (any string) |
+| `VITE_DEV_AUTH_TOKEN` | Client-side auth bypass (must match `DEV_AUTH_TOKEN`) |
+| `VITE_GOOGLE_CLIENT_ID` | Google OAuth client ID (needed even locally for the login page to render) |
+
+#### Frontend-only mode (`npm run dev:ui`)
+
+Starts only the Vite dev server. All `/api` requests proxy to the production CloudFront distribution. Useful for iterating on UI without running the server locally.
+
+```bash
+npm run dev:ui                # Vite only, proxied to production
+```
+
+This mode uses your real Google OAuth login against production. The `VITE_DEV_AUTH_TOKEN` is explicitly cleared so the client doesn't send a dev token to the production server.
+
+**Caution:** This connects to real data. Don't delete files or run destructive operations.
+
+#### Connecting an engine
 
 To connect a local analysis engine, start it separately, then go to Settings and add it with its URL (for example, SeqChain at `http://localhost:8001`). The sidebar will show a green dot when it connects.
 

@@ -81,27 +81,55 @@ export function useDataProfile(
     }
   }, [baseProfile]);
 
-  // Also sync if Zustand store gets a richer profile (e.g. from another component)
+  // Sync from Zustand only if it has MORE enriched keys than local state.
+  // Never overwrite an enriched profile with a base-only profile (causes flash).
   useEffect(() => {
-    if (storeProfile && profileRef.current !== storeProfile) {
+    if (!storeProfile || storeProfile === profileRef.current) return;
+    const local = profileRef.current;
+    if (!local) {
+      console.log('[DP:zustandSync] No local profile, adopting store');
       setProfile(storeProfile);
+      return;
     }
+    const storeHasMore = ['columnStats', 'cardinality', 'charLengths'].some(
+      k => (storeProfile as Record<string, unknown>)[k] !== undefined &&
+           (local as Record<string, unknown>)[k] === undefined
+    );
+    console.log('[DP:zustandSync]', { storeHasMore, storeKeys: Object.keys(storeProfile), localKeys: Object.keys(local) });
+    if (storeHasMore) setProfile(storeProfile);
   }, [storeProfile]);
 
+  // Derive effective profile synchronously — eliminates the one-frame gap
+  // where profile state is null but storeProfile/baseProfile are already available.
+  // Without this, the sidebar flashes from "no stats" to "stats" on every page load.
+  const effectiveProfile = profile ?? storeProfile ?? baseProfile;
+
   // Compute which requested keys are missing (=== undefined, not null)
-  const missingKeys = profile
-    ? attributes.filter(k => profile[k] === undefined)
+  const missingKeys = effectiveProfile
+    ? attributes.filter(k => effectiveProfile[k] === undefined)
     : [];
   const missingStr = missingKeys.join(',');
+  console.log('[DP:eval]', {
+    fileId: fileId?.slice(0, 8),
+    hasProfile: !!effectiveProfile,
+    source: profile ? 'local' : storeProfile ? 'zustand' : baseProfile ? 'base' : 'none',
+    missingKeys,
+    profileKeys: effectiveProfile ? Object.keys(effectiveProfile) : [],
+  });
 
   useEffect(() => {
-    if (!fileId || !profile || missingKeys.length === 0) return;
+    if (!fileId || !effectiveProfile || missingKeys.length === 0) {
+      console.log('[DP:effect] Skipping fetch:', { fileId: !!fileId, hasProfile: !!effectiveProfile, missingCount: missingKeys.length });
+      return;
+    }
+    console.log('[DP:effect] Fetching:', missingKeys);
     let cancelled = false;
     setLoading(true);
 
     fetchProfileAttributes(fileId, missingKeys)
       .then(serverProfile => {
         if (cancelled) return;
+        console.log('[DP:fetched]', { keys: Object.keys(serverProfile) });
         // Build the patch of enriched attributes
         const patch: Partial<DataProfile> = {};
         for (const key of attributes) {
@@ -128,5 +156,5 @@ export function useDataProfile(
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileId, missingStr]);
 
-  return { profile, loading };
+  return { profile: effectiveProfile, loading };
 }

@@ -2,7 +2,8 @@ import { Router } from 'express';
 import { AppDataSource } from '../app_data.js';
 import { User, GenomicFile, EntityEdge, Organism, Collection, type EdgeRelation } from '../entities/index.js';
 import { createGunzip, constants } from 'zlib';
-import { deleteObject, presignDownloadUrl, fetchS3Head, fetchS3Range, headObject, BUCKET } from '../lib/s3.js';
+import { deleteObject, presignDownloadUrl, fetchS3Head, fetchS3Range } from '../lib/s3.js';
+import { isLocal, readLocalHead, readLocalRange, deleteLocal } from '../lib/storage.js';
 import { detectFormat, isConvertible } from '@genome-hub/shared';
 import * as edges from '../lib/edge_service.js';
 import { asyncWrap } from '../lib/async_wrap.js';
@@ -199,7 +200,7 @@ router.get('/:id/parquet-url', asyncWrap(async (req, res) => {
     // Only the single request that won the race gets to run DuckDB
     if (updateResult.affected === 1) {
       const parquetKey = file.s3Key + '.parquet';
-      convertToParquet(BUCKET, file.s3Key, parquetKey, detectFormat(file.filename), Number(file.sizeBytes), file.id)
+      convertToParquet(file.s3Key, parquetKey, detectFormat(file.filename), Number(file.sizeBytes), file.id)
         .then(() => repo.update(file.id, { parquetS3Key: parquetKey, parquetStatus: 'ready' }))
         .catch(async (err) => {
           console.error(JSON.stringify({
@@ -227,7 +228,7 @@ router.get('/:id/parquet-url', asyncWrap(async (req, res) => {
   let dataProfile = file.dataProfile;
   if (!dataProfile) {
     try {
-      dataProfile = await extractBaseProfile(BUCKET, file.parquetS3Key);
+      dataProfile = await extractBaseProfile(file.parquetS3Key);
       // Fire-and-forget persist
       repo.update(file.id, { dataProfile }).catch(() => {});
     } catch (err) {
@@ -239,6 +240,13 @@ router.get('/:id/parquet-url', asyncWrap(async (req, res) => {
         timestamp: new Date().toISOString(),
       }));
     }
+  }
+
+  // Local mode — serve via express.static
+  if (isLocal) {
+    const url = `/api/storage/${file.parquetS3Key}`;
+    res.json({ status: 'ready', url, dataProfile: dataProfile ?? null });
+    return;
   }
 
   // CloudFront signed URL (production) or S3 presigned URL (local dev fallback)
@@ -277,7 +285,7 @@ router.get('/:id/data-profile', asyncWrap(async (req, res) => {
   let profile = file.dataProfile;
   try {
     profile = await hydrateAttributes(
-      BUCKET, file.parquetS3Key, file.id, profile, requestedKeys,
+      file.parquetS3Key, file.id, profile, requestedKeys,
     );
   } catch (err) {
     console.error(JSON.stringify({
@@ -292,6 +300,37 @@ router.get('/:id/data-profile', asyncWrap(async (req, res) => {
   }
 
   res.json({ profile: profile ?? null });
+}));
+
+// ─── Re-profile (clear and recompute) ──────────────────────
+
+router.post('/:id/reprofile', asyncWrap(async (req, res) => {
+  const repo = AppDataSource.getRepository(GenomicFile);
+  const file = await repo.findOneBy({ id: req.params.id });
+  if (!file) { res.status(404).json({ error: 'not found' }); return; }
+
+  if (!file.parquetS3Key || file.parquetStatus !== 'ready') {
+    res.status(409).json({ error: 'parquet not ready' });
+    return;
+  }
+
+  // Clear existing profile
+  await repo.update(file.id, { dataProfile: null });
+
+  // Re-extract base profile with DESCRIBE (logical types)
+  try {
+    const baseProfile = await extractBaseProfile(file.parquetS3Key);
+    await repo.update(file.id, { dataProfile: baseProfile });
+    res.json({ ok: true, profile: baseProfile });
+  } catch (err) {
+    console.error(JSON.stringify({
+      tag: '[REPROFILE_FAILED]',
+      fileId: file.id,
+      error: err instanceof Error ? err.message : String(err),
+      timestamp: new Date().toISOString(),
+    }));
+    res.status(500).json({ error: 'Re-profiling failed' });
+  }
 }));
 
 // ─── File preview (first N lines) ──────────────────────────
@@ -322,10 +361,14 @@ router.get('/:id/preview', asyncWrap(async (req, res) => {
   try {
     let buf: Buffer;
     if (isGz) {
-      const compressed = await fetchS3Head(file.s3Key, CHUNK);
+      const compressed = isLocal
+        ? await readLocalHead(file.s3Key, CHUNK)
+        : await fetchS3Head(file.s3Key, CHUNK);
       buf = await decompressPartial(compressed);
     } else {
-      buf = await fetchS3Range(file.s3Key, startByte, CHUNK);
+      buf = isLocal
+        ? await readLocalRange(file.s3Key, startByte, CHUNK)
+        : await fetchS3Range(file.s3Key, startByte, CHUNK);
     }
 
     // Binary sniff: if the first 8 KB contains a null byte, it's not text
@@ -588,9 +631,14 @@ router.delete('/:id', asyncWrap(async (req, res) => {
   const file = await repo.findOneBy({ id: req.params.id });
   if (!file) { res.status(404).json({ error: 'not found' }); return; }
 
-  await deleteObject(file.s3Key);
-  if (file.parquetS3Key) {
-    await deleteObject(file.parquetS3Key).catch(() => {});
+  if (isLocal) {
+    await deleteLocal(file.s3Key);
+    if (file.parquetS3Key) await deleteLocal(file.parquetS3Key);
+  } else {
+    await deleteObject(file.s3Key);
+    if (file.parquetS3Key) {
+      await deleteObject(file.parquetS3Key).catch(() => {});
+    }
   }
   await edges.cascadeDelete({ type: 'file', id: file.id });
   await repo.remove(file);
@@ -604,8 +652,13 @@ router.get('/:id/download', asyncWrap(async (req, res) => {
   const file = await repo.findOneBy({ id: req.params.id });
   if (!file) { res.status(404).json({ error: 'not found' }); return; }
 
-  const url = await presignDownloadUrl(file.s3Key, file.filename);
-  res.json({ url });
+  if (isLocal) {
+    const url = `/api/storage/${file.s3Key}`;
+    res.json({ url });
+  } else {
+    const url = await presignDownloadUrl(file.s3Key, file.filename);
+    res.json({ url });
+  }
 }));
 
 export default router;

@@ -28,16 +28,14 @@ export async function ensureDb(): Promise<{ db: duckdb.AsyncDuckDB; conn: duckdb
 
   _bootPromise = (async () => {
     try {
-      // In Vite dev, the EH bundle needs SharedArrayBuffer but the dev server's
-      // /@fs/ worker sub-requests don't inherit COOP/COEP headers — the worker
-      // crashes with an undefined error and instantiate() hangs without rejecting.
-      // Force MVP in dev; selectBundle picks EH in production where headers are set.
-      const bundle = import.meta.env.DEV
-        ? { mainModule: duckdb_wasm_mvp, mainWorker: duckdb_worker_mvp, pthreadWorker: null }
-        : await duckdb.selectBundle({
-            mvp: { mainModule: duckdb_wasm_mvp, mainWorker: duckdb_worker_mvp },
-            eh:  { mainModule: duckdb_wasm_eh,  mainWorker: duckdb_worker_eh  },
-          });
+      // EH bundle requires SharedArrayBuffer (COOP/COEP headers).
+      // Runtime check — NOT import.meta.env.DEV which is unreliable in Docker.
+      // Production (CloudFront COOP/COEP) → SharedArrayBuffer → EH bundle.
+      // Dev (no headers) → no SharedArrayBuffer → MVP bundle.
+      const useEH = typeof SharedArrayBuffer !== 'undefined';
+      const bundle = useEH
+        ? { mainModule: duckdb_wasm_eh,  mainWorker: duckdb_worker_eh,  pthreadWorker: null }
+        : { mainModule: duckdb_wasm_mvp, mainWorker: duckdb_worker_mvp, pthreadWorker: null };
       const worker = new Worker(bundle.mainWorker!);
       _db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), worker);
       await _db.instantiate(bundle.mainModule, bundle.pthreadWorker ?? undefined);

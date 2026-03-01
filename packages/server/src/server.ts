@@ -20,12 +20,13 @@ import rateLimit from 'express-rate-limit';
 import { AppDataSource } from './app_data.js';
 import { Technique, Engine, GenomicFile } from './entities/index.js';
 import { headObject } from './lib/s3.js';
+import { isLocal, localRoot } from './lib/storage.js';
 import { resolveUser } from './routes/auth.js';
 // Route modules
 import authRoutes from './routes/auth.js';
 import collectionRoutes from './routes/collections.js';
 import fileRoutes from './routes/files.js';
-import uploadRoutes from './routes/uploads.js';
+import uploadRoutes, { localPartRouter } from './routes/uploads.js';
 import organismRoutes from './routes/organisms.js';
 import techniqueRoutes from './routes/techniques.js';
 import edgeRoutes, { linksRouter } from './routes/edges.js';
@@ -52,9 +53,27 @@ app.use('/api', (_req, res, next) => {
   next();
 });
 
-// ─── Auth routes (unauthenticated) ──────────────────────────
+// ─── Unauthenticated routes ─────────────────────────────────
 
 app.use('/api', authRoutes);
+
+// Local-only unauthenticated routes — no Bearer token needed.
+// local-part: analogous to S3 presigned URLs (client does plain fetch)
+// storage:    DuckDB WASM fetches Parquet from a Web Worker (no auth headers)
+if (isLocal) {
+  app.use('/api/uploads/local-part', localPartRouter);
+  app.use('/api/storage', (_req, res, next) => {
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Expose-Headers',
+      'Accept-Ranges, Content-Range, Content-Length');
+    next();
+  }, express.static(localRoot(), {
+    acceptRanges: true,
+    dotfiles: 'deny',
+  }));
+  console.log(`[storage] Local mode — serving files from ${localRoot()}`);
+}
 
 // ─── Auth guard ─────────────────────────────────────────────
 
@@ -210,7 +229,7 @@ async function main() {
   await runSqlMigrations();
   await seedTechniques();
   await seedEngines();
-  await backfillEngineSizes();
+  if (!isLocal) await backfillEngineSizes();
   console.log('Database connected');
 
   server.listen(PORT, () => {

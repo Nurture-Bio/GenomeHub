@@ -12,6 +12,8 @@ import * as Popover from '@radix-ui/react-popover';
 import { Text } from '../ui';
 import { useParquetPreview, isNumericType, DROPDOWN_MAX } from '../hooks/useParquetPreview';
 import { useDataProfile } from '../hooks/useDataProfile';
+import { apiFetch } from '../lib/api';
+import { useAppStore } from '../stores/useAppStore';
 import type { ColumnInfo, ColumnStats, ColumnCardinality, FilterSpec, FilterOp, SortSpec } from '../hooks/useParquetPreview';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -27,8 +29,9 @@ const WINDOW_SIZE = 200;  // rows per fetch window
 
 // ── Formatting ────────────────────────────────────────────────────────────────
 
-function fmt(value: unknown, type: string): string {
+function fmt(value: unknown, type: string | null | undefined): string {
   if (value === null || value === undefined) return '';
+  if (!type) return String(value);
   const base = type.replace(/\(.+\)/, '').trim().toUpperCase();
   if (base === 'FLOAT' || base === 'DOUBLE' || base === 'DECIMAL') {
     return (value as number).toFixed(2);
@@ -316,7 +319,7 @@ const FilterSidebar = memo(function FilterSidebar({
   pendingConstraints:  boolean;
 }) {
   return (
-    <div className="hidden md:block shrink-0 border-r border-line overflow-y-auto" style={{ width: SIDEBAR_W }}>
+    <div className="flex-1 overflow-y-auto">
       <div className="flex flex-col gap-4 p-3"
         style={{ opacity: noResults ? 0.35 : 1, transition: 'opacity var(--t-fast)' }}>
         {columns.map(c => {
@@ -455,7 +458,8 @@ const VirtualRows = memo(function VirtualRows({
           }
           return next;
         });
-      }).catch(() => {
+      }).catch((err) => {
+        console.error('DuckDB Fetch Error:', err);
         fetchingRef.current.delete(key);
       });
     }
@@ -530,9 +534,8 @@ const VirtualRows = memo(function VirtualRows({
 
 // ── ParquetPreview ─────────────────────────────────────────────────────────────
 
-export default function ParquetPreview({ fileId, onFallback }: {
+export default function ParquetPreview({ fileId }: {
   fileId: string;
-  onFallback?: (info: { status: string; error?: string }) => void;
 }) {
   const {
     profileStatus, columns, totalRows, filteredCount,
@@ -542,12 +545,23 @@ export default function ParquetPreview({ fileId, onFallback }: {
   } = useParquetPreview(fileId);
 
   // Demand-driven: fetch enrichable attributes from the server
-  // Fires on profile ready — does NOT wait for WASM
+  // Fires when columns are available — does NOT wait for WASM
   const { profile } = useDataProfile(
-    profileStatus === 'ready' ? fileId : null,
+    columns.length > 0 ? fileId : null,
     ['columnStats', 'cardinality', 'charLengths'],
     baseProfile,
   );
+
+  console.log('[PP:render]', {
+    profileStatus,
+    colCount: columns.length,
+    wasmStatus,
+    wasmReady,
+    totalRows,
+    hasStats: !!profile?.columnStats,
+    hasCardinality: !!profile?.cardinality,
+    statsKeys: profile?.columnStats ? Object.keys(profile.columnStats).length : 0,
+  });
 
   // Derive stats and cardinality from server profile, handling null (negative cache)
   const columnStats: Record<string, ColumnStats> = useMemo(() => {
@@ -573,13 +587,50 @@ export default function ParquetPreview({ fileId, onFallback }: {
     return result;
   }, [profile?.cardinality]);
 
+  // ── Reprofile handler ──────────────────────────────────────────────────────
+  const setFileProfile = useAppStore(s => s.setFileProfile);
+  const [reprofiling, setReprofiling] = useState(false);
+  const handleReprofile = useCallback(async () => {
+    setReprofiling(true);
+    try {
+      const res = await apiFetch(`/api/files/${fileId}/reprofile`, { method: 'POST' });
+      const data = await res.json();
+      if (data.ok && data.profile) {
+        setFileProfile(fileId, {
+          dataProfile: data.profile,
+          parquetUrl: '',
+          cachedAt: 0,
+        });
+        // Force page reload to pick up fresh profile
+        window.location.reload();
+      }
+    } catch { /* non-fatal */ }
+    finally { setReprofiling(false); }
+  }, [fileId, setFileProfile]);
+
   const scrollRef   = useRef<HTMLDivElement>(null);
   const headerRef   = useRef<HTMLDivElement>(null);
   const debRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resizingRef = useRef<{ name: string; startX: number; startW: number } | null>(null);
 
-  const [colWidths,          setColWidths]          = useState<Record<string, number>>({});
-  const [rangeState,         setRangeState]         = useState<Record<string, [number, number]>>({});
+  // ── Synchronous initializers — Frame 1 ready, no useEffect ───────────────
+
+  const [colWidths, setColWidths] = useState<Record<string, number>>(() => {
+    const init: Record<string, number> = {};
+    for (const c of columns) init[c.name] = colWFromName(c.name, c.type);
+    return init;
+  });
+
+  const [rangeState, setRangeState] = useState<Record<string, [number, number]>>(() => {
+    const init: Record<string, [number, number]> = {};
+    for (const c of columns) {
+      if (!isNumericType(c.type)) continue;
+      const s = columnStats[c.name];
+      if (s) init[c.name] = [s.min, s.max];
+    }
+    return init;
+  });
+
   const triggerRef = useRef<() => void>(() => {});
   const [selected,           setSelected]           = useState<Record<string, Set<string>>>({});
   const [textFilters,        setTextFilters]        = useState<Record<string, string>>({});
@@ -587,20 +638,19 @@ export default function ParquetPreview({ fileId, onFallback }: {
   const [constrainedStats,   setConstrainedStats]   = useState<Record<string, ColumnStats>>({});
   const [pendingConstraints, setPendingConstraints] = useState(false);
 
-  // ── Init column widths from column names ────────────────────────────────────
+  // ── Incremental updates — new columns or stats arriving after mount ────────
 
   useEffect(() => {
     if (columns.length === 0) return;
     setColWidths(prev => {
+      let changed = false;
       const next = { ...prev };
       for (const c of columns) {
-        if (!(c.name in next)) next[c.name] = colWFromName(c.name, c.type);
+        if (!(c.name in next)) { next[c.name] = colWFromName(c.name, c.type); changed = true; }
       }
-      return next;
+      return changed ? next : prev;
     });
   }, [columns]);
-
-  // ── Init range state from stats ─────────────────────────────────────────────
 
   useEffect(() => {
     const init: Record<string, [number, number]> = {};
@@ -650,7 +700,10 @@ export default function ParquetPreview({ fileId, onFallback }: {
       if (result.constrainedStats) setConstrainedStats(result.constrainedStats);
       else setConstrainedStats({});
       setPendingConstraints(false);
-    }).catch(() => setPendingConstraints(false));
+    }).catch((err) => {
+      console.error('DuckDB Filter Error:', err);
+      setPendingConstraints(false);
+    });
   }, [wasmReady, rangeState, selected, textFilters, sort, columnStats, applyFilters]);
 
   // Keep ref synced so debounced callbacks always call the latest version
@@ -766,16 +819,8 @@ export default function ParquetPreview({ fileId, onFallback }: {
 
   // ── Loading / error states ─────────────────────────────────────────────────
 
-  // Notify parent when Parquet path is not viable
-  useEffect(() => {
-    if (onFallback && (profileStatus === 'error' || profileStatus === 'failed' || profileStatus === 'unavailable')) {
-      onFallback({ status: profileStatus, error: error ?? undefined });
-    }
-  }, [profileStatus, error, onFallback]);
-
   if (profileStatus === 'error' || wasmStatus === 'error') {
     const displayError = error || wasmError;
-    if (onFallback) return null;
     return (
       <div className="flex items-center justify-center py-8">
         <Text variant="dim" style={{ color: 'var(--color-red)' }}>{displayError}</Text>
@@ -784,15 +829,6 @@ export default function ParquetPreview({ fileId, onFallback }: {
   }
 
   if (profileStatus === 'unavailable' || profileStatus === 'failed') return null;
-
-  // ── WASM-only loading stepper (shown in table area when sidebar is already rendered) ──
-
-  const wasmSteps = [
-    { label: 'Initializing', active: wasmStatus === 'booting' },
-    { label: 'Loading',      active: wasmStatus === 'registering' },
-    { label: 'Ready',        active: false },
-  ];
-  const wasmStepIdx = wasmSteps.findIndex(s => s.active);
 
   return (
     <div className="flex flex-col" style={{ background: 'var(--color-void)', height: PANEL_H }}>
@@ -817,7 +853,7 @@ export default function ParquetPreview({ fileId, onFallback }: {
             }}>
               Filters
             </span>
-            {profileStatus === 'ready' && totalRows > 0 && (
+            {totalRows > 0 && (
               <span className="font-mono tabular-nums"
                 style={{
                   fontSize: 'calc(var(--font-size-xs) - 1px)',
@@ -846,12 +882,12 @@ export default function ParquetPreview({ fileId, onFallback }: {
           </button>
         </div>
 
-        {/* Table header — during polling, solid raised strip; when profile ready, column cells */}
+        {/* Table header — gated on columns.length (data), not profileStatus (flag) */}
         <div ref={headerRef} className="flex-1 min-w-0 overflow-hidden font-mono"
-          style={profileStatus !== 'ready' || columns.length === 0
+          style={columns.length === 0
             ? { background: 'var(--color-raised)', borderBottom: '2px solid var(--color-line)' }
             : undefined}>
-          {profileStatus === 'ready' && columns.length > 0 && (
+          {columns.length > 0 && (
             <div className="flex" style={{ width: totalWidth }}>
               {tableColumns.map(c => {
                 const w       = colWidths[c.name] ?? colW(c.type);
@@ -890,140 +926,134 @@ export default function ParquetPreview({ fileId, onFallback }: {
       {/* Body row */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* Sidebar body — renders on profileStatus ready (independent of WASM) */}
-        {profileStatus === 'ready' ? (
-          <FilterSidebar
-            columns={columns}
-            columnStats={columnStats}
-            columnCardinality={columnCardinality}
-            rangeState={rangeState}
-            selected={selected}
-            textFilters={textFilters}
-            onRangeChange={handleRangeChange}
-            onToggleSelect={handleToggleSelect}
-            onClearSelect={handleClearSelect}
-            onTextChange={handleTextChange}
-            hasAnyFilter={hasAnyFilter}
-            constrainedStats={constrainedStats}
-            noResults={noResults}
-            pendingConstraints={pendingConstraints}
-          />
-        ) : (
-          <div className="hidden md:block shrink-0 border-r border-line" style={{ width: SIDEBAR_W }} />
-        )}
-
-        {/* Table body — full-panel polling message, WASM stepper, or scrollable data */}
-        {profileStatus === 'polling' ? (
-          /* Nothing available yet — full-panel preparing message */
-          <div className="flex-1 min-w-0 flex flex-col items-center justify-center gap-4">
-            <Text variant="dim" style={{ fontSize: 'var(--font-size-xs)' }}>
-              Preparing dataset…
-            </Text>
-          </div>
-        ) : !wasmReady ? (
-          /* Profile ready, WASM still booting — stepper in table area only */
-          <div className="flex-1 min-w-0 flex flex-col items-center justify-center gap-4">
-            <div className="flex items-center gap-0">
-              {wasmSteps.map((step, i) => {
-                const done    = i < wasmStepIdx;
-                const current = i === wasmStepIdx;
-                const pending = i > wasmStepIdx;
-                return (
-                  <div key={step.label} className="flex items-center">
-                    <div style={{
-                      width: 8, height: 8, borderRadius: '50%',
-                      background: done || current ? 'var(--color-cyan)' : 'var(--color-raised)',
-                      boxShadow: current ? '0 0 6px var(--color-cyan)' : 'none',
-                      opacity: pending ? 0.35 : 1,
-                      transition: 'background 0.3s, box-shadow 0.3s, opacity 0.3s',
-                    }} />
-                    {i < wasmSteps.length - 1 && (
-                      <div style={{
-                        width: 28, height: 1,
-                        background: done ? 'var(--color-cyan)' : 'var(--color-raised)',
-                        opacity: pending ? 0.35 : 1,
-                        transition: 'background 0.3s',
-                      }} />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-            <Text variant="dim" style={{ fontSize: 'var(--font-size-xs)' }}>
-              {wasmSteps[wasmStepIdx]?.label ?? 'Loading'}…
-            </Text>
-          </div>
-        ) : (
-          <div
-            ref={scrollRef}
-            className="flex-1 min-w-0 overflow-auto"
-            style={{ position: 'relative' }}
-            onScroll={() => {
-              if (headerRef.current && scrollRef.current)
-                headerRef.current.scrollLeft = scrollRef.current.scrollLeft;
-            }}
-          >
-            {/* Skeleton shimmer overlay during network-bound queries */}
-            {isQuerying && (
-              <div style={{
-                position: 'absolute', inset: 0, zIndex: 10,
-                background: 'var(--color-void)',
-                opacity: 0.7,
-                pointerEvents: 'none',
-              }}>
-                <div className="flex flex-col">
-                  {Array.from({ length: Math.ceil(PANEL_H / ROW_H) }, (_, i) => (
-                    <div key={i} className="flex" style={{ height: ROW_H }}>
-                      {tableColumns.map(c => (
-                        <div key={c.name} style={{
-                          width: colWidths[c.name] ?? colWFromName(c.name, c.type),
-                          minWidth: 50, flexShrink: 0, padding: '0 6px',
-                          borderBottom: '1px solid var(--color-line)',
-                          lineHeight: `${ROW_H}px`,
-                        }}>
-                          <div className="skeleton rounded"
-                            style={{ height: 12, width: `${40 + (i * 17 + c.name.length * 7) % 40}%`, marginTop: 8 }} />
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {filteredCount > 0 && (
-              <VirtualRows
-                key={cacheGen}
-                scrollRef={scrollRef}
-                rowCount={filteredCount}
-                fetchWindow={fetchWindow}
-                columns={tableColumns}
+        {/* Sidebar body — ALWAYS the same container div for layout stability.
+             Content fades in when data arrives; no DOM structure change between states. */}
+        <div className="hidden md:flex flex-col shrink-0 border-r border-line" style={{ width: SIDEBAR_W }}>
+          {columns.length > 0 ? (
+            <>
+              <FilterSidebar
+                columns={columns}
                 columnStats={columnStats}
-                colWidths={colWidths}
-                totalWidth={totalWidth}
+                columnCardinality={columnCardinality}
+                rangeState={rangeState}
+                selected={selected}
+                textFilters={textFilters}
+                onRangeChange={handleRangeChange}
+                onToggleSelect={handleToggleSelect}
+                onClearSelect={handleClearSelect}
+                onTextChange={handleTextChange}
+                hasAnyFilter={hasAnyFilter}
+                constrainedStats={constrainedStats}
+                noResults={noResults}
+                pendingConstraints={pendingConstraints}
               />
-            )}
+              <button
+                onClick={handleReprofile}
+                disabled={reprofiling}
+                className="cursor-pointer bg-transparent border-t border-line text-fg-3 hover:text-cyan transition-colors shrink-0"
+                style={{ fontSize: 'var(--font-size-xs)', padding: '6px 12px', textAlign: 'left' }}
+              >
+                {reprofiling ? 'Profiling…' : 'Profile my data'}
+              </button>
+            </>
+          ) : (
+            /* Skeleton sidebar — matches ready layout structure for zero CLS */
+            <div className="flex-1 overflow-hidden p-3 flex flex-col gap-4">
+              {Array.from({ length: 6 }, (_, i) => (
+                <div key={i}>
+                  <div className="skeleton rounded" style={{ height: 10, width: `${50 + (i * 13) % 30}%`, marginBottom: 8 }} />
+                  <div className="skeleton rounded" style={{ height: 22, width: '100%' }} />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
-            {filteredCount === 0 && wasmReady && (
-              <div className="flex flex-col items-center justify-center gap-3" style={{ height: '100%', minHeight: 200 }}>
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"
-                  style={{ opacity: 0.3, color: 'var(--color-fg-3)' }}>
-                  <circle cx="11" cy="11" r="8" />
-                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                  <line x1="8" y1="11" x2="14" y2="11" />
-                </svg>
-                <Text variant="dim">No records match the current filters</Text>
-                <button
-                  onClick={handleClearAll}
-                  className="cursor-pointer bg-transparent border-none transition-colors hover:text-fg"
-                  style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-fg-3)' }}
-                >
-                  Clear all filters
-                </button>
+        {/* Table body — ALWAYS the same scroll container. Loading states are overlays,
+             not different DOM branches. Eliminates layout shift on state transitions. */}
+        <div
+          ref={scrollRef}
+          className="flex-1 min-w-0 overflow-auto"
+          style={{ position: 'relative' }}
+          onScroll={() => {
+            if (headerRef.current && scrollRef.current)
+              headerRef.current.scrollLeft = scrollRef.current.scrollLeft;
+          }}
+        >
+          {/* Loading overlay — absolutely positioned over the scroll area.
+               Covers skeleton rows during polling and WASM boot. */}
+          {!wasmReady && (
+            <div style={{
+              position: 'absolute', inset: 0, zIndex: 10,
+              background: 'var(--color-void)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Text variant="dim" style={{ fontSize: 'var(--font-size-xs)' }}>
+                {profileStatus === 'polling' ? 'Preparing dataset…' : 'Loading…'}
+              </Text>
+            </div>
+          )}
+
+          {/* Skeleton shimmer overlay during network-bound queries */}
+          {isQuerying && (
+            <div style={{
+              position: 'absolute', inset: 0, zIndex: 10,
+              background: 'var(--color-void)',
+              opacity: 0.7,
+              pointerEvents: 'none',
+            }}>
+              <div className="flex flex-col">
+                {Array.from({ length: Math.ceil(PANEL_H / ROW_H) }, (_, i) => (
+                  <div key={i} className="flex" style={{ height: ROW_H }}>
+                    {tableColumns.map(c => (
+                      <div key={c.name} style={{
+                        width: colWidths[c.name] ?? colWFromName(c.name, c.type),
+                        minWidth: 50, flexShrink: 0, padding: '0 6px',
+                        borderBottom: '1px solid var(--color-line)',
+                        lineHeight: `${ROW_H}px`,
+                      }}>
+                        <div className="skeleton rounded"
+                          style={{ height: 12, width: `${40 + (i * 17 + c.name.length * 7) % 40}%`, marginTop: 8 }} />
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {wasmReady && filteredCount > 0 && (
+            <VirtualRows
+              key={cacheGen}
+              scrollRef={scrollRef}
+              rowCount={filteredCount}
+              fetchWindow={fetchWindow}
+              columns={tableColumns}
+              columnStats={columnStats}
+              colWidths={colWidths}
+              totalWidth={totalWidth}
+            />
+          )}
+
+          {wasmReady && filteredCount === 0 && (
+            <div className="flex flex-col items-center justify-center gap-3" style={{ height: '100%', minHeight: 200 }}>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"
+                style={{ opacity: 0.3, color: 'var(--color-fg-3)' }}>
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                <line x1="8" y1="11" x2="14" y2="11" />
+              </svg>
+              <Text variant="dim">No records match the current filters</Text>
+              <button
+                onClick={handleClearAll}
+                className="cursor-pointer bg-transparent border-none transition-colors hover:text-fg"
+                style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-fg-3)' }}
+              >
+                Clear all filters
+              </button>
               </div>
             )}
           </div>
-        )}
       </div>
     </div>
   );
