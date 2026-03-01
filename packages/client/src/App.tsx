@@ -110,7 +110,7 @@ function SidebarBrand() {
 
 function SidebarNav({ onNavClick }: { onNavClick?: () => void }) {
   return (
-    <nav className="flex flex-col gap-1 p-2 flex-1">
+    <nav className="flex flex-col gap-1 p-2 flex-1 overflow-y-auto min-h-0">
       {NAV_ITEMS.map(item => (
         <NavLink
           key={item.to}

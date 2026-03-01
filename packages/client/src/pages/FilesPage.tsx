@@ -214,7 +214,9 @@ function FileCard({ file, loading = false, onDownload, selected, onSelect }: Fil
         }
         {loading
           ? <div className="skeleton h-[1lh] flex-1" />
-          : <span className="font-mono text-sm truncate flex-1 min-w-0 tabular-nums">{file.filename}</span>
+          : <Link to={`/files/${file.id}`} className="no-underline flex-1 min-w-0">
+              <span className="font-mono text-sm truncate block hover:text-cyan transition-colors duration-fast tabular-nums">{file.filename}</span>
+            </Link>
         }
       </div>
 
