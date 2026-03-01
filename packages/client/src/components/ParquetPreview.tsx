@@ -9,14 +9,16 @@ import { useRef, useMemo, useState, useCallback, useEffect, memo } from 'react';
 import type { CSSProperties, RefObject } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import * as Popover from '@radix-ui/react-popover';
-import { Text, Badge } from '../ui';
+import { Text } from '../ui';
 import { useParquetPreview, isNumericType, DROPDOWN_MAX } from '../hooks/useParquetPreview';
+import { useDataProfile } from '../hooks/useDataProfile';
 import type { ColumnInfo, ColumnStats, ColumnCardinality, FilterSpec, FilterOp, SortSpec } from '../hooks/useParquetPreview';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const ROW_H       = 28;
 const PANEL_H     = 560;
+const SIDEBAR_W   = 216;
 const PX_PER_CHAR = 7.5;
 const MIN_COL_W   = 50;
 const MAX_COL_W   = 300;
@@ -295,8 +297,8 @@ const FilterSidebar = memo(function FilterSidebar({
   columns, columnStats, columnCardinality,
   rangeState, selected, textFilters,
   onRangeChange, onToggleSelect, onClearSelect, onTextChange,
-  hasAnyFilter, onClearAll,
-  constrainedStats, filteredCount, totalRows, noResults, pendingConstraints,
+  hasAnyFilter,
+  constrainedStats, noResults, pendingConstraints,
 }: {
   columns:             ColumnInfo[];
   columnStats:         Record<string, ColumnStats>;
@@ -309,45 +311,12 @@ const FilterSidebar = memo(function FilterSidebar({
   onClearSelect:       (name: string) => void;
   onTextChange:        (name: string, v: string) => void;
   hasAnyFilter:        boolean;
-  onClearAll:          () => void;
   constrainedStats:    Record<string, ColumnStats>;
-  filteredCount:       number;
-  totalRows:           number;
   noResults:           boolean;
   pendingConstraints:  boolean;
 }) {
   return (
-    <div className="flex flex-col shrink-0 border-r border-line overflow-y-auto" style={{ width: 216 }}>
-      <div className="flex items-center justify-between px-3 py-2 border-b border-line shrink-0"
-        style={{ background: 'var(--color-raised)' }}>
-        <div className="flex items-center gap-1.5">
-          <span className="font-semibold" style={{
-            fontSize: 'var(--font-size-xs)', color: 'var(--color-fg-2)',
-            textTransform: 'uppercase', letterSpacing: '0.06em',
-          }}>
-            Filters
-          </span>
-          {hasAnyFilter && totalRows > 0 && (
-            <span className="font-mono tabular-nums"
-              style={{
-                fontSize: 'calc(var(--font-size-xs) - 1px)',
-                color: noResults ? 'oklch(0.650 0.180 30)' : 'var(--color-cyan)',
-                opacity: pendingConstraints ? 0.5 : 1,
-                transition: 'color var(--t-fast), opacity var(--t-fast)',
-              }}>
-              {filteredCount.toLocaleString()}/{totalRows.toLocaleString()}
-            </span>
-          )}
-        </div>
-        {hasAnyFilter && (
-          <button onClick={onClearAll}
-            className="cursor-pointer bg-transparent border-none transition-colors hover:text-fg"
-            style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-fg-3)' }}>
-            Clear all
-          </button>
-        )}
-      </div>
-
+    <div className="hidden md:block shrink-0 border-r border-line overflow-y-auto" style={{ width: SIDEBAR_W }}>
       <div className="flex flex-col gap-4 p-3"
         style={{ opacity: noResults ? 0.35 : 1, transition: 'opacity var(--t-fast)' }}>
         {columns.map(c => {
@@ -567,9 +536,40 @@ export default function ParquetPreview({ fileId, onFallback }: {
 }) {
   const {
     status, columns, totalRows, filteredCount,
-    columnStats, columnCardinality, error,
+    baseProfile, error,
     fetchWindow, applyFilters, isQuerying, cacheGen,
   } = useParquetPreview(fileId);
+
+  // Demand-driven: fetch enrichable attributes from the server
+  const { profile } = useDataProfile(
+    status === 'ready' ? fileId : null,
+    ['columnStats', 'cardinality', 'charLengths'],
+    baseProfile,
+  );
+
+  // Derive stats and cardinality from server profile, handling null (negative cache)
+  const columnStats: Record<string, ColumnStats> = useMemo(() => {
+    const raw = profile?.columnStats;
+    if (!raw) return {};
+    const result: Record<string, ColumnStats> = {};
+    for (const [name, s] of Object.entries(raw)) {
+      result[name] = { min: s.min, max: s.max };
+    }
+    return result;
+  }, [profile?.columnStats]);
+
+  const columnCardinality: Record<string, ColumnCardinality> = useMemo(() => {
+    const raw = profile?.cardinality;
+    if (!raw) return {};
+    const result: Record<string, ColumnCardinality> = {};
+    for (const [name, c] of Object.entries(raw)) {
+      result[name] = {
+        distinct: c.distinct,
+        values: (c.topValues ?? []).map(tv => tv.value),
+      };
+    }
+    return result;
+  }, [profile?.cardinality]);
 
   const scrollRef   = useRef<HTMLDivElement>(null);
   const headerRef   = useRef<HTMLDivElement>(null);
@@ -752,7 +752,6 @@ export default function ParquetPreview({ fileId, onFallback }: {
     return s && (lo > s.min || hi < s.max);
   }) || Object.keys(selected).some(k => selected[k].size > 0)
      || Object.values(textFilters).some(v => v.trim());
-  const isFiltered = hasAnyFilter && filteredCount < totalRows;
   const noResults  = hasAnyFilter && filteredCount === 0;
 
   // ── Loading / error states ─────────────────────────────────────────────────
@@ -775,96 +774,75 @@ export default function ParquetPreview({ fileId, onFallback }: {
 
   if (status === 'unavailable' || status === 'failed') return null;
 
-  if (status === 'polling' || status === 'initializing' || status === 'loading') {
-    const steps = [
-      { label: 'Preparing',    active: status === 'polling' },
-      { label: 'Connecting',   active: status === 'initializing' },
-      { label: 'Reading',      active: status === 'loading' },
-      { label: 'Ready',        active: false },
-    ];
-    const activeIdx = steps.findIndex(s => s.active);
-    return (
-      <div className="flex flex-col items-center justify-center gap-4"
-        style={{ height: PANEL_H, background: 'var(--color-void)' }}>
-        <div className="flex items-center gap-0">
-          {steps.map((step, i) => {
-            const done    = i < activeIdx;
-            const current = i === activeIdx;
-            const pending = i > activeIdx;
-            return (
-              <div key={step.label} className="flex items-center">
-                <div style={{
-                  width: 8, height: 8, borderRadius: '50%',
-                  background: done    ? 'var(--color-cyan)'
-                            : current ? 'var(--color-cyan)'
-                            :           'var(--color-raised)',
-                  boxShadow: current ? '0 0 6px var(--color-cyan)' : 'none',
-                  opacity: pending ? 0.35 : 1,
-                  transition: 'background 0.3s, box-shadow 0.3s, opacity 0.3s',
-                }} />
-                {i < steps.length - 1 && (
-                  <div style={{
-                    width: 28, height: 1,
-                    background: done ? 'var(--color-cyan)' : 'var(--color-raised)',
-                    opacity: pending ? 0.35 : 1,
-                    transition: 'background 0.3s',
-                  }} />
-                )}
-              </div>
-            );
-          })}
-        </div>
-        <Text variant="dim" style={{ fontSize: 'var(--font-size-xs)' }}>
-          {steps[activeIdx]?.label ?? 'Loading'}…
-        </Text>
-      </div>
-    );
-  }
+  // ── Unified layout — loading + ready share the same shell for zero CLS ────
 
-  // ── Main layout ────────────────────────────────────────────────────────────
+  const isLoading = status === 'polling' || status === 'initializing' || status === 'loading';
+
+  // Loading stepper state (computed cheaply, only rendered when isLoading)
+  const loadingSteps = [
+    { label: 'Preparing',  active: status === 'polling' },
+    { label: 'Connecting', active: status === 'initializing' },
+    { label: 'Reading',    active: status === 'loading' },
+    { label: 'Ready',      active: false },
+  ];
+  const loadingIdx = loadingSteps.findIndex(s => s.active);
 
   return (
     <div className="flex flex-col" style={{ background: 'var(--color-void)', height: PANEL_H }}>
 
-      {/* Compact status bar */}
-      <div className="px-3 py-1.5 border-b border-line flex items-center gap-2 flex-wrap shrink-0"
-        style={{ background: 'var(--color-base)' }}>
-        <Text variant="dim">{totalRows.toLocaleString()} records</Text>
-        <Badge variant="count" color="dim">Parquet</Badge>
-        {isFiltered && (
-          <Badge variant="count" color="dim">
-            {filteredCount.toLocaleString()} / {totalRows.toLocaleString()} shown
-          </Badge>
-        )}
-      </div>
+      {/* Pinned header row — sidebar header + table header share one flex row.
+           align-items: stretch (default) forces identical cross-axis height.
+           Rendered identically in loading and ready states — zero layout shift. */}
+      <div className="flex shrink-0">
 
-      {/* Body: sidebar + table */}
-      <div className="flex flex-row flex-1 overflow-hidden">
+        {/* Sidebar header — fixed width, never scrolls, hidden on mobile */}
+        <div className="hidden md:flex items-center justify-between shrink-0 border-r border-line"
+          style={{
+            width: SIDEBAR_W,
+            padding: '3px 12px',
+            background: 'var(--color-raised)',
+            borderBottom: '2px solid var(--color-line)',
+          }}>
+          <div className="flex items-center gap-1.5">
+            <span className="font-semibold" style={{
+              fontSize: 'var(--font-size-xs)', color: 'var(--color-fg-2)',
+              textTransform: 'uppercase', letterSpacing: '0.06em',
+            }}>
+              Filters
+            </span>
+            {!isLoading && totalRows > 0 && (
+              <span className="font-mono tabular-nums"
+                style={{
+                  fontSize: 'calc(var(--font-size-xs) - 1px)',
+                  color: hasAnyFilter
+                    ? (noResults ? 'oklch(0.650 0.180 30)' : 'var(--color-cyan)')
+                    : 'var(--color-fg-3)',
+                  opacity: pendingConstraints ? 0.5 : 1,
+                  transition: 'color var(--t-fast), opacity var(--t-fast)',
+                }}>
+                {hasAnyFilter
+                  ? `${filteredCount.toLocaleString()}/${totalRows.toLocaleString()}`
+                  : totalRows.toLocaleString()
+                }
+              </span>
+            )}
+          </div>
+          {/* Always rendered — visibility: hidden preserves spatial volume for zero CLS */}
+          <button onClick={handleClearAll}
+            className="cursor-pointer bg-transparent border-none transition-colors hover:text-fg"
+            style={{
+              fontSize: 'var(--font-size-xs)',
+              color: 'var(--color-fg-3)',
+              visibility: hasAnyFilter ? 'visible' : 'hidden',
+            }}>
+            Clear all
+          </button>
+        </div>
 
-        <FilterSidebar
-          columns={columns}
-          columnStats={columnStats}
-          columnCardinality={columnCardinality}
-          rangeState={rangeState}
-          selected={selected}
-          textFilters={textFilters}
-          onRangeChange={handleRangeChange}
-          onToggleSelect={handleToggleSelect}
-          onClearSelect={handleClearSelect}
-          onTextChange={handleTextChange}
-          hasAnyFilter={hasAnyFilter}
-          onClearAll={handleClearAll}
-          constrainedStats={constrainedStats}
-          filteredCount={filteredCount}
-          totalRows={totalRows}
-          noResults={noResults}
-          pendingConstraints={pendingConstraints}
-        />
-
-        <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-
-          {/* Pinned column header */}
-          <div ref={headerRef} className="shrink-0 overflow-hidden font-mono">
+        {/* Table header — during loading, solid raised strip; when ready, column cells */}
+        <div ref={headerRef} className="flex-1 min-w-0 overflow-hidden font-mono"
+          style={isLoading ? { background: 'var(--color-raised)', borderBottom: '2px solid var(--color-line)' } : undefined}>
+          {!isLoading && (
             <div className="flex" style={{ width: totalWidth }}>
               {tableColumns.map(c => {
                 const w       = colWidths[c.name] ?? colW(c.type);
@@ -896,12 +874,72 @@ export default function ParquetPreview({ fileId, onFallback }: {
                 );
               })}
             </div>
-          </div>
+          )}
+        </div>
+      </div>
 
-          {/* Scrollable body */}
+      {/* Body row */}
+      <div className="flex flex-1 overflow-hidden">
+
+        {/* Sidebar body — empty column during loading, filter controls when ready */}
+        {!isLoading ? (
+          <FilterSidebar
+            columns={columns}
+            columnStats={columnStats}
+            columnCardinality={columnCardinality}
+            rangeState={rangeState}
+            selected={selected}
+            textFilters={textFilters}
+            onRangeChange={handleRangeChange}
+            onToggleSelect={handleToggleSelect}
+            onClearSelect={handleClearSelect}
+            onTextChange={handleTextChange}
+            hasAnyFilter={hasAnyFilter}
+            constrainedStats={constrainedStats}
+            noResults={noResults}
+            pendingConstraints={pendingConstraints}
+          />
+        ) : (
+          <div className="hidden md:block shrink-0 border-r border-line" style={{ width: SIDEBAR_W }} />
+        )}
+
+        {/* Table body — loading stepper OR scrollable data */}
+        {isLoading ? (
+          <div className="flex-1 min-w-0 flex flex-col items-center justify-center gap-4">
+            <div className="flex items-center gap-0">
+              {loadingSteps.map((step, i) => {
+                const done    = i < loadingIdx;
+                const current = i === loadingIdx;
+                const pending = i > loadingIdx;
+                return (
+                  <div key={step.label} className="flex items-center">
+                    <div style={{
+                      width: 8, height: 8, borderRadius: '50%',
+                      background: done || current ? 'var(--color-cyan)' : 'var(--color-raised)',
+                      boxShadow: current ? '0 0 6px var(--color-cyan)' : 'none',
+                      opacity: pending ? 0.35 : 1,
+                      transition: 'background 0.3s, box-shadow 0.3s, opacity 0.3s',
+                    }} />
+                    {i < loadingSteps.length - 1 && (
+                      <div style={{
+                        width: 28, height: 1,
+                        background: done ? 'var(--color-cyan)' : 'var(--color-raised)',
+                        opacity: pending ? 0.35 : 1,
+                        transition: 'background 0.3s',
+                      }} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <Text variant="dim" style={{ fontSize: 'var(--font-size-xs)' }}>
+              {loadingSteps[loadingIdx]?.label ?? 'Loading'}…
+            </Text>
+          </div>
+        ) : (
           <div
             ref={scrollRef}
-            className="flex-1 overflow-auto"
+            className="flex-1 min-w-0 overflow-auto"
             style={{ position: 'relative' }}
             onScroll={() => {
               if (headerRef.current && scrollRef.current)
@@ -968,7 +1006,7 @@ export default function ParquetPreview({ fileId, onFallback }: {
               </div>
             )}
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

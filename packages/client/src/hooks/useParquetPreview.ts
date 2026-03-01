@@ -11,6 +11,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { duckdb, ensureDb, coerceBigInts } from '../lib/duckdb.js';
 import { apiFetch } from '../lib/api.js';
+import type { DataProfile } from '@genome-hub/shared';
 
 // ── Types ────────────────────────────────────────────────
 
@@ -190,8 +191,9 @@ export function useParquetPreview(fileId: string) {
   const [columns,           setColumns]           = useState<ColumnInfo[]>([]);
   const [totalRows,         setTotalRows]         = useState(0);
   const [filteredCount,     setFilteredCount]     = useState(0);
-  const [columnStats,       setColumnStats]       = useState<Record<string, ColumnStats>>({});
-  const [columnCardinality, setColumnCardinality] = useState<Record<string, ColumnCardinality>>({});
+  // columnStats and columnCardinality are no longer computed client-side.
+  // They come from the server's DataProfile via useDataProfile.
+  const [baseProfile,       setBaseProfile]       = useState<DataProfile | null>(null);
   const [error,             setError]             = useState<string | null>(null);
   const [isQuerying,        setIsQuerying]        = useState(false);
   const [cacheGen,          setCacheGen]          = useState(0);
@@ -216,7 +218,9 @@ export function useParquetPreview(fileId: string) {
         if (cancelled) return;
 
         if (data.status === 'ready') {
-          await initDuckDb(data.url);
+          // Capture base profile from server response
+          if (data.dataProfile) setBaseProfile(data.dataProfile);
+          await initDuckDb(data.url, data.dataProfile ?? null);
         } else if (data.status === 'converting') {
           setStatus('polling');
           pollTimer = setTimeout(poll, 2000);
@@ -233,7 +237,7 @@ export function useParquetPreview(fileId: string) {
       }
     }
 
-    async function initDuckDb(parquetUrl: string) {
+    async function initDuckDb(parquetUrl: string, serverProfile: DataProfile | null) {
       try {
         setStatus('initializing');
 
@@ -266,20 +270,33 @@ export function useParquetPreview(fileId: string) {
           }
         }
 
-        // Schema from Parquet footer (instant — no data scan)
-        let desc;
-        try {
-          desc = await conn.query(
-            `DESCRIBE SELECT * FROM read_parquet('preview.parquet')`
+        // Use server profile schema if available, otherwise read from Parquet footer
+        let rawCols: ColumnInfo[];
+        let total: number;
+
+        if (serverProfile?.schema?.length) {
+          rawCols = serverProfile.schema.map(c => ({ name: c.name, type: c.type }));
+          total = serverProfile.rowCount;
+        } else {
+          let desc;
+          try {
+            desc = await conn.query(
+              `DESCRIBE SELECT * FROM read_parquet('preview.parquet')`
+            );
+          } catch (footerErr) {
+            _registeredParquetUrl = null;
+            throw new Error(`Failed to read dataset metadata: ${footerErr instanceof Error ? footerErr.message : String(footerErr)}`);
+          }
+          rawCols = desc.toArray().map((r: unknown) => {
+            const row = r as Record<string, unknown>;
+            return { name: String(row.column_name), type: String(row.column_type) };
+          });
+
+          const countResult = await conn.query(
+            `SELECT COUNT(*)::INTEGER AS n FROM read_parquet('preview.parquet')`
           );
-        } catch (footerErr) {
-          _registeredParquetUrl = null;
-          throw new Error(`Failed to read dataset metadata: ${footerErr instanceof Error ? footerErr.message : String(footerErr)}`);
+          total = Number((countResult.toArray()[0] as Record<string, unknown>).n);
         }
-        const rawCols: ColumnInfo[] = desc.toArray().map((r: unknown) => {
-          const row = r as Record<string, unknown>;
-          return { name: String(row.column_name), type: String(row.column_type) };
-        });
 
         // Expand STRUCT columns into flat dot-notation columns
         const { flatColumns: cols, selectExprs } = expandColumns(rawCols);
@@ -287,83 +304,10 @@ export function useParquetPreview(fileId: string) {
 
         if (cancelled) return;
 
-        // Total row count from Parquet metadata (no data scan)
-        const countResult = await conn.query(
-          `SELECT COUNT(*)::INTEGER AS n FROM read_parquet('preview.parquet')`
-        );
-        const total = Number((countResult.toArray()[0] as Record<string, unknown>).n);
-
-        if (cancelled) return;
-
-        // Global min/max stats for numeric columns (from row group stats — no data scan)
-        const numericCols = cols.filter(c => isNumericType(c.type));
-        const stats: Record<string, ColumnStats> = {};
-
-        if (numericCols.length > 0) {
-          const selectParts = numericCols.flatMap(c => [
-            `MIN(${colToSql(c.name)})::DOUBLE AS "${c.name}_min"`,
-            `MAX(${colToSql(c.name)})::DOUBLE AS "${c.name}_max"`,
-          ]);
-          const statsResult = await conn.query(
-            `SELECT ${selectParts.join(', ')} FROM read_parquet('preview.parquet')`
-          );
-          const statsRow = statsResult.toArray()[0] as Record<string, unknown>;
-          for (const c of numericCols) {
-            const min = Number(statsRow[`${c.name}_min`]);
-            const max = Number(statsRow[`${c.name}_max`]);
-            if (!isNaN(min) && !isNaN(max)) stats[c.name] = { min, max };
-          }
-        }
-
-        if (cancelled) return;
-
-        // Cardinality for non-numeric columns
-        const cardinality: Record<string, ColumnCardinality> = {};
-        const cardTargets: { path: string; sqlExpr: string }[] = [];
-
-        for (const c of cols) {
-          if (!isNumericType(c.type)) {
-            cardTargets.push({ path: c.name, sqlExpr: colToSql(c.name) });
-          }
-        }
-
-        if (cardTargets.length > 0) {
-          const selectParts = cardTargets.map(
-            (t, i) => `COUNT(DISTINCT ${t.sqlExpr}::VARCHAR)::INTEGER AS c${i}`
-          );
-          const cardResult = await conn.query(
-            `SELECT ${selectParts.join(', ')} FROM read_parquet('preview.parquet')`
-          );
-          const cardRow = cardResult.toArray()[0] as Record<string, unknown>;
-
-          const lowCardTargets = cardTargets.filter((_, i) => {
-            const n = Number(cardRow[`c${i}`]);
-            return n >= 1 && n <= DROPDOWN_MAX;
-          });
-
-          const valueResults: Record<string, string[]> = {};
-          await Promise.all(lowCardTargets.map(async (t) => {
-            const vResult = await conn.query(
-              `SELECT DISTINCT ${t.sqlExpr}::VARCHAR AS v FROM read_parquet('preview.parquet') ORDER BY v`
-            );
-            valueResults[t.path] = vResult.toArray().map(
-              (r: unknown) => String((r as Record<string, unknown>).v ?? '')
-            );
-          }));
-
-          for (let i = 0; i < cardTargets.length; i++) {
-            const t = cardTargets[i];
-            const n = Number(cardRow[`c${i}`]);
-            cardinality[t.path] = { distinct: n, values: valueResults[t.path] ?? [] };
-          }
-        }
-
         if (!cancelled) {
           setColumns(cols);
           setTotalRows(total);
           setFilteredCount(total);
-          setColumnStats(stats);
-          setColumnCardinality(cardinality);
           rowCache.current.clear();
           setStatus('ready');
         }
@@ -493,8 +437,7 @@ export function useParquetPreview(fileId: string) {
     columns,
     totalRows,
     filteredCount,
-    columnStats,
-    columnCardinality,
+    baseProfile,
     error,
     fetchWindow,
     applyFilters,

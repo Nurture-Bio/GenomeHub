@@ -8,6 +8,7 @@ import * as edges from '../lib/edge_service.js';
 import { asyncWrap } from '../lib/async_wrap.js';
 import { organismDisplay } from '../lib/display.js';
 import { convertToParquet } from '../lib/parquet.js';
+import { hydrateAttributes, extractBaseProfile, validateAttributeKeys } from '../lib/data_profile.js';
 import { getSignedUrl as getCloudFrontSignedUrl } from '@aws-sdk/cloudfront-signer';
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 
@@ -221,6 +222,24 @@ router.get('/:id/parquet-url', asyncWrap(async (req, res) => {
     return;
   }
 
+  // Ensure base profile exists (schema + rowCount — free, from Parquet footer)
+  let dataProfile = file.dataProfile;
+  if (!dataProfile) {
+    try {
+      dataProfile = await extractBaseProfile(BUCKET, file.parquetS3Key);
+      // Fire-and-forget persist
+      repo.update(file.id, { dataProfile }).catch(() => {});
+    } catch (err) {
+      console.error(JSON.stringify({
+        tag: '[BASE_PROFILE_FAILED]',
+        fileId: file.id,
+        parquetS3Key: file.parquetS3Key,
+        error: err instanceof Error ? err.message : String(err),
+        timestamp: new Date().toISOString(),
+      }));
+    }
+  }
+
   // CloudFront signed URL (production) or S3 presigned URL (local dev fallback)
   if (CF_DOMAIN && CF_KEY_PAIR_ID) {
     const privateKey = await getCfPrivateKey();
@@ -230,11 +249,48 @@ router.get('/:id/parquet-url', asyncWrap(async (req, res) => {
       privateKey,
       dateLessThan: new Date(Date.now() + 3600 * 1000).toISOString(),
     });
-    res.json({ status: 'ready', url });
+    res.json({ status: 'ready', url, dataProfile: dataProfile ?? null });
   } else {
     const url = await presignDownloadUrl(file.parquetS3Key, 'preview.parquet');
-    res.json({ status: 'ready', url });
+    res.json({ status: 'ready', url, dataProfile: dataProfile ?? null });
   }
+}));
+
+// ─── Data profile (demand-driven lazy hydration) ────────────
+
+router.get('/:id/data-profile', asyncWrap(async (req, res) => {
+  const repo = AppDataSource.getRepository(GenomicFile);
+  const file = await repo.findOneBy({ id: req.params.id });
+  if (!file) { res.status(404).json({ error: 'not found' }); return; }
+
+  if (!file.parquetS3Key || file.parquetStatus !== 'ready') {
+    res.status(409).json({ error: 'parquet not ready' });
+    return;
+  }
+
+  // Parse and validate requested attributes
+  const rawAttrs = ((req.query.attributes as string) ?? '').split(',').filter(Boolean);
+  const requestedKeys = validateAttributeKeys(rawAttrs);
+
+  // Hydrate only what's missing from the requested set
+  let profile = file.dataProfile;
+  try {
+    profile = await hydrateAttributes(
+      BUCKET, file.parquetS3Key, file.id, profile, requestedKeys,
+    );
+  } catch (err) {
+    console.error(JSON.stringify({
+      tag: '[DATA_PROFILE_HYDRATE_FAILED]',
+      fileId: file.id,
+      parquetS3Key: file.parquetS3Key,
+      requestedKeys,
+      error: err instanceof Error ? err.message : String(err),
+      timestamp: new Date().toISOString(),
+    }));
+    // Return whatever we have, even if incomplete
+  }
+
+  res.json({ profile: profile ?? null });
 }));
 
 // ─── File preview (first N lines) ──────────────────────────

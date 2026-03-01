@@ -10,6 +10,7 @@ import * as edges from '../lib/edge_service.js';
 import { detectFormat, isConvertible } from '@genome-hub/shared';
 import { asyncWrap } from '../lib/async_wrap.js';
 import { convertToParquet } from '../lib/parquet.js';
+import { extractBaseProfile } from '../lib/data_profile.js';
 
 const router = Router();
 
@@ -107,7 +108,23 @@ router.post('/complete', asyncWrap(async (req, res) => {
     await repo.update(fileId, { parquetStatus: 'converting' });
 
     convertToParquet(BUCKET, file.s3Key, parquetKey, detectFormat(file.filename), Number(actualSize), fileId)
-      .then(() => repo.update(fileId, { parquetS3Key: parquetKey, parquetStatus: 'ready' }))
+      .then(async () => {
+        await repo.update(fileId, { parquetS3Key: parquetKey, parquetStatus: 'ready' });
+        // Extract base profile (schema + rowCount) — free, no data scan
+        try {
+          const baseProfile = await extractBaseProfile(BUCKET, parquetKey);
+          await repo.update(fileId, { dataProfile: baseProfile });
+        } catch (profileErr) {
+          console.error(JSON.stringify({
+            tag: '[BASE_PROFILE_FAILED]',
+            fileId,
+            parquetS3Key: parquetKey,
+            error: profileErr instanceof Error ? profileErr.message : String(profileErr),
+            timestamp: new Date().toISOString(),
+          }));
+          // Non-fatal — base profile will be extracted on first access
+        }
+      })
       .catch(async (err) => {
         console.error(JSON.stringify({
           tag: '[PARQUET_PIPELINE_FAILED]',

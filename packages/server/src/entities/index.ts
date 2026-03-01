@@ -11,6 +11,7 @@ import {
   Entity, PrimaryGeneratedColumn, Column,
   CreateDateColumn, UpdateDateColumn, Unique,
 } from 'typeorm';
+import type { DataProfile } from '@genome-hub/shared';
 
 // ─── User ─────────────────────────────────────────────────
 
@@ -291,6 +292,14 @@ export class GenomicFile {
   /** Error message from failed Parquet conversion (null when status != 'failed') */
   @Column({ name: 'parquet_error', type: 'text', nullable: true })
   parquetError!: string | null;
+
+  /**
+   * Computed metadata bag — schema, row count, column stats, cardinality,
+   * and any future attributes. One JSONB column, zero future migrations.
+   * Populated lazily on first client request for each attribute.
+   */
+  @Column({ name: 'data_profile', type: 'jsonb', nullable: true })
+  dataProfile!: DataProfile | null;
 
   @CreateDateColumn({ name: 'uploaded_at' })
   uploadedAt!: Date;
