@@ -37,5 +37,14 @@ export default defineConfig({
   build: {
     outDir: '../../dist/client',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'query-vendor': ['@tanstack/react-query', '@tanstack/react-virtual'],
+          'ui-vendor': ['@radix-ui/react-dialog', '@radix-ui/react-popover', 'class-variance-authority', 'sonner'],
+        },
+      },
+    },
   },
 });
