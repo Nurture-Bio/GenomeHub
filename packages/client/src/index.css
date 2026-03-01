@@ -263,6 +263,7 @@
     display: flex;
     flex-direction: column;
     font-size: var(--font-size-body);
+
   }
 
   #root {
@@ -906,4 +907,10 @@
 
 .animate-fade-in {
   animation: fadeOpacity var(--t-phi) var(--ease-phi) both;
+  /* Prevent AA mode flash: keep element on GPU layer after animation ends.
+     Without this, opacity animation promotes to grayscale AA during animation,
+     then de-promotes to subpixel AA — visible weight/kerning shift on Linux.
+     See: https://css-tricks.com/forums/topic/transforms-cause-font-smoothing-weirdness-in-webkit/ */
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
 }

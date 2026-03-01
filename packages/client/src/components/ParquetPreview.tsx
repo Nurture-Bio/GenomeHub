@@ -934,6 +934,7 @@ export default function ParquetPreview({ fileId }: {
       background: 'var(--color-void)', height: PANEL_H,
       opacity: stage >= 1 ? 1 : 0,
       transition: 'opacity var(--t-phi) var(--ease-phi)',
+      backfaceVisibility: 'hidden',
     }}>
 
       {/* Pinned header row — sidebar header + table header share one flex row.
@@ -1091,6 +1092,7 @@ export default function ParquetPreview({ fileId }: {
             opacity: (stage >= 1 && !hasCurrentData) ? 1 : 0,
             pointerEvents: (stage >= 1 && !hasCurrentData) ? 'auto' : 'none',
             transition: 'opacity var(--t-phi) var(--ease-phi)',
+            backfaceVisibility: 'hidden',
           }}>
             <div className="flex flex-col">
               {Array.from({ length: Math.ceil(PANEL_H / ROW_H) }, (_, i) => (
