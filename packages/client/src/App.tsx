@@ -25,9 +25,7 @@ import GlobalUploadProgress from './components/GlobalUploadProgress';
 import ConfirmDialog        from './components/ConfirmDialog';
 import EnginePanel          from './components/EnginePanel';
 
-const DevTablePage = lazy(() => import('./pages/DevTablePage'));
 const DevRangePage = lazy(() => import('./pages/DevRangePage'));
-const DevJsonPage  = lazy(() => import('./pages/DevJsonPage'));
 
 // ── Hub icon ─────────────────────────────────────────────
 import { AppLogo } from './components/AppLogo';
@@ -87,19 +85,6 @@ const icons: Record<string, ReactNode> = {
       <line x1="12" y1="17" x2="12.01" y2="17" />
     </svg>
   ),
-  dev: (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth="2" strokeLinecap="round">
-      <path d="M9 3H5a2 2 0 00-2 2v4" />
-      <path d="M3 15v4a2 2 0 002 2h4" />
-      <path d="M21 9V5a2 2 0 00-2-2h-4" />
-      <path d="M15 21h4a2 2 0 002-2v-4" />
-      <line x1="7" y1="8" x2="7" y2="16" />
-      <line x1="10" y1="8" x2="10" y2="16" />
-      <line x1="13" y1="8" x2="13" y2="16" />
-      <line x1="16" y1="8" x2="16" y2="16" />
-    </svg>
-  ),
 };
 
 const NAV_ITEMS: { to: string; label: string; icon: string; end?: boolean }[] = [
@@ -110,8 +95,6 @@ const NAV_ITEMS: { to: string; label: string; icon: string; end?: boolean }[] = 
   { to: '/upload',       label: 'Upload',       icon: 'upload' },
   { to: '/settings',     label: 'Settings',     icon: 'settings' },
   { to: '/errors',       label: 'Errors',       icon: 'errors' },
-  { to: '/dev/table',    label: 'Dev Table',    icon: 'dev' },
-  { to: '/dev/json',     label: 'Dev JSON',     icon: 'dev' },
 ];
 
 // ── Sidebar content (shared between desktop static + mobile drawer) ──
@@ -305,9 +288,7 @@ export default function App() {
           <Route path="/settings" element={<PageErrorBoundary><SettingsPage /></PageErrorBoundary>} />
           <Route path="/errors" element={<PageErrorBoundary><ErrorsPage /></PageErrorBoundary>} />
           <Route path="/collections/:collectionId" element={<PageErrorBoundary><CollectionDetailPage /></PageErrorBoundary>} />
-          <Route path="/dev/table" element={<PageErrorBoundary><Suspense fallback={null}><DevTablePage /></Suspense></PageErrorBoundary>} />
           <Route path="/dev/range" element={<PageErrorBoundary><Suspense fallback={null}><DevRangePage /></Suspense></PageErrorBoundary>} />
-          <Route path="/dev/json"  element={<PageErrorBoundary><Suspense fallback={null}><DevJsonPage  /></Suspense></PageErrorBoundary>} />
           {/* Legacy redirects */}
           <Route path="/experiments/:collectionId" element={<LegacyCollectionRedirect />} />
           <Route path="*" element={<Navigate to="/" replace />} />

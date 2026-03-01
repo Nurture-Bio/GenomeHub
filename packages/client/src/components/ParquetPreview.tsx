@@ -1,7 +1,7 @@
 /**
  * ParquetPreview — DuckDB WASM over Parquet with windowed row fetching.
  *
- * UI reuses filter sidebar + virtualizer patterns from JsonStrandPreview.
+ * UI reuses filter sidebar + virtualizer patterns from the preview component family.
  * Data layer: rows come from fetchWindow() → Map cache, not a SAB cursor.
  */
 
@@ -561,7 +561,10 @@ const VirtualRows = memo(function VirtualRows({
 
 // ── ParquetPreview ─────────────────────────────────────────────────────────────
 
-export default function ParquetPreview({ fileId }: { fileId: string }) {
+export default function ParquetPreview({ fileId, onFallback }: {
+  fileId: string;
+  onFallback?: (info: { status: string; error?: string }) => void;
+}) {
   const {
     status, columns, totalRows, filteredCount,
     columnStats, columnCardinality, error,
@@ -754,7 +757,15 @@ export default function ParquetPreview({ fileId }: { fileId: string }) {
 
   // ── Loading / error states ─────────────────────────────────────────────────
 
+  // Notify parent when Parquet path is not viable
+  useEffect(() => {
+    if (onFallback && (status === 'error' || status === 'failed' || status === 'unavailable')) {
+      onFallback({ status, error: error ?? undefined });
+    }
+  }, [status, error, onFallback]);
+
   if (status === 'error') {
+    if (onFallback) return null;
     return (
       <div className="flex items-center justify-center py-8">
         <Text variant="dim" style={{ color: 'var(--color-red)' }}>{error}</Text>

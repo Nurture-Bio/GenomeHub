@@ -2,7 +2,6 @@ import { useRef, useEffect, useCallback, useState } from 'react';
 import { useInfiniteFilePreview } from '../hooks/useGenomicQueries';
 import type { FilePreviewPage } from '../hooks/useGenomicQueries';
 import { usePresignedUrl } from '../hooks/useGenomicQueries';
-import { apiFetch } from '../lib/api';
 import JsonHeadPreview from './JsonHeadPreview';
 import ParquetPreview from './ParquetPreview';
 import { detectFormat, isConvertible } from '../lib/formats';
@@ -75,81 +74,50 @@ function DatasetErrorState({ error, sizeBytes, fileId }: {
 function DatasetPreview({ fileId, sizeBytes, filename }: {
   fileId: string; sizeBytes: number; filename: string;
 }) {
-  const [mode, setMode] = useState<'checking' | 'parquet' | 'head' | 'fatal'>('checking');
-  const [fatalError, setFatalError] = useState<string>('');
+  const [fallback, setFallback] = useState<{ status: string; error?: string } | null>(null);
   const { getUrl }      = usePresignedUrl();
   const [url, setUrl]   = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [urlError, setUrlError] = useState<string | null>(null);
   const isLarge = sizeBytes > LARGE_FILE_THRESHOLD;
 
-  // Check if Parquet sidecar is available
+  // ParquetPreview calls this when Parquet path is not viable
+  const handleFallback = useCallback((info: { status: string; error?: string }) => {
+    setFallback(info);
+  }, []);
+
+  // Head preview: resolve presigned URL when falling back
   useEffect(() => {
-    let cancelled = false;
-
-    async function check() {
-      try {
-        const res = await apiFetch(`/api/files/${fileId}/parquet-url`);
-        const data = await res.json();
-        if (cancelled) return;
-
-        if (data.status === 'ready' || data.status === 'converting') {
-          setMode('parquet');
-        } else if ((data.status === 'failed' || data.status === 'error') && isLarge) {
-          setFatalError(data.error ?? 'Conversion failed — no details available');
-          setMode('fatal');
-        } else {
-          // Head streamer handles any size safely — reads first 1,000 rows, aborts.
-          setMode('head');
-        }
-      } catch (err) {
-        if (!cancelled) {
-          if (isLarge) {
-            setFatalError(err instanceof Error ? err.message : String(err));
-            setMode('fatal');
-          } else {
-            setMode('head');
-          }
-        }
-      }
-    }
-
-    check();
-    return () => { cancelled = true; };
-  }, [fileId, isLarge]);
-
-  // Head preview: resolve presigned URL
-  useEffect(() => {
-    if (mode !== 'head') return;
+    if (!fallback || isLarge) return;
     let cancelled = false;
     getUrl(fileId).then(u => {
       if (!cancelled) setUrl(u);
     }).catch(e => {
-      if (!cancelled) setError(String(e));
+      if (!cancelled) setUrlError(String(e));
     });
     return () => { cancelled = true; };
-  }, [fileId, getUrl, mode]);
+  }, [fileId, getUrl, fallback, isLarge]);
 
-  if (mode === 'checking') {
-    return <div className="skeleton h-1 rounded-full w-1/2" />;
+  // Large file + Parquet failed → error state
+  if (fallback && isLarge) {
+    return <DatasetErrorState
+      error={fallback.error ?? 'Conversion failed — no details available'}
+      sizeBytes={sizeBytes}
+      fileId={fileId}
+    />;
   }
 
-  if (mode === 'fatal') {
-    return <DatasetErrorState error={fatalError} sizeBytes={sizeBytes} fileId={fileId} />;
+  // Small file + Parquet failed → format-specific head preview fallback
+  if (fallback) {
+    if (urlError) return <Text variant="dim" style={{ color: 'var(--color-red)' }}>{urlError}</Text>;
+    if (!url) return <div className="skeleton h-1 rounded-full w-1/2" />;
+    if (detectFormat(filename) === 'json') {
+      return <JsonHeadPreview url={url} />;
+    }
+    return null;
   }
 
-  if (mode === 'parquet') {
-    return <ParquetPreview fileId={fileId} />;
-  }
-
-  // Head preview fallback — format-specific
-  if (error) return <Text variant="dim" style={{ color: 'var(--color-red)' }}>{error}</Text>;
-  if (!url)  return <div className="skeleton h-1 rounded-full w-1/2" />;
-  if (detectFormat(filename) === 'json') {
-    return <JsonHeadPreview url={url} />;
-  }
-  // Non-JSON convertible formats: no head preview available, show nothing
-  // (parent will not reach here — TextPreview is the fallback for non-convertible)
-  return null;
+  // Primary path: ParquetPreview handles polling, init, and display
+  return <ParquetPreview fileId={fileId} onFallback={handleFallback} />;
 }
 
 // ── Plain text preview with infinite scroll ──────────────
