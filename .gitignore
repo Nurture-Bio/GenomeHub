@@ -22,6 +22,9 @@ Thumbs.db
 *.swp
 *.swo
 
+# Worktrees
+.worktrees/
+
 # Archives (original zip)
 *.zip
 
