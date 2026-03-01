@@ -195,12 +195,21 @@ let _registeredParquetUrl: string | null = null;
 // ── Hook ─────────────────────────────────────────────────
 
 export function useParquetPreview(fileId: string) {
-  // Profile axis (fast — driven by server response)
-  const [profileStatus,     setProfileStatus]     = useState<ProfileStatus>('polling');
-  const [columns,           setColumns]           = useState<ColumnInfo[]>([]);
-  const [totalRows,         setTotalRows]         = useState(0);
-  const [filteredCount,     setFilteredCount]     = useState(0);
-  const [baseProfile,       setBaseProfile]       = useState<DataProfile | null>(null);
+  const { getValidFileProfile, setFileProfile, mergeFileProfile } = useAppStore();
+
+  // ── Synchronous Zustand read — runs DURING useState, before first render ──
+  const cachedEntry = getValidFileProfile(fileId);
+  const cachedProfile = cachedEntry?.dataProfile ?? null;
+  const cachedExpanded = cachedProfile?.schema?.length
+    ? expandColumns(cachedProfile.schema.map((c: { name: string; type: string }) => ({ name: c.name, type: c.type })))
+    : null;
+
+  // Profile axis — seeded from Zustand if available, NOT from a useEffect
+  const [profileStatus,     setProfileStatus]     = useState<ProfileStatus>(cachedProfile ? 'ready' : 'polling');
+  const [columns,           setColumns]           = useState<ColumnInfo[]>(cachedExpanded?.flatColumns ?? []);
+  const [totalRows,         setTotalRows]         = useState(cachedProfile?.rowCount ?? 0);
+  const [filteredCount,     setFilteredCount]     = useState(cachedProfile?.rowCount ?? 0);
+  const [baseProfile,       setBaseProfile]       = useState<DataProfile | null>(cachedProfile);
   const [error,             setError]             = useState<string | null>(null);
 
   // WASM axis (slow — DuckDB boot + file registration)
@@ -215,17 +224,13 @@ export function useParquetPreview(fileId: string) {
   const rowCache = useRef<Map<number, Record<string, unknown>>>(new Map());
   const filtersRef = useRef<FilterSpec[]>([]);
   const sortRef = useRef<SortSpec | null>(null);
-  const selectListRef = useRef<string>('*');
-
-  // ── Check Zustand store first, then poll API ──
-
-  const { getValidFileProfile, setFileProfile, mergeFileProfile } = useAppStore();
+  const selectListRef = useRef<string>(cachedExpanded?.selectExprs.join(', ') ?? '*');
 
   useEffect(() => {
     let cancelled = false;
     let pollTimer: ReturnType<typeof setTimeout>;
 
-    /** Hydrate profile axis from a DataProfile (store or server). */
+    /** Hydrate profile axis from a DataProfile (for slow path only). */
     function hydrateProfile(profile: DataProfile) {
       setBaseProfile(profile);
       if (profile.schema?.length) {
@@ -241,21 +246,18 @@ export function useParquetPreview(fileId: string) {
       setProfileStatus('ready');
     }
 
-    // ── Fast path: Zustand store has a valid cached entry with parquetUrl ──
-    const cached = getValidFileProfile(fileId);
-    if (cached?.parquetUrl) {
-      hydrateProfile(cached.dataProfile);
-      initWasm(cached.parquetUrl, cached.dataProfile);
+    // ── Fast path: Zustand has profile + parquetUrl ──
+    // State already seeded in useState above — just kick off WASM.
+    if (cachedEntry?.parquetUrl) {
+      initWasm(cachedEntry.parquetUrl, cachedProfile);
       return () => { cancelled = true; };
     }
 
-    // ── Medium path: profile primed from file list, but no parquetUrl yet ──
-    // Hydrate sidebar immediately, then fetch parquet-url for WASM only.
-    if (cached && !cached.parquetUrl) {
-      hydrateProfile(cached.dataProfile);
-    }
+    // ── Medium path: Zustand has profile but no parquetUrl ──
+    // State already seeded in useState above — just fetch the presigned URL.
+    // Fall through to poll().
 
-    // ── Slow path: fetch parquet-url from server ──
+    // ── Slow path (or medium path URL fetch): hit the server ──
     async function poll() {
       try {
         const res = await apiFetch(`/api/files/${fileId}/parquet-url`);
@@ -266,9 +268,8 @@ export function useParquetPreview(fileId: string) {
         if (data.status === 'ready') {
           const serverProfile: DataProfile | null = data.dataProfile ?? null;
 
-          // ── Phase 1: Profile (immediate, no WASM needed) ──
-          // Skip if already hydrated from Zustand cache above
-          if (!cached) {
+          // Only hydrate profile if we didn't already seed from Zustand
+          if (!cachedProfile) {
             if (serverProfile) {
               hydrateProfile(serverProfile);
             } else {
@@ -278,13 +279,13 @@ export function useParquetPreview(fileId: string) {
 
           // Write full entry (with parquetUrl) to Zustand
           setFileProfile(fileId, {
-            dataProfile: serverProfile ?? cached?.dataProfile ?? { schema: [], rowCount: 0 },
+            dataProfile: serverProfile ?? cachedProfile ?? { schema: [], rowCount: 0 },
             parquetUrl: data.url,
             cachedAt: Date.now(),
           });
 
-          // ── Phase 2: WASM (background, async) ──
-          initWasm(data.url, serverProfile ?? cached?.dataProfile ?? null);
+          // WASM boot (background)
+          initWasm(data.url, serverProfile ?? cachedProfile ?? null);
 
         } else if (data.status === 'converting') {
           setProfileStatus('polling');
