@@ -11,6 +11,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { duckdb, ensureDb, coerceBigInts } from '../lib/duckdb.js';
 import { apiFetch } from '../lib/api.js';
+import { useAppStore } from '../stores/useAppStore.js';
 import type { DataProfile } from '@genome-hub/shared';
 
 // ── Types ────────────────────────────────────────────────
@@ -30,13 +31,20 @@ export interface ColumnCardinality {
   values: string[];
 }
 
-export type ParquetStatus =
-  | 'polling'       // waiting for server to finish Parquet conversion
-  | 'initializing'  // booting DuckDB WASM
-  | 'loading'       // registering Parquet file + reading metadata
-  | 'ready'         // schema + stats available, rows fetchable
-  | 'unavailable'   // server says no Parquet (too large, not JSON, etc.)
-  | 'failed'        // server conversion failed after retries
+/** Profile axis — driven by parquet-url server response. */
+export type ProfileStatus =
+  | 'polling'       // waiting for Parquet conversion
+  | 'ready'         // baseProfile arrived (schema + rowCount + cached attrs)
+  | 'unavailable'   // no Parquet available
+  | 'failed'        // conversion failed
+  | 'error';
+
+/** WASM axis — DuckDB boot + file registration. */
+export type WasmStatus =
+  | 'idle'           // waiting for parquet URL
+  | 'booting'        // ensureDb() in progress
+  | 'registering'    // registerFileURL in progress
+  | 'ready'          // fetchWindow/applyFilters available
   | 'error';
 
 /** Discriminated union — no SQL strings cross this boundary. */
@@ -187,14 +195,19 @@ let _registeredParquetUrl: string | null = null;
 // ── Hook ─────────────────────────────────────────────────
 
 export function useParquetPreview(fileId: string) {
-  const [status,            setStatus]            = useState<ParquetStatus>('polling');
+  // Profile axis (fast — driven by server response)
+  const [profileStatus,     setProfileStatus]     = useState<ProfileStatus>('polling');
   const [columns,           setColumns]           = useState<ColumnInfo[]>([]);
   const [totalRows,         setTotalRows]         = useState(0);
   const [filteredCount,     setFilteredCount]     = useState(0);
-  // columnStats and columnCardinality are no longer computed client-side.
-  // They come from the server's DataProfile via useDataProfile.
   const [baseProfile,       setBaseProfile]       = useState<DataProfile | null>(null);
   const [error,             setError]             = useState<string | null>(null);
+
+  // WASM axis (slow — DuckDB boot + file registration)
+  const [wasmStatus,        setWasmStatus]        = useState<WasmStatus>('idle');
+  const [wasmError,         setWasmError]         = useState<string | null>(null);
+  const wasmStatusRef = useRef<WasmStatus>('idle');
+
   const [isQuerying,        setIsQuerying]        = useState(false);
   const [cacheGen,          setCacheGen]          = useState(0);
 
@@ -204,12 +217,45 @@ export function useParquetPreview(fileId: string) {
   const sortRef = useRef<SortSpec | null>(null);
   const selectListRef = useRef<string>('*');
 
-  // ── Poll for Parquet URL, then init DuckDB ─────────────
+  // ── Check Zustand store first, then poll API ──
+
+  const { getValidFileProfile, setFileProfile, mergeFileProfile } = useAppStore();
 
   useEffect(() => {
     let cancelled = false;
     let pollTimer: ReturnType<typeof setTimeout>;
 
+    /** Hydrate profile axis from a DataProfile (store or server). */
+    function hydrateProfile(profile: DataProfile) {
+      setBaseProfile(profile);
+      if (profile.schema?.length) {
+        const rawCols = profile.schema.map((c: { name: string; type: string }) => ({
+          name: c.name, type: c.type,
+        }));
+        const { flatColumns: cols, selectExprs } = expandColumns(rawCols);
+        selectListRef.current = selectExprs.join(', ');
+        setColumns(cols);
+        setTotalRows(profile.rowCount);
+        setFilteredCount(profile.rowCount);
+      }
+      setProfileStatus('ready');
+    }
+
+    // ── Fast path: Zustand store has a valid cached entry with parquetUrl ──
+    const cached = getValidFileProfile(fileId);
+    if (cached?.parquetUrl) {
+      hydrateProfile(cached.dataProfile);
+      initWasm(cached.parquetUrl, cached.dataProfile);
+      return () => { cancelled = true; };
+    }
+
+    // ── Medium path: profile primed from file list, but no parquetUrl yet ──
+    // Hydrate sidebar immediately, then fetch parquet-url for WASM only.
+    if (cached && !cached.parquetUrl) {
+      hydrateProfile(cached.dataProfile);
+    }
+
+    // ── Slow path: fetch parquet-url from server ──
     async function poll() {
       try {
         const res = await apiFetch(`/api/files/${fileId}/parquet-url`);
@@ -218,28 +264,48 @@ export function useParquetPreview(fileId: string) {
         if (cancelled) return;
 
         if (data.status === 'ready') {
-          // Capture base profile from server response
-          if (data.dataProfile) setBaseProfile(data.dataProfile);
-          await initDuckDb(data.url, data.dataProfile ?? null);
+          const serverProfile: DataProfile | null = data.dataProfile ?? null;
+
+          // ── Phase 1: Profile (immediate, no WASM needed) ──
+          // Skip if already hydrated from Zustand cache above
+          if (!cached) {
+            if (serverProfile) {
+              hydrateProfile(serverProfile);
+            } else {
+              setProfileStatus('ready');
+            }
+          }
+
+          // Write full entry (with parquetUrl) to Zustand
+          setFileProfile(fileId, {
+            dataProfile: serverProfile ?? cached?.dataProfile ?? { schema: [], rowCount: 0 },
+            parquetUrl: data.url,
+            cachedAt: Date.now(),
+          });
+
+          // ── Phase 2: WASM (background, async) ──
+          initWasm(data.url, serverProfile ?? cached?.dataProfile ?? null);
+
         } else if (data.status === 'converting') {
-          setStatus('polling');
+          setProfileStatus('polling');
           pollTimer = setTimeout(poll, 2000);
         } else if (data.status === 'failed') {
-          setStatus('failed');
+          setProfileStatus('failed');
         } else {
-          setStatus('unavailable');
+          setProfileStatus('unavailable');
         }
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : String(err));
-          setStatus('error');
+          setProfileStatus('error');
         }
       }
     }
 
-    async function initDuckDb(parquetUrl: string, serverProfile: DataProfile | null) {
+    async function initWasm(parquetUrl: string, serverProfile: DataProfile | null) {
       try {
-        setStatus('initializing');
+        setWasmStatus('booting');
+        wasmStatusRef.current = 'booting';
 
         let db, conn;
         try {
@@ -250,10 +316,10 @@ export function useParquetPreview(fileId: string) {
 
         if (cancelled) return;
 
-        setStatus('loading');
+        setWasmStatus('registering');
+        wasmStatusRef.current = 'registering';
 
         // Register the Parquet file for HTTP range requests.
-        // Always drop first — presigned URLs rotate and React can re-run effects.
         if (_registeredParquetUrl !== parquetUrl) {
           try {
             try { await db.dropFile('preview.parquet'); } catch { /* not registered — fine */ }
@@ -270,14 +336,8 @@ export function useParquetPreview(fileId: string) {
           }
         }
 
-        // Use server profile schema if available, otherwise read from Parquet footer
-        let rawCols: ColumnInfo[];
-        let total: number;
-
-        if (serverProfile?.schema?.length) {
-          rawCols = serverProfile.schema.map(c => ({ name: c.name, type: c.type }));
-          total = serverProfile.rowCount;
-        } else {
+        // Edge case: no schema from server — read from Parquet footer via WASM
+        if (!serverProfile?.schema?.length) {
           let desc;
           try {
             desc = await conn.query(
@@ -287,7 +347,7 @@ export function useParquetPreview(fileId: string) {
             _registeredParquetUrl = null;
             throw new Error(`Failed to read dataset metadata: ${footerErr instanceof Error ? footerErr.message : String(footerErr)}`);
           }
-          rawCols = desc.toArray().map((r: unknown) => {
+          const rawCols = desc.toArray().map((r: unknown) => {
             const row = r as Record<string, unknown>;
             return { name: String(row.column_name), type: String(row.column_type) };
           });
@@ -295,26 +355,28 @@ export function useParquetPreview(fileId: string) {
           const countResult = await conn.query(
             `SELECT COUNT(*)::INTEGER AS n FROM read_parquet('preview.parquet')`
           );
-          total = Number((countResult.toArray()[0] as Record<string, unknown>).n);
-        }
+          const total = Number((countResult.toArray()[0] as Record<string, unknown>).n);
 
-        // Expand STRUCT columns into flat dot-notation columns
-        const { flatColumns: cols, selectExprs } = expandColumns(rawCols);
-        selectListRef.current = selectExprs.join(', ');
+          const { flatColumns: cols, selectExprs } = expandColumns(rawCols);
+          selectListRef.current = selectExprs.join(', ');
+
+          if (!cancelled) {
+            setColumns(cols);
+            setTotalRows(total);
+            setFilteredCount(total);
+          }
+        }
 
         if (cancelled) return;
 
-        if (!cancelled) {
-          setColumns(cols);
-          setTotalRows(total);
-          setFilteredCount(total);
-          rowCache.current.clear();
-          setStatus('ready');
-        }
+        rowCache.current.clear();
+        setWasmStatus('ready');
+        wasmStatusRef.current = 'ready';
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : String(err));
-          setStatus('error');
+          setWasmError(err instanceof Error ? err.message : String(err));
+          setWasmStatus('error');
+          wasmStatusRef.current = 'error';
         }
       }
     }
@@ -332,6 +394,8 @@ export function useParquetPreview(fileId: string) {
     offset: number,
     limit: number,
   ): Promise<Record<string, unknown>[]> => {
+    if (wasmStatusRef.current !== 'ready') return [];
+
     // Return cached rows if available
     const cached: Record<string, unknown>[] = [];
     let allCached = true;
@@ -378,6 +442,8 @@ export function useParquetPreview(fileId: string) {
     filteredCount: number;
     constrainedStats?: Record<string, ColumnStats>;
   }> => {
+    if (wasmStatusRef.current !== 'ready') return { filteredCount: 0 };
+
     setIsQuerying(true);
     try {
       filtersRef.current = filters;
@@ -433,12 +499,20 @@ export function useParquetPreview(fileId: string) {
   }, [columns]);
 
   return {
-    status,
+    // Profile axis (fast)
+    profileStatus,
     columns,
     totalRows,
     filteredCount,
     baseProfile,
     error,
+
+    // WASM axis (slow)
+    wasmReady: wasmStatus === 'ready',
+    wasmStatus,
+    wasmError,
+
+    // Row-level operations (require WASM)
     fetchWindow,
     applyFilters,
     isQuerying,

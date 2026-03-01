@@ -256,7 +256,7 @@ const STUB_FILES: GenomicFile[] = [
   sizeBytes: 8_600_000, format: detectFormat(filename),
   types: [], md5: null, status: 'ready' as const,
   uploadedAt: new Date(0).toISOString(),
-  description: null, tags: [], organisms: [], collections: [], uploadedBy: null,
+  description: null, tags: [], organisms: [], collections: [], uploadedBy: null, dataProfile: null,
 }));
 
 // ── FilesPage ─────────────────────────────────────────────────────────────────

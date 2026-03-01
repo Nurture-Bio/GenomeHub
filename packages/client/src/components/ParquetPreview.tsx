@@ -535,14 +535,16 @@ export default function ParquetPreview({ fileId, onFallback }: {
   onFallback?: (info: { status: string; error?: string }) => void;
 }) {
   const {
-    status, columns, totalRows, filteredCount,
+    profileStatus, columns, totalRows, filteredCount,
     baseProfile, error,
+    wasmReady, wasmStatus, wasmError,
     fetchWindow, applyFilters, isQuerying, cacheGen,
   } = useParquetPreview(fileId);
 
   // Demand-driven: fetch enrichable attributes from the server
+  // Fires on profile ready — does NOT wait for WASM
   const { profile } = useDataProfile(
-    status === 'ready' ? fileId : null,
+    profileStatus === 'ready' ? fileId : null,
     ['columnStats', 'cardinality', 'charLengths'],
     baseProfile,
   );
@@ -616,6 +618,8 @@ export default function ParquetPreview({ fileId, onFallback }: {
   // ── Build filter specs and apply ────────────────────────────────────────────
 
   const triggerFilters = useCallback(() => {
+    if (!wasmReady) return; // accumulate in state; applied when WASM boots
+
     const filters: FilterSpec[] = [];
 
     // Range filters
@@ -647,10 +651,16 @@ export default function ParquetPreview({ fileId, onFallback }: {
       else setConstrainedStats({});
       setPendingConstraints(false);
     }).catch(() => setPendingConstraints(false));
-  }, [rangeState, selected, textFilters, sort, columnStats, applyFilters]);
+  }, [wasmReady, rangeState, selected, textFilters, sort, columnStats, applyFilters]);
 
   // Keep ref synced so debounced callbacks always call the latest version
   triggerRef.current = triggerFilters;
+
+  // Catch-up: apply accumulated filters when WASM becomes ready
+  useEffect(() => {
+    if (wasmReady) triggerFilters();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wasmReady]);
 
   // ── Filter handlers ──────────────────────────────────────────────────────────
 
@@ -758,34 +768,31 @@ export default function ParquetPreview({ fileId, onFallback }: {
 
   // Notify parent when Parquet path is not viable
   useEffect(() => {
-    if (onFallback && (status === 'error' || status === 'failed' || status === 'unavailable')) {
-      onFallback({ status, error: error ?? undefined });
+    if (onFallback && (profileStatus === 'error' || profileStatus === 'failed' || profileStatus === 'unavailable')) {
+      onFallback({ status: profileStatus, error: error ?? undefined });
     }
-  }, [status, error, onFallback]);
+  }, [profileStatus, error, onFallback]);
 
-  if (status === 'error') {
+  if (profileStatus === 'error' || wasmStatus === 'error') {
+    const displayError = error || wasmError;
     if (onFallback) return null;
     return (
       <div className="flex items-center justify-center py-8">
-        <Text variant="dim" style={{ color: 'var(--color-red)' }}>{error}</Text>
+        <Text variant="dim" style={{ color: 'var(--color-red)' }}>{displayError}</Text>
       </div>
     );
   }
 
-  if (status === 'unavailable' || status === 'failed') return null;
+  if (profileStatus === 'unavailable' || profileStatus === 'failed') return null;
 
-  // ── Unified layout — loading + ready share the same shell for zero CLS ────
+  // ── WASM-only loading stepper (shown in table area when sidebar is already rendered) ──
 
-  const isLoading = status === 'polling' || status === 'initializing' || status === 'loading';
-
-  // Loading stepper state (computed cheaply, only rendered when isLoading)
-  const loadingSteps = [
-    { label: 'Preparing',  active: status === 'polling' },
-    { label: 'Connecting', active: status === 'initializing' },
-    { label: 'Reading',    active: status === 'loading' },
-    { label: 'Ready',      active: false },
+  const wasmSteps = [
+    { label: 'Initializing', active: wasmStatus === 'booting' },
+    { label: 'Loading',      active: wasmStatus === 'registering' },
+    { label: 'Ready',        active: false },
   ];
-  const loadingIdx = loadingSteps.findIndex(s => s.active);
+  const wasmStepIdx = wasmSteps.findIndex(s => s.active);
 
   return (
     <div className="flex flex-col" style={{ background: 'var(--color-void)', height: PANEL_H }}>
@@ -810,7 +817,7 @@ export default function ParquetPreview({ fileId, onFallback }: {
             }}>
               Filters
             </span>
-            {!isLoading && totalRows > 0 && (
+            {profileStatus === 'ready' && totalRows > 0 && (
               <span className="font-mono tabular-nums"
                 style={{
                   fontSize: 'calc(var(--font-size-xs) - 1px)',
@@ -839,10 +846,12 @@ export default function ParquetPreview({ fileId, onFallback }: {
           </button>
         </div>
 
-        {/* Table header — during loading, solid raised strip; when ready, column cells */}
+        {/* Table header — during polling, solid raised strip; when profile ready, column cells */}
         <div ref={headerRef} className="flex-1 min-w-0 overflow-hidden font-mono"
-          style={isLoading ? { background: 'var(--color-raised)', borderBottom: '2px solid var(--color-line)' } : undefined}>
-          {!isLoading && (
+          style={profileStatus !== 'ready' || columns.length === 0
+            ? { background: 'var(--color-raised)', borderBottom: '2px solid var(--color-line)' }
+            : undefined}>
+          {profileStatus === 'ready' && columns.length > 0 && (
             <div className="flex" style={{ width: totalWidth }}>
               {tableColumns.map(c => {
                 const w       = colWidths[c.name] ?? colW(c.type);
@@ -881,8 +890,8 @@ export default function ParquetPreview({ fileId, onFallback }: {
       {/* Body row */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* Sidebar body — empty column during loading, filter controls when ready */}
-        {!isLoading ? (
+        {/* Sidebar body — renders on profileStatus ready (independent of WASM) */}
+        {profileStatus === 'ready' ? (
           <FilterSidebar
             columns={columns}
             columnStats={columnStats}
@@ -903,14 +912,22 @@ export default function ParquetPreview({ fileId, onFallback }: {
           <div className="hidden md:block shrink-0 border-r border-line" style={{ width: SIDEBAR_W }} />
         )}
 
-        {/* Table body — loading stepper OR scrollable data */}
-        {isLoading ? (
+        {/* Table body — full-panel polling message, WASM stepper, or scrollable data */}
+        {profileStatus === 'polling' ? (
+          /* Nothing available yet — full-panel preparing message */
+          <div className="flex-1 min-w-0 flex flex-col items-center justify-center gap-4">
+            <Text variant="dim" style={{ fontSize: 'var(--font-size-xs)' }}>
+              Preparing dataset…
+            </Text>
+          </div>
+        ) : !wasmReady ? (
+          /* Profile ready, WASM still booting — stepper in table area only */
           <div className="flex-1 min-w-0 flex flex-col items-center justify-center gap-4">
             <div className="flex items-center gap-0">
-              {loadingSteps.map((step, i) => {
-                const done    = i < loadingIdx;
-                const current = i === loadingIdx;
-                const pending = i > loadingIdx;
+              {wasmSteps.map((step, i) => {
+                const done    = i < wasmStepIdx;
+                const current = i === wasmStepIdx;
+                const pending = i > wasmStepIdx;
                 return (
                   <div key={step.label} className="flex items-center">
                     <div style={{
@@ -920,7 +937,7 @@ export default function ParquetPreview({ fileId, onFallback }: {
                       opacity: pending ? 0.35 : 1,
                       transition: 'background 0.3s, box-shadow 0.3s, opacity 0.3s',
                     }} />
-                    {i < loadingSteps.length - 1 && (
+                    {i < wasmSteps.length - 1 && (
                       <div style={{
                         width: 28, height: 1,
                         background: done ? 'var(--color-cyan)' : 'var(--color-raised)',
@@ -933,7 +950,7 @@ export default function ParquetPreview({ fileId, onFallback }: {
               })}
             </div>
             <Text variant="dim" style={{ fontSize: 'var(--font-size-xs)' }}>
-              {loadingSteps[loadingIdx]?.label ?? 'Loading'}…
+              {wasmSteps[wasmStepIdx]?.label ?? 'Loading'}…
             </Text>
           </div>
         ) : (
@@ -987,7 +1004,7 @@ export default function ParquetPreview({ fileId, onFallback }: {
               />
             )}
 
-            {filteredCount === 0 && status === 'ready' && (
+            {filteredCount === 0 && wasmReady && (
               <div className="flex flex-col items-center justify-center gap-3" style={{ height: '100%', minHeight: 200 }}>
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"
                   style={{ opacity: 0.3, color: 'var(--color-fg-3)' }}>

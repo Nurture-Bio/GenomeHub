@@ -158,6 +158,7 @@ router.get('/', asyncWrap(async (req, res) => {
       }),
       collections: colIds.map(cId => ({ id: cId, name: colMap.get(cId)?.name ?? null })),
       uploadedBy:  f.uploadedBy,
+      dataProfile: f.dataProfile ?? null,
     };
   }));
 }));

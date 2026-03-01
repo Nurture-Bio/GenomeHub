@@ -17,6 +17,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { apiFetch } from '../lib/api.js';
+import { useAppStore } from '../stores/useAppStore.js';
 import type { DataProfile, EnrichableAttributes } from '@genome-hub/shared';
 
 // ── Module-level Promise cache for deduplication ────────────────────────────
@@ -64,17 +65,28 @@ export function useDataProfile(
   attributes: (keyof EnrichableAttributes)[],
   baseProfile: DataProfile | null,
 ): { profile: DataProfile | null; loading: boolean } {
-  const [profile, setProfile] = useState<DataProfile | null>(baseProfile);
+  const mergeFileProfile = useAppStore(s => s.mergeFileProfile);
+
+  // Seed local state from Zustand store if available, else from baseProfile
+  const storeProfile = useAppStore(s => fileId ? s.fileProfiles[fileId]?.dataProfile ?? null : null);
+  const [profile, setProfile] = useState<DataProfile | null>(storeProfile ?? baseProfile);
   const [loading, setLoading] = useState(false);
   const profileRef = useRef(profile);
   profileRef.current = profile;
 
-  // Sync base profile when it arrives from parquet-url
+  // Sync base profile when it arrives (from useParquetPreview → Zustand → here)
   useEffect(() => {
     if (baseProfile && !profileRef.current) {
       setProfile(baseProfile);
     }
   }, [baseProfile]);
+
+  // Also sync if Zustand store gets a richer profile (e.g. from another component)
+  useEffect(() => {
+    if (storeProfile && profileRef.current !== storeProfile) {
+      setProfile(storeProfile);
+    }
+  }, [storeProfile]);
 
   // Compute which requested keys are missing (=== undefined, not null)
   const missingKeys = profile
@@ -90,19 +102,20 @@ export function useDataProfile(
     fetchProfileAttributes(fileId, missingKeys)
       .then(serverProfile => {
         if (cancelled) return;
-        // Merge server response into local profile
-        setProfile(prev => {
-          if (!prev) return serverProfile;
-          const merged = { ...prev };
-          for (const key of attributes) {
-            if (serverProfile[key] !== undefined) {
-              // Explicit assignment for each key — type-safe
-              (merged as Record<string, unknown>)[key] = serverProfile[key];
-            }
+        // Build the patch of enriched attributes
+        const patch: Partial<DataProfile> = {};
+        for (const key of attributes) {
+          if (serverProfile[key] !== undefined) {
+            (patch as Record<string, unknown>)[key] = serverProfile[key];
           }
-          if (serverProfile.profiledAt) merged.profiledAt = serverProfile.profiledAt;
-          return merged;
-        });
+        }
+        if (serverProfile.profiledAt) patch.profiledAt = serverProfile.profiledAt;
+
+        // Merge into local state
+        setProfile(prev => prev ? { ...prev, ...patch } : serverProfile);
+
+        // Merge into Zustand store — single source of truth
+        if (fileId) mergeFileProfile(fileId, patch);
       })
       .catch(() => {
         // Fetch failed — don't poison the profile, just stop loading

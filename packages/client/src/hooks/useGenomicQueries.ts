@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { apiFetch } from '../lib/api';
 import { queryKeys } from '../lib/queryKeys';
 import { fetchApi, mutateApi } from '../lib/queryFn';
+import type { DataProfile } from '@genome-hub/shared';
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -49,6 +50,7 @@ export interface GenomicFile {
   organisms:       { id: string; displayName: string }[];
   collections:     { id: string; name: string | null }[];
   uploadedBy:      string | null;
+  dataProfile:     DataProfile | null;
 }
 
 export interface FileDetail {
@@ -160,7 +162,21 @@ export function useFilesQuery(filters?: { collectionId?: string; type?: string }
 
   return useQuery({
     queryKey: queryKeys.files.list(enabled ? filters : undefined),
-    queryFn: () => fetchApi<GenomicFile[]>(url),
+    queryFn: async () => {
+      const files = await fetchApi<GenomicFile[]>(url);
+      // Prime Zustand store — every file with a dataProfile is warm before any click
+      const { setFileProfile, getValidFileProfile } = useAppStore.getState();
+      for (const f of files) {
+        if (f.dataProfile && !getValidFileProfile(f.id)) {
+          setFileProfile(f.id, {
+            dataProfile: f.dataProfile,
+            parquetUrl: '',  // populated on first parquet-url fetch
+            cachedAt: Date.now(),
+          });
+        }
+      }
+      return files;
+    },
     enabled,
   });
 }
