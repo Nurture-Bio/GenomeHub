@@ -6,11 +6,16 @@
  * from the current profile. Attributes that are null (negative cache)
  * are never re-fetched.
  *
+ * Async protocol:
+ *   - Server returns 200 when all requested keys are cached → done.
+ *   - Server returns 202 when keys are being computed → poll every 1s.
+ *   - Polling stops on 200, cancellation, or MAX_POLLS reached.
+ *
  * Deduplication:
  *   - Module-level Promise cache keyed by fileId:sortedAttributes
  *   - Identical concurrent calls (including React Strict Mode double-fires)
- *     share a single in-flight fetch
- *   - Auto-cleans via .finally() — identical to SWR/React Query internals
+ *     share a single in-flight fetch+poll cycle
+ *   - Auto-cleans via .finally()
  *
  * @module
  */
@@ -20,27 +25,48 @@ import { apiFetch } from '../lib/api.js';
 import { useAppStore } from '../stores/useAppStore.js';
 import type { DataProfile, EnrichableAttributes } from '@genome-hub/shared';
 
+// ── Polling constants ────────────────────────────────────────────────────────
+
+const POLL_INTERVAL = 1_000; // ms
+const MAX_POLLS = 30;        // give up after 30s
+
 // ── Module-level Promise cache for deduplication ────────────────────────────
 
-const fetchCache = new Map<string, Promise<DataProfile>>();
+const fetchCache = new Map<string, Promise<DataProfile | null>>();
 
 function fetchProfileAttributes(
   fileId: string,
   attrs: (keyof EnrichableAttributes)[],
-): Promise<DataProfile> {
+  signal: AbortSignal,
+): Promise<DataProfile | null> {
   const key = `${fileId}:${[...attrs].sort().join(',')}`;
   const existing = fetchCache.get(key);
   if (existing) return existing;
 
-  const promise = apiFetch(
-    `/api/files/${fileId}/data-profile?attributes=${attrs.join(',')}`
-  )
-    .then(r => {
-      if (!r.ok) throw new Error(`data-profile returned ${r.status}`);
-      return r.json();
-    })
-    .then(data => data.profile as DataProfile)
-    .finally(() => fetchCache.delete(key));
+  const url = `/api/files/${fileId}/data-profile?attributes=${attrs.join(',')}`;
+
+  const promise = (async () => {
+    let polls = 0;
+    while (!signal.aborted) {
+      const r = await apiFetch(url, { signal });
+      const data = await r.json();
+
+      // 200 = all keys cached, done
+      if (r.status === 200) return data.profile as DataProfile;
+
+      // 202 = computing, poll again
+      if (r.status === 202) {
+        polls++;
+        if (polls >= MAX_POLLS) return data.profile as DataProfile | null;
+        await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
+        continue;
+      }
+
+      // Unexpected status
+      throw new Error(`data-profile returned ${r.status}`);
+    }
+    return null; // cancelled
+  })().finally(() => fetchCache.delete(key));
 
   fetchCache.set(key, promise);
   return promise;
@@ -87,7 +113,6 @@ export function useDataProfile(
     if (!storeProfile || storeProfile === profileRef.current) return;
     const local = profileRef.current;
     if (!local) {
-      console.log('[DP:zustandSync] No local profile, adopting store');
       setProfile(storeProfile);
       return;
     }
@@ -95,13 +120,11 @@ export function useDataProfile(
       k => (storeProfile as Record<string, unknown>)[k] !== undefined &&
            (local as Record<string, unknown>)[k] === undefined
     );
-    console.log('[DP:zustandSync]', { storeHasMore, storeKeys: Object.keys(storeProfile), localKeys: Object.keys(local) });
     if (storeHasMore) setProfile(storeProfile);
   }, [storeProfile]);
 
   // Derive effective profile synchronously — eliminates the one-frame gap
   // where profile state is null but storeProfile/baseProfile are already available.
-  // Without this, the sidebar flashes from "no stats" to "stats" on every page load.
   const effectiveProfile = profile ?? storeProfile ?? baseProfile;
 
   // Compute which requested keys are missing (=== undefined, not null)
@@ -109,27 +132,15 @@ export function useDataProfile(
     ? attributes.filter(k => effectiveProfile[k] === undefined)
     : [];
   const missingStr = missingKeys.join(',');
-  console.log('[DP:eval]', {
-    fileId: fileId?.slice(0, 8),
-    hasProfile: !!effectiveProfile,
-    source: profile ? 'local' : storeProfile ? 'zustand' : baseProfile ? 'base' : 'none',
-    missingKeys,
-    profileKeys: effectiveProfile ? Object.keys(effectiveProfile) : [],
-  });
 
   useEffect(() => {
-    if (!fileId || !effectiveProfile || missingKeys.length === 0) {
-      console.log('[DP:effect] Skipping fetch:', { fileId: !!fileId, hasProfile: !!effectiveProfile, missingCount: missingKeys.length });
-      return;
-    }
-    console.log('[DP:effect] Fetching:', missingKeys);
-    let cancelled = false;
+    if (!fileId || !effectiveProfile || missingKeys.length === 0) return;
+    const ac = new AbortController();
     setLoading(true);
 
-    fetchProfileAttributes(fileId, missingKeys)
+    fetchProfileAttributes(fileId, missingKeys, ac.signal)
       .then(serverProfile => {
-        if (cancelled) return;
-        console.log('[DP:fetched]', { keys: Object.keys(serverProfile) });
+        if (ac.signal.aborted || !serverProfile) return;
         // Build the patch of enriched attributes
         const patch: Partial<DataProfile> = {};
         for (const key of attributes) {
@@ -146,13 +157,13 @@ export function useDataProfile(
         if (fileId) mergeFileProfile(fileId, patch);
       })
       .catch(() => {
-        // Fetch failed — don't poison the profile, just stop loading
+        // Fetch failed or aborted — don't poison the profile
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!ac.signal.aborted) setLoading(false);
       });
 
-    return () => { cancelled = true; };
+    return () => ac.abort();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileId, missingStr]);
 

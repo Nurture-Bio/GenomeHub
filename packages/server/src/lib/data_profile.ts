@@ -40,6 +40,9 @@ const VALID_KEYS = new Set<keyof EnrichableAttributes>([
   'columnStats', 'cardinality', 'charLengths',
 ]);
 
+/** All enrichable attribute keys — used for eager compute at upload time. */
+export const ALL_KEYS: (keyof EnrichableAttributes)[] = [...VALID_KEYS];
+
 export function validateAttributeKeys(raw: string[]): (keyof EnrichableAttributes)[] {
   return raw.filter((k): k is keyof EnrichableAttributes =>
     VALID_KEYS.has(k as keyof EnrichableAttributes)

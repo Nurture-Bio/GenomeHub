@@ -14,7 +14,7 @@ import { useParquetPreview, isNumericType, DROPDOWN_MAX } from '../hooks/useParq
 import { useDataProfile } from '../hooks/useDataProfile';
 import { apiFetch } from '../lib/api';
 import { useAppStore } from '../stores/useAppStore';
-import type { ColumnInfo, ColumnStats, ColumnCardinality, FilterSpec, FilterOp, SortSpec } from '../hooks/useParquetPreview';
+import type { ColumnInfo, ColumnStats, ColumnCardinality, FilterSpec, FilterOp, SortSpec, ProfileStatus, WasmStatus } from '../hooks/useParquetPreview';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -57,8 +57,10 @@ function colW(type: string): number {
   return isNumericType(type) ? 92 : 140;
 }
 
-function colWFromName(name: string, type: string): number {
-  const chars = Math.max(8, name.length);
+function colWFromName(name: string, type: string, maxCharLen?: number): number {
+  const headerChars = Math.max(8, name.length);
+  const dataChars = maxCharLen ?? headerChars;
+  const chars = Math.max(headerChars, dataChars);
   const px    = Math.round(chars * PX_PER_CHAR) + COL_PADDING;
   return Math.min(MAX_COL_W, Math.max(MIN_COL_W, px));
 }
@@ -74,6 +76,61 @@ function SortChevron({ dir }: { dir: 'asc' | 'desc' | null }) {
     }}>
       <path d="M4 0L7.5 4.5H0.5L4 0Z" />
     </svg>
+  );
+}
+
+// ── PipelineStatus — verbose loading indicator for biologists ─────────────────
+
+const PIPELINE_STEPS = [
+  { key: 'profile',  label: 'Reading schema' },
+  { key: 'boot',     label: 'Starting engine' },
+  { key: 'register', label: 'Opening dataset' },
+  { key: 'query',    label: 'Drawing rows' },
+  { key: 'ready',    label: 'Ready' },
+] as const;
+
+function pipelineIndex(profileStatus: ProfileStatus, wasmStatus: WasmStatus, isQuerying: boolean, hasData: boolean): number {
+  if (profileStatus === 'polling' || profileStatus === 'error') return 0;
+  if (wasmStatus === 'idle' || wasmStatus === 'booting') return 1;
+  if (wasmStatus === 'registering') return 2;
+  if (hasData) return 4; // ready
+  return 3; // drawing rows
+}
+
+function PipelineStatus({ profileStatus, wasmStatus, isQuerying, hasData }: {
+  profileStatus: ProfileStatus;
+  wasmStatus: WasmStatus;
+  isQuerying: boolean;
+  hasData: boolean;
+}) {
+  const active = pipelineIndex(profileStatus, wasmStatus, isQuerying, hasData);
+  return (
+    <div className="flex flex-col items-center gap-2" style={{ opacity: 0.6 }}>
+      <div className="flex items-center gap-1" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-xs)', color: 'var(--color-fg-3)' }}>
+        {PIPELINE_STEPS.map((step, i) => {
+          const reached = i <= active;
+          const current = i === active;
+          return (
+            <span key={step.key} className="flex items-center gap-1">
+              {i > 0 && <span style={{
+                color: reached ? 'var(--color-cyan)' : 'var(--color-line)',
+                transition: 'color var(--t-phi) var(--ease-phi)',
+              }}>{'—'}</span>}
+              <span style={{
+                display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
+                background: reached ? 'var(--color-cyan)' : 'var(--color-line)',
+                boxShadow: current && i < PIPELINE_STEPS.length - 1 ? '0 0 6px var(--color-cyan)' : 'none',
+                animation: current && i < PIPELINE_STEPS.length - 1 ? 'pulse 1.5s ease-in-out infinite' : 'none',
+                transition: 'background var(--t-phi) var(--ease-phi), box-shadow var(--t-phi) var(--ease-phi)',
+              }} />
+            </span>
+          );
+        })}
+      </div>
+      <Text variant="dim" style={{ fontSize: 'var(--font-size-xs)' }}>
+        {PIPELINE_STEPS[active].label}
+      </Text>
+    </div>
   );
 }
 
@@ -409,7 +466,7 @@ const FilterSidebar = memo(function FilterSidebar({
 // ── VirtualRows ───────────────────────────────────────────────────────────────
 
 const VirtualRows = memo(function VirtualRows({
-  scrollRef, rowCount, fetchWindow, columns, columnStats, colWidths, totalWidth,
+  scrollRef, rowCount, fetchWindow, columns, columnStats, colWidths, totalWidth, onFirstData,
 }: {
   scrollRef:   RefObject<HTMLDivElement | null>;
   rowCount:    number;
@@ -418,8 +475,10 @@ const VirtualRows = memo(function VirtualRows({
   columnStats: Record<string, ColumnStats>;
   colWidths:   Record<string, number>;
   totalWidth:  number;
+  onFirstData?: () => void;
 }) {
   const [rows, setRows] = useState<Map<number, Record<string, unknown>>>(new Map());
+  const firstDataFired = useRef(false);
   const fetchingRef = useRef<Set<string>>(new Set());
 
   const virtualizer = useVirtualizer({
@@ -451,6 +510,10 @@ const VirtualRows = memo(function VirtualRows({
 
       fetchWindow(windowStart, WINDOW_SIZE).then(fetched => {
         fetchingRef.current.delete(key);
+        if (!firstDataFired.current && fetched.length > 0) {
+          firstDataFired.current = true;
+          onFirstData?.();
+        }
         setRows(prev => {
           const next = new Map(prev);
           for (let i = 0; i < fetched.length; i++) {
@@ -488,7 +551,8 @@ const VirtualRows = memo(function VirtualRows({
                 const stats  = isNum ? columnStats[c.name] : undefined;
 
                 if (!row) {
-                  // Skeleton placeholder for uncached rows
+                  // Skeleton placeholder for uncached rows — staggered by row+col
+                  const pct = 55 + ((vRow.index * 17 + c.name.length * 11) % 40);
                   return (
                     <div key={c.name} style={{
                       width: w, minWidth: 50, flexShrink: 0,
@@ -496,7 +560,7 @@ const VirtualRows = memo(function VirtualRows({
                       borderBottom: '1px solid var(--color-line)',
                       lineHeight: `${ROW_H}px`,
                     }}>
-                      <div className="skeleton rounded" style={{ height: 12, width: '60%', marginTop: 8 }} />
+                      <div className="skeleton rounded" style={{ height: 12, width: `${pct}%`, marginTop: 8 }} />
                     </div>
                   );
                 }
@@ -613,11 +677,33 @@ export default function ParquetPreview({ fileId }: {
   const debRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resizingRef = useRef<{ name: string; startX: number; startW: number } | null>(null);
 
+  // ── State machine ────────────────────────────────────────────────────────
+  // Single source of truth: pipelineIndex drives pipeline dots + table body.
+  //   0 = Reading schema  → table body: empty void
+  //   1 = Starting engine → table body: skeleton grid (columns known)
+  //   2 = Opening dataset → table body: skeleton grid
+  //   3 = Drawing rows    → table body: skeleton grid
+  //   4 = Ready           → table body: real data
+  const [hasData, setHasData] = useState(false);
+  const [hasCurrentData, setHasCurrentData] = useState(false);
+  const prevCacheGen = useRef(cacheGen);
+  if (cacheGen !== prevCacheGen.current) {
+    prevCacheGen.current = cacheGen;
+    if (hasCurrentData) setHasCurrentData(false);
+  }
+  const handleFirstData = useCallback(() => {
+    setHasData(true);
+    setHasCurrentData(true);
+  }, []);
+  const stage = pipelineIndex(profileStatus, wasmStatus, isQuerying, hasData);
+
   // ── Synchronous initializers — Frame 1 ready, no useEffect ───────────────
+
+  const charLengths = profile?.charLengths ?? null;
 
   const [colWidths, setColWidths] = useState<Record<string, number>>(() => {
     const init: Record<string, number> = {};
-    for (const c of columns) init[c.name] = colWFromName(c.name, c.type);
+    for (const c of columns) init[c.name] = colWFromName(c.name, c.type, charLengths?.[c.name]?.max);
     return init;
   });
 
@@ -646,11 +732,15 @@ export default function ParquetPreview({ fileId }: {
       let changed = false;
       const next = { ...prev };
       for (const c of columns) {
-        if (!(c.name in next)) { next[c.name] = colWFromName(c.name, c.type); changed = true; }
+        const w = colWFromName(c.name, c.type, charLengths?.[c.name]?.max);
+        if (!(c.name in next) || (charLengths?.[c.name] && next[c.name] !== w)) {
+          next[c.name] = w;
+          changed = true;
+        }
       }
       return changed ? next : prev;
     });
-  }, [columns]);
+  }, [columns, charLengths]);
 
   useEffect(() => {
     const init: Record<string, [number, number]> = {};
@@ -831,7 +921,20 @@ export default function ParquetPreview({ fileId }: {
   if (profileStatus === 'unavailable' || profileStatus === 'failed') return null;
 
   return (
-    <div className="flex flex-col" style={{ background: 'var(--color-void)', height: PANEL_H }}>
+    <>
+    {/* Pipeline status — always visible, fixed height, outside the table */}
+    <div style={{
+      height: 32,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      <PipelineStatus profileStatus={profileStatus} wasmStatus={wasmStatus} isQuerying={isQuerying} hasData={hasData} />
+    </div>
+
+    <div className="flex flex-col" style={{
+      background: 'var(--color-void)', height: PANEL_H,
+      opacity: stage >= 1 ? 1 : 0,
+      transition: 'opacity var(--t-phi) var(--ease-phi)',
+    }}>
 
       {/* Pinned header row — sidebar header + table header share one flex row.
            align-items: stretch (default) forces identical cross-axis height.
@@ -980,47 +1083,33 @@ export default function ParquetPreview({ fileId }: {
               headerRef.current.scrollLeft = scrollRef.current.scrollLeft;
           }}
         >
-          {/* Loading overlay — absolutely positioned over the scroll area.
-               Covers skeleton rows during polling and WASM boot. */}
-          {!wasmReady && (
-            <div style={{
-              position: 'absolute', inset: 0, zIndex: 10,
-              background: 'var(--color-void)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <Text variant="dim" style={{ fontSize: 'var(--font-size-xs)' }}>
-                {profileStatus === 'polling' ? 'Preparing dataset…' : 'Loading…'}
-              </Text>
+          {/* Skeleton grid — always mounted, opacity-driven.
+               Hidden at stage 0 (no columns) and stage 4 (data painted). */}
+          <div style={{
+            position: 'absolute', inset: 0, zIndex: 10,
+            background: 'var(--color-void)',
+            opacity: (stage >= 1 && !hasCurrentData) ? 1 : 0,
+            pointerEvents: (stage >= 1 && !hasCurrentData) ? 'auto' : 'none',
+            transition: 'opacity var(--t-phi) var(--ease-phi)',
+          }}>
+            <div className="flex flex-col">
+              {Array.from({ length: Math.ceil(PANEL_H / ROW_H) }, (_, i) => (
+                <div key={i} className="flex" style={{ height: ROW_H }}>
+                  {tableColumns.map(c => (
+                    <div key={c.name} style={{
+                      width: colWidths[c.name] ?? colWFromName(c.name, c.type),
+                      minWidth: 50, flexShrink: 0, padding: '0 6px',
+                      borderBottom: '1px solid var(--color-line)',
+                      lineHeight: `${ROW_H}px`,
+                    }}>
+                      <div className="skeleton rounded"
+                        style={{ height: 12, width: `${55 + ((i * 17 + c.name.length * 11) % 40)}%`, marginTop: 8 }} />
+                    </div>
+                  ))}
+                </div>
+              ))}
             </div>
-          )}
-
-          {/* Skeleton shimmer overlay during network-bound queries */}
-          {isQuerying && (
-            <div style={{
-              position: 'absolute', inset: 0, zIndex: 10,
-              background: 'var(--color-void)',
-              opacity: 0.7,
-              pointerEvents: 'none',
-            }}>
-              <div className="flex flex-col">
-                {Array.from({ length: Math.ceil(PANEL_H / ROW_H) }, (_, i) => (
-                  <div key={i} className="flex" style={{ height: ROW_H }}>
-                    {tableColumns.map(c => (
-                      <div key={c.name} style={{
-                        width: colWidths[c.name] ?? colWFromName(c.name, c.type),
-                        minWidth: 50, flexShrink: 0, padding: '0 6px',
-                        borderBottom: '1px solid var(--color-line)',
-                        lineHeight: `${ROW_H}px`,
-                      }}>
-                        <div className="skeleton rounded"
-                          style={{ height: 12, width: `${40 + (i * 17 + c.name.length * 7) % 40}%`, marginTop: 8 }} />
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          </div>
 
           {wasmReady && filteredCount > 0 && (
             <VirtualRows
@@ -1032,6 +1121,7 @@ export default function ParquetPreview({ fileId }: {
               columnStats={columnStats}
               colWidths={colWidths}
               totalWidth={totalWidth}
+              onFirstData={handleFirstData}
             />
           )}
 
@@ -1056,5 +1146,6 @@ export default function ParquetPreview({ fileId }: {
           </div>
       </div>
     </div>
+    </>
   );
 }

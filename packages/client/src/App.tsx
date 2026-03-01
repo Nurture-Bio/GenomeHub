@@ -202,17 +202,7 @@ export default function App() {
             </div>
           </div>
         </aside>
-        {/* Skeleton main area */}
-        <main className="flex-1 p-2 md:p-5">
-          <div className="flex flex-col gap-2">
-            <div className="skeleton h-[1lh] w-32 rounded-sm" />
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
-              {[...Array(4)].map((_, i) => (
-                <div key={i} className="skeleton h-20 rounded-md" />
-              ))}
-            </div>
-          </div>
-        </main>
+        <main className="flex-1" />
       </div>
     );
   }

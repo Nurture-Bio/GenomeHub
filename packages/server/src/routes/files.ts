@@ -9,7 +9,7 @@ import * as edges from '../lib/edge_service.js';
 import { asyncWrap } from '../lib/async_wrap.js';
 import { organismDisplay } from '../lib/display.js';
 import { convertToParquet } from '../lib/parquet.js';
-import { hydrateAttributes, extractBaseProfile, validateAttributeKeys } from '../lib/data_profile.js';
+import { hydrateAttributes, extractBaseProfile, validateAttributeKeys, ALL_KEYS } from '../lib/data_profile.js';
 import { getSignedUrl as getCloudFrontSignedUrl } from '@aws-sdk/cloudfront-signer';
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 
@@ -201,7 +201,20 @@ router.get('/:id/parquet-url', asyncWrap(async (req, res) => {
     if (updateResult.affected === 1) {
       const parquetKey = file.s3Key + '.parquet';
       convertToParquet(file.s3Key, parquetKey, detectFormat(file.filename), Number(file.sizeBytes), file.id)
-        .then(() => repo.update(file.id, { parquetS3Key: parquetKey, parquetStatus: 'ready' }))
+        .then(async () => {
+          await repo.update(file.id, { parquetS3Key: parquetKey, parquetStatus: 'ready' });
+          // Eager compute: full profile ready before user revisits
+          try {
+            const base = await extractBaseProfile(parquetKey);
+            await repo.update(file.id, { dataProfile: base });
+            await hydrateAttributes(parquetKey, file.id, base, ALL_KEYS);
+          } catch (e) {
+            console.error(JSON.stringify({
+              tag: '[EAGER_PROFILE_FAILED]', fileId: file.id,
+              error: e instanceof Error ? e.message : String(e),
+            }));
+          }
+        })
         .catch(async (err) => {
           console.error(JSON.stringify({
             tag: '[PARQUET_PIPELINE_FAILED]',
@@ -281,25 +294,31 @@ router.get('/:id/data-profile', asyncWrap(async (req, res) => {
   const rawAttrs = ((req.query.attributes as string) ?? '').split(',').filter(Boolean);
   const requestedKeys = validateAttributeKeys(rawAttrs);
 
-  // Hydrate only what's missing from the requested set
-  let profile = file.dataProfile;
-  try {
-    profile = await hydrateAttributes(
-      file.parquetS3Key, file.id, profile, requestedKeys,
-    );
-  } catch (err) {
-    console.error(JSON.stringify({
-      tag: '[DATA_PROFILE_HYDRATE_FAILED]',
-      fileId: file.id,
-      parquetS3Key: file.parquetS3Key,
-      requestedKeys,
-      error: err instanceof Error ? err.message : String(err),
-      timestamp: new Date().toISOString(),
-    }));
-    // Return whatever we have, even if incomplete
+  const profile = file.dataProfile;
+  const missing = profile
+    ? requestedKeys.filter(k => profile[k] === undefined)
+    : requestedKeys;
+
+  // Fast path: everything already cached — return 200 immediately
+  if (missing.length === 0) {
+    res.json({ profile: profile ?? null });
+    return;
   }
 
-  res.json({ profile: profile ?? null });
+  // Slow path: kick off hydration as fire-and-forget, return 202
+  hydrateAttributes(file.parquetS3Key, file.id, profile, missing)
+    .catch(err => {
+      console.error(JSON.stringify({
+        tag: '[DATA_PROFILE_HYDRATE_FAILED]',
+        fileId: file.id,
+        parquetS3Key: file.parquetS3Key,
+        requestedKeys: missing,
+        error: err instanceof Error ? err.message : String(err),
+        timestamp: new Date().toISOString(),
+      }));
+    });
+
+  res.status(202).json({ status: 'computing', profile: profile ?? null });
 }));
 
 // ─── Re-profile (clear and recompute) ──────────────────────

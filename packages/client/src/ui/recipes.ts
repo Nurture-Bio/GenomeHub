@@ -160,7 +160,7 @@ export const heading = cva('', {
     level: {
       display:    'font-display font-bold text-display tracking-tight text-fg',
       title:      'font-display font-semibold text-title tracking-tight text-cyan',
-      heading:    'font-display font-semibold text-heading text-cyan',
+      heading:    'font-display font-semibold text-heading text-cyan animate-fade-in',
       subheading: 'font-sans font-semibold text-lg text-fg',
     },
   },

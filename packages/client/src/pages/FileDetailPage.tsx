@@ -9,11 +9,12 @@ import {
   useAddFileOrganism, useRemoveFileOrganism,
   type GenomicFile,
 } from '../hooks/useGenomicQueries';
-import { detectFormat, FORMAT_META, formatBytes, formatRelativeTime } from '../lib/formats';
+import { detectFormat, FORMAT_META, formatBytes, formatRelativeTime, isConvertible } from '../lib/formats';
 import { Heading, Text, Card, Badge, Button, InlineInput, Input, ChipEditor, HashPill, iconAction } from '../ui';
 import { CollectionPicker, OrganismPicker, FileTypePicker, RelationPicker } from '../ui';
 import LinksList from '../components/LinksList';
 import FilePreview from '../components/FilePreview';
+import ParquetPreview from '../components/ParquetPreview';
 import { useAppStore } from '../stores/useAppStore';
 
 const RELATION_LABELS: Record<string, string> = {
@@ -64,7 +65,6 @@ export default function FileDetailPage() {
 
   // Prefer detail (richer), fall back to list cache
   const file = fileDetail ?? cachedFile;
-  const isLoading = !file;
 
   const { updateFile } = useUpdateFileMutation();
   const setBreadcrumbLabel = useAppStore(s => s.setBreadcrumbLabel);
@@ -124,17 +124,7 @@ export default function FileDetailPage() {
     window.open(url, '_blank');
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex flex-col gap-3 p-2 md:p-5">
-        <div className="skeleton h-[1lh] w-64 rounded-sm" />
-        <div className="skeleton h-[1lh] w-48 rounded-sm" />
-        <div className="skeleton h-32 rounded-md" />
-      </div>
-    );
-  }
-
-  if (!file) {
+  if (!file && !fileId) {
     return (
       <div className="flex flex-col gap-3 p-2 md:p-5">
         <Heading level="heading">File not found</Heading>
@@ -143,74 +133,82 @@ export default function FileDetailPage() {
     );
   }
 
-  const fmt = detectFormat(file.filename);
-  const meta = FORMAT_META[fmt];
+  const fmt = file ? detectFormat(file.filename) : null;
+  const meta = fmt ? FORMAT_META[fmt] : null;
 
   return (
     <div className="flex flex-col gap-3 md:gap-4 p-2 md:p-5 animate-page-enter">
 
-      {/* Title row — minimal, just enough context before the data */}
+      {/* Title row — skeleton until file metadata arrives */}
       <div className="flex items-start gap-2 flex-wrap">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-            <HashPill label={meta.label} colorKey={fmt} />
-            {file.status === 'ready'   && <Badge variant="status" color="green">ready</Badge>}
-            {file.status === 'pending' && <Badge variant="status" color="yellow">uploading</Badge>}
-            {file.status === 'error'   && <Badge variant="status" color="red">error</Badge>}
+          <div className="flex items-center gap-2 mb-0.5 flex-wrap" style={{ minHeight: '1lh' }}>
+            {file && <HashPill label={meta!.label} colorKey={fmt!} />}
+            {file?.status === 'ready'   && <Badge variant="status" color="green">ready</Badge>}
+            {file?.status === 'pending' && <Badge variant="status" color="yellow">uploading</Badge>}
+            {file?.status === 'error'   && <Badge variant="status" color="red">error</Badge>}
           </div>
-          <Heading level="heading">{file.filename}</Heading>
+          <Heading level="heading">{file ? file.filename : '\u00A0'}</Heading>
         </div>
-        <Button intent="primary" size="sm" onClick={handleDownload}>Download</Button>
+        <Button intent="primary" size="sm" onClick={handleDownload} disabled={!file}>Download</Button>
       </div>
 
-      {/* File preview — mounts immediately, handles its own status polling */}
-      <FilePreview fileId={fileId!} filename={file.filename} sizeBytes={file.sizeBytes} />
+      {/* File preview — ParquetPreview always mounts once with fileId.
+           FilePreview only renders for non-convertible files (plain text). */}
+      {file && !isConvertible(file.filename) ? (
+        <FilePreview fileId={fileId!} filename={file.filename} sizeBytes={file.sizeBytes} />
+      ) : (
+        <ParquetPreview fileId={fileId!} />
+      )}
 
       {/* Metadata — below the data where it belongs */}
-      <div className="flex flex-col gap-2">
-        <div className="mt-0.5">
-          <InlineInput
-            value={file.description ?? ''}
-            placeholder="add description"
-            onCommit={v => { if (fileId) updateFile(fileId, { description: v || null }); }}
-          />
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          <Text variant="dim">{formatBytes(file.sizeBytes)}</Text>
-          {file.md5 && <Text variant="dim">MD5: {file.md5.slice(0, 12)}...</Text>}
-          <Text variant="dim">Uploaded {formatRelativeTime(file.uploadedAt)}</Text>
-          {file.uploadedBy && <Text variant="dim">by {file.uploadedBy}</Text>}
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Text variant="dim" className="shrink-0">Organisms:</Text>
-          <ChipEditor
-            items={file.organisms.map(o => ({ id: o.id, label: o.displayName }))}
-            onAdd={id => { if (fileId) addFileOrganism(fileId, id); }}
-            onRemove={id => { if (fileId) removeFileOrganism(fileId, id); }}
-            renderPicker={p => <OrganismPicker {...p} variant="surface" size="sm" className="w-40" />}
-          />
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Text variant="dim" className="shrink-0">Types:</Text>
-          <ChipEditor
-            items={file.types.map(t => ({ id: t, label: t }))}
-            onAdd={id => { if (fileId) updateFile(fileId, { types: [...file.types, id] }); }}
-            onRemove={id => { if (fileId) updateFile(fileId, { types: file.types.filter(t => t !== id) }); }}
-            renderPicker={p => <FileTypePicker {...p} variant="surface" size="sm" className="w-28" />}
-          />
-        </div>
-
-        {file.tags.length > 0 && (
-          <div className="flex gap-0.5 flex-wrap">
-            {file.tags.map(t => <Badge key={t} variant="count" color="dim">{t}</Badge>)}
+      {file ? (
+        <div className="flex flex-col gap-2">
+          <div className="mt-0.5">
+            <InlineInput
+              value={file.description ?? ''}
+              placeholder="add description"
+              onCommit={v => { if (fileId) updateFile(fileId, { description: v || null }); }}
+            />
           </div>
-        )}
-      </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <Text variant="dim">{formatBytes(file.sizeBytes)}</Text>
+            {file.md5 && <Text variant="dim">MD5: {file.md5.slice(0, 12)}...</Text>}
+            <Text variant="dim">Uploaded {formatRelativeTime(file.uploadedAt)}</Text>
+            {file.uploadedBy && <Text variant="dim">by {file.uploadedBy}</Text>}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Text variant="dim" className="shrink-0">Organisms:</Text>
+            <ChipEditor
+              items={file.organisms.map(o => ({ id: o.id, label: o.displayName }))}
+              onAdd={id => { if (fileId) addFileOrganism(fileId, id); }}
+              onRemove={id => { if (fileId) removeFileOrganism(fileId, id); }}
+              renderPicker={p => <OrganismPicker {...p} variant="surface" size="sm" className="w-40" />}
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Text variant="dim" className="shrink-0">Types:</Text>
+            <ChipEditor
+              items={file.types.map(t => ({ id: t, label: t }))}
+              onAdd={id => { if (fileId) updateFile(fileId, { types: [...file.types, id] }); }}
+              onRemove={id => { if (fileId) updateFile(fileId, { types: file.types.filter(t => t !== id) }); }}
+              renderPicker={p => <FileTypePicker {...p} variant="surface" size="sm" className="w-28" />}
+            />
+          </div>
+
+          {file.tags.length > 0 && (
+            <div className="flex gap-0.5 flex-wrap">
+              {file.tags.map(t => <Badge key={t} variant="count" color="dim">{t}</Badge>)}
+            </div>
+          )}
+        </div>
+      ) : null}
 
       {/* Collections */}
+      {file && (
       <div>
         <Text variant="muted" className="mb-1.5 block">Collections</Text>
         <ChipEditor
@@ -225,8 +223,11 @@ export default function FileDetailPage() {
           )}
         />
       </div>
+      )}
 
-      {/* Data Links */}
+      {/* Data Links — only render once file metadata is loaded */}
+      {file && (
+      <>
       <div>
         <div className="flex items-center gap-2 mb-1.5">
           <Text variant="muted" className="flex-1">Data Links</Text>
@@ -353,6 +354,8 @@ export default function FileDetailPage() {
 
       {/* External links */}
       <LinksList parentType="file" parentId={fileId!} />
+      </>
+      )}
     </div>
   );
 }

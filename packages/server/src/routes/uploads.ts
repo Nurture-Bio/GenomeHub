@@ -15,7 +15,7 @@ import * as edges from '../lib/edge_service.js';
 import { detectFormat, isConvertible } from '@genome-hub/shared';
 import { asyncWrap } from '../lib/async_wrap.js';
 import { convertToParquet } from '../lib/parquet.js';
-import { extractBaseProfile } from '../lib/data_profile.js';
+import { extractBaseProfile, hydrateAttributes, ALL_KEYS } from '../lib/data_profile.js';
 
 const router = Router();
 
@@ -136,12 +136,15 @@ router.post('/complete', asyncWrap(async (req, res) => {
       convertToParquet(file.s3Key, parquetKey, detectFormat(file.filename), Number(actualSize), fileId)
         .then(async () => {
           await repo.update(fileId, { parquetS3Key: parquetKey, parquetStatus: 'ready' });
+          // Eager compute: extract base profile then hydrate all attributes
           try {
             const baseProfile = await extractBaseProfile(parquetKey);
             await repo.update(fileId, { dataProfile: baseProfile });
+            // Full hydration — profile is complete before user visits the page
+            await hydrateAttributes(parquetKey, fileId, baseProfile, ALL_KEYS);
           } catch (profileErr) {
             console.error(JSON.stringify({
-              tag: '[BASE_PROFILE_FAILED]',
+              tag: '[EAGER_PROFILE_FAILED]',
               fileId,
               parquetS3Key: parquetKey,
               error: profileErr instanceof Error ? profileErr.message : String(profileErr),
@@ -187,19 +190,20 @@ router.post('/complete', asyncWrap(async (req, res) => {
     convertToParquet(file.s3Key, parquetKey, detectFormat(file.filename), Number(actualSize), fileId)
       .then(async () => {
         await repo.update(fileId, { parquetS3Key: parquetKey, parquetStatus: 'ready' });
-        // Extract base profile (schema + rowCount) — free, no data scan
+        // Eager compute: extract base profile then hydrate all attributes
         try {
           const baseProfile = await extractBaseProfile(parquetKey);
           await repo.update(fileId, { dataProfile: baseProfile });
+          // Full hydration — profile is complete before user visits the page
+          await hydrateAttributes(parquetKey, fileId, baseProfile, ALL_KEYS);
         } catch (profileErr) {
           console.error(JSON.stringify({
-            tag: '[BASE_PROFILE_FAILED]',
+            tag: '[EAGER_PROFILE_FAILED]',
             fileId,
             parquetS3Key: parquetKey,
             error: profileErr instanceof Error ? profileErr.message : String(profileErr),
             timestamp: new Date().toISOString(),
           }));
-          // Non-fatal — base profile will be extracted on first access
         }
       })
       .catch(async (err) => {
