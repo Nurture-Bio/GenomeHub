@@ -264,32 +264,52 @@ function ProgressBar({ engine, activeStep }: { engine: ReturnType<typeof useEngi
       ? Math.round((items.complete / items.total) * 100)
       : null;
 
-  // 2. Decoupled visual memory
+  // 2. Decoupled visual memory — per-step lifecycle
+  //    Step completes → fill 100% → fade out → gone.
+  //    Next step's bar stays invisible until real progress data arrives.
+  //    The bar NEVER visually regresses — it only ever grows or disappears.
   const [visualPct, setVisualPct] = useState(0);
-  const [isTweening, setIsTweening] = useState(false);
+  const [barOpacity, setBarOpacity] = useState(1);
   const prevStepRef = useRef(activeStep);
+  const tweenPhase = useRef<'idle' | 'filling' | 'fading' | 'waiting'>('idle');
 
   useEffect(() => {
     if (activeStep > prevStepRef.current) {
-      // Step advanced — shoot to 100% to close out the previous step
-      setIsTweening(true);
+      // Phase 1: fill to 100% (300ms CSS transition)
+      tweenPhase.current = 'filling';
       setVisualPct(100);
+      setBarOpacity(1);
 
-      const timer = setTimeout(() => {
-        prevStepRef.current = activeStep;
-        setVisualPct(rawPct ?? 0);
-        setIsTweening(false);
+      const fillTimer = setTimeout(() => {
+        // Phase 2: fade out (300ms CSS transition)
+        tweenPhase.current = 'fading';
+        setBarOpacity(0);
+
+        const fadeTimer = setTimeout(() => {
+          // Phase 3: reset width invisibly, wait for new data before revealing
+          prevStepRef.current = activeStep;
+          tweenPhase.current = 'waiting';
+          setVisualPct(0);
+        }, 300);
+        return () => clearTimeout(fadeTimer);
       }, 300);
-      return () => clearTimeout(timer);
-    } else if (!isTweening) {
-      // Normal update within the same step
-      setVisualPct(rawPct ?? 0);
+      return () => clearTimeout(fillTimer);
+    } else if (tweenPhase.current === 'waiting') {
+      // New step's first real data arrived — reveal from current value
+      if (rawPct != null && rawPct > 0) {
+        tweenPhase.current = 'idle';
+        setVisualPct(rawPct);
+        setBarOpacity(1);
+      }
+    } else if (tweenPhase.current === 'idle') {
+      // Normal forward update within the same step
+      setVisualPct(prev => Math.max(prev, rawPct ?? 0));
     }
-  }, [activeStep, rawPct, isTweening]);
+  }, [activeStep, rawPct]);
 
   // 3. Fixed container — never return null, never shift layout
   const barColor = pollLost ? 'var(--color-amber-dim)' : 'var(--color-cyan)';
-  const hasData = rawPct != null || isTweening;
+  const hasData = rawPct != null || (tweenPhase.current !== 'idle' && tweenPhase.current !== 'waiting');
 
   return (
     <div className="flex flex-col gap-1.5" style={{ minHeight: 28 }}>
@@ -298,8 +318,12 @@ function ProgressBar({ engine, activeStep }: { engine: ReturnType<typeof useEngi
           className="h-full rounded-full"
           style={{
             width: `${visualPct}%`,
+            opacity: barOpacity,
             background: barColor,
-            transition: 'width 200ms ease-out, background var(--t-phi) var(--ease-phi)',
+            // Suppress width transition during invisible reset (waiting phase)
+            transition: tweenPhase.current === 'waiting'
+              ? 'opacity 300ms ease, background var(--t-phi) var(--ease-phi)'
+              : 'width 200ms ease-out, opacity 300ms ease, background var(--t-phi) var(--ease-phi)',
           }}
         />
       </div>
@@ -307,8 +331,8 @@ function ProgressBar({ engine, activeStep }: { engine: ReturnType<typeof useEngi
         className="flex gap-2.5 font-mono justify-center"
         style={{
           fontSize: 'var(--font-size-xs)',
-          opacity: hasData ? 1 : 0,
-          transition: 'opacity 200ms ease',
+          opacity: hasData ? barOpacity : 0,
+          transition: 'opacity 300ms ease',
         }}
       >
         <Text variant="dim">{visualPct}%</Text>
