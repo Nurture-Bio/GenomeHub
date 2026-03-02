@@ -8,6 +8,7 @@ import {
   useAddFileOrganism, useRemoveFileOrganism,
 } from '../hooks/useGenomicQueries';
 import { useConfirm } from '../hooks/useConfirm';
+import { prefetchParquetUrl } from '../hooks/useParquetPreview';
 import { detectFormat, FORMAT_META, formatBytes, formatRelativeTime } from '../lib/formats';
 import { Button, Badge, Input, Text, Heading, Card, ChipEditor, HashChip, FilterChip, iconAction } from '../ui';
 import LoadingCrossfade from '../components/LoadingCrossfade';
@@ -114,7 +115,8 @@ function FileRow({
       <div className="flex items-start gap-2 min-w-0">
         <FormatIcon filename={filename} format={format} />
         <div className="min-w-0 flex-1">
-          <Link to={`/files/${id}`} className="no-underline">
+          <Link to={`/files/${id}`} className="no-underline"
+            onMouseEnter={() => prefetchParquetUrl(id)}>
             <span className="font-mono text-sm truncate block hover:text-cyan transition-colors duration-fast tabular-nums">
               {filename}
             </span>
@@ -214,7 +216,8 @@ function FileCard({ file, loading = false, onDownload, selected, onSelect }: Fil
         }
         {loading
           ? <div className="skeleton h-[1lh] flex-1" />
-          : <Link to={`/files/${file.id}`} className="no-underline flex-1 min-w-0">
+          : <Link to={`/files/${file.id}`} className="no-underline flex-1 min-w-0"
+              onMouseEnter={() => prefetchParquetUrl(file.id)}>
               <span className="font-mono text-sm truncate block hover:text-cyan transition-colors duration-fast tabular-nums">{file.filename}</span>
             </Link>
         }

@@ -7,4 +7,5 @@ export type {
   DataProfileCharLengths,
   EnrichableAttributes,
   Lazy,
+  JsonValue, JsonObject, JsonArray,
 } from './data_profile.js';

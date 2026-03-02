@@ -22,7 +22,7 @@ import { useDataProfile } from '../hooks/useDataProfile';
 import { useDerivedState } from '../hooks/useDerivedState';
 import { apiFetch } from '../lib/api';
 import { useAppStore } from '../stores/useAppStore';
-import type { ColumnInfo, ColumnStats, ColumnCardinality, FilterSpec, FilterOp, SortSpec, ProfileStatus, WasmStatus } from '../hooks/useParquetPreview';
+import type { ColumnInfo, ColumnStats, ColumnCardinality, FilterSpec, FilterOp, SortSpec, PipelineStatus } from '../hooks/useParquetPreview';
 
 // ── TEMPORARY: Render profiler ──────────────────────────────────────────────
 const onRender: ProfilerOnRenderCallback = (id, phase, actualMs, baseMs, startTime, commitTime) => {
@@ -133,18 +133,6 @@ const PARQUET_STEPS = [
   { key: 'query',    label: 'Drawing rows' },
   { key: 'ready',    label: 'Ready' },
 ] as const;
-
-function pipelineIndex(profileStatus: ProfileStatus, wasmStatus: WasmStatus, isQuerying: boolean, hasData: boolean, wasmError?: string | null): number {
-  if (profileStatus === 'polling' || profileStatus === 'error') return 0;
-  if (wasmStatus === 'error') {
-    // Disambiguate boot vs register failure from the error message
-    return wasmError?.includes('Failed to load dataset') ? 2 : 1;
-  }
-  if (wasmStatus === 'idle' || wasmStatus === 'booting') return 1;
-  if (wasmStatus === 'registering') return 2;
-  if (hasData) return 4; // ready
-  return 3; // drawing rows
-}
 
 
 // ── RangeSlider ───────────────────────────────────────────────────────────────
@@ -459,7 +447,7 @@ const FilterSidebar = memo(function FilterSidebar({
 // ── VirtualRows ───────────────────────────────────────────────────────────────
 
 const VirtualRows = memo(function VirtualRows({
-  scrollRef, rowCount, fetchWindow, columns, columnStats, colWidths, totalWidth, onFirstData,
+  scrollRef, rowCount, fetchWindow, columns, columnStats, colWidths, totalWidth, snapshotCache, pipelineStatus,
 }: {
   scrollRef:   RefObject<HTMLDivElement | null>;
   rowCount:    number;
@@ -468,23 +456,34 @@ const VirtualRows = memo(function VirtualRows({
   columnStats: Record<string, ColumnStats>;
   colWidths:   Record<string, number>;
   totalWidth:  number;
-  onFirstData?: () => void;
+  snapshotCache?: () => Map<number, Record<string, unknown>>;
+  pipelineStatus: PipelineStatus;
 }) {
-  const [rows, setRows] = useState<Map<number, Record<string, unknown>>>(new Map());
-  const firstDataFired = useRef(false);
+  // Seed from warm cache synchronously — avoids one-frame skeleton flash.
+  // snapshotCache reads the hook's rowCache ref (pre-populated by greedy fetch or hover prefetch).
+  const [rows, setRows] = useState<Map<number, Record<string, unknown>>>(() => {
+    return snapshotCache?.() ?? new Map();
+  });
   const fetchingRef = useRef<Set<string>>(new Set());
 
   const virtualizer = useVirtualizer({
     count:            rowCount,
     getScrollElement: () => scrollRef.current,
     estimateSize:     () => ROW_H,
-    overscan:         40,
+    overscan:         20,
+    initialRect:      { width: 0, height: 800 },
   });
 
   // Fetch visible rows — collect all distinct window starts for uncached rows
   const items = virtualizer.getVirtualItems();
   useEffect(() => {
     if (items.length === 0) return;
+
+    // Do not attempt to fetch missing rows until the background engine is fully online.
+    // When the FSM transitions to 'ready', this effect will automatically re-run
+    // and hydrate the skeletons.
+    if (pipelineStatus !== 'ready') return;
+
     const start = items[0].index;
     const end   = items[items.length - 1].index;
 
@@ -503,11 +502,6 @@ const VirtualRows = memo(function VirtualRows({
 
       fetchWindow(windowStart, WINDOW_SIZE).then(fetched => {
         fetchingRef.current.delete(key);
-        if (!firstDataFired.current && fetched.length > 0) {
-          firstDataFired.current = true;
-          console.log('[VR:firstData]', performance.now().toFixed(1) + 'ms', { rowsFetched: fetched.length });
-          onFirstData?.();
-        }
         setRows(prev => {
           const next = new Map(prev);
           for (let i = 0; i < fetched.length; i++) {
@@ -520,9 +514,8 @@ const VirtualRows = memo(function VirtualRows({
         fetchingRef.current.delete(key);
       });
     }
-  // We intentionally only trigger on virtualizer scroll range changes
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items.length > 0 ? items[0].index : -1, items.length > 0 ? items[items.length - 1].index : -1, fetchWindow]);
+  }, [items.length > 0 ? items[0].index : -1, items.length > 0 ? items[items.length - 1].index : -1, fetchWindow, pipelineStatus]);
 
   return (
     <>
@@ -599,25 +592,24 @@ export default function ParquetPreview({ fileId, onProgress }: {
   onProgress?: (config: { steps: StepperStep[]; active: number } | null) => void;
 }) {
   const {
-    profileStatus, columns, totalRows, filteredCount,
-    baseProfile, error,
-    wasmReady, wasmStatus, wasmError,
+    pipeline, columns, totalRows, filteredCount,
+    baseProfile,
     fetchWindow, applyFilters, isQuerying, cacheGen,
+    snapshotCache,
   } = useParquetPreview(fileId);
 
   // Demand-driven: fetch enrichable attributes from the server
   // Fires when columns are available — does NOT wait for WASM
   const { profile } = useDataProfile(
     columns.length > 0 ? fileId : null,
-    ['columnStats', 'cardinality', 'charLengths'],
+    ['columnStats', 'cardinality', 'charLengths', 'initialRows'],
     baseProfile,
   );
 
   console.log('[PP:render]', {
-    profileStatus,
+    pipelineStatus: pipeline.status,
+    activeStep: pipeline.activeStep,
     colCount: columns.length,
-    wasmStatus,
-    wasmReady,
     totalRows,
     hasStats: !!profile?.columnStats,
     hasCardinality: !!profile?.cardinality,
@@ -675,24 +667,13 @@ export default function ParquetPreview({ fileId, onProgress }: {
   const resizingRef = useRef<{ name: string; startX: number; startW: number } | null>(null);
 
   // ── State machine ────────────────────────────────────────────────────────
-  // Single source of truth: pipelineIndex drives pipeline dots + table body.
+  // Single source of truth: pipeline.activeStep drives stepper + table body.
   //   0 = Reading schema  → table body: empty void
   //   1 = Starting engine → table body: skeleton grid (columns known)
   //   2 = Opening dataset → table body: skeleton grid
   //   3 = Drawing rows    → table body: skeleton grid
   //   4 = Ready           → table body: real data
-  const [hasData, setHasData] = useState(false);
-  const [hasCurrentData, setHasCurrentData] = useState(false);
-  const prevCacheGen = useRef(cacheGen);
-  if (cacheGen !== prevCacheGen.current) {
-    prevCacheGen.current = cacheGen;
-    if (hasCurrentData) setHasCurrentData(false);
-  }
-  const handleFirstData = useCallback(() => {
-    setHasData(true);
-    setHasCurrentData(true);
-  }, []);
-  const stage = pipelineIndex(profileStatus, wasmStatus, isQuerying, hasData);
+  const stage = pipeline.activeStep;
 
   // ── TEMPORARY: Stage transition profiler ──────────────────────────────────
   const prevStageRef = useRef(stage);
@@ -702,7 +683,7 @@ export default function ParquetPreview({ fileId, onProgress }: {
     console.log(`[STAGE] ${prevStageRef.current} → ${stage}`, {
       t: performance.now().toFixed(1) + 'ms',
       render: renderCountRef.current,
-      profileStatus, wasmStatus, hasData, hasCurrentData,
+      pipelineStatus: pipeline.status,
       cols: columns.length,
       filteredCount,
     });
@@ -715,19 +696,17 @@ export default function ParquetPreview({ fileId, onProgress }: {
   // ── end profiler ──────────────────────────────────────────────────────────
 
   // ── Broadcast pipeline state to parent via onProgress ──────────────────────
-  const isError = profileStatus === 'error' || wasmStatus === 'error';
-  const displayError = isError ? (error || wasmError) : undefined;
-  const currentActive = isError
-    ? pipelineIndex(profileStatus, wasmStatus, isQuerying, hasData, wasmError)
-    : stage;
-  const currentSteps: StepperStep[] = isError
+  const isError = pipeline.status === 'error' || pipeline.status === 'failed' || pipeline.status === 'unavailable';
+  const displayError = isError ? pipeline.error : undefined;
+  const currentActive = stage;
+  const currentSteps: StepperStep[] = isError && displayError
     ? PARQUET_STEPS.map((s, i) =>
-        i === currentActive && displayError ? { ...s, error: displayError } : s
+        i === currentActive ? { ...s, error: displayError } : s
       )
     : [...PARQUET_STEPS];
 
   useEffect(() => {
-    if (profileStatus === 'unavailable' || profileStatus === 'failed') {
+    if (pipeline.status === 'unavailable' || pipeline.status === 'failed') {
       onProgress?.(null);
       return;
     }
@@ -810,7 +789,7 @@ export default function ParquetPreview({ fileId, onProgress }: {
   // ── Build filter specs and apply ────────────────────────────────────────────
 
   const triggerFilters = useCallback(() => {
-    if (!wasmReady) return; // accumulate in state; applied when WASM boots
+    if (pipeline.status !== 'ready') return; // accumulate in state; applied when WASM boots
 
     const filters: FilterSpec[] = [];
 
@@ -846,16 +825,30 @@ export default function ParquetPreview({ fileId, onProgress }: {
       console.error('DuckDB Filter Error:', err);
       setPendingConstraints(false);
     });
-  }, [wasmReady, rangeState, selected, textFilters, sortSpecs, columnStats, applyFilters]);
+  }, [pipeline.status, rangeState, selected, textFilters, sortSpecs, columnStats, applyFilters]);
 
   // Keep ref synced so debounced callbacks always call the latest version
   triggerRef.current = triggerFilters;
 
-  // Catch-up: apply accumulated filters when WASM becomes ready or sort changes
+  // Catch-up: apply accumulated filters when WASM becomes ready or sort changes.
+  // On the FIRST ready transition (background WASM boot completing), skip the wipe
+  // unless the user actually has active filters — otherwise this destroys the
+  // pre-flight data that is already painted on screen.
+  const isFirstReadyRef = useRef(true);
   useEffect(() => {
-    if (wasmReady) triggerFilters();
+    if (pipeline.status === 'ready') {
+      const hasActiveFilters = Object.values(textFilters).some(v => v.trim())
+        || Object.keys(selected).some(k => selected[k].size > 0)
+        || sorting.length > 0;
+
+      if (isFirstReadyRef.current) {
+        isFirstReadyRef.current = false;
+        if (!hasActiveFilters) return;
+      }
+      triggerFilters();
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wasmReady, sorting]);
+  }, [pipeline.status, sorting]);
 
   // ── Filter handlers ──────────────────────────────────────────────────────────
 
@@ -992,7 +985,7 @@ export default function ParquetPreview({ fileId, onProgress }: {
 
   // ── Loading / error states ─────────────────────────────────────────────────
 
-  if (profileStatus === 'unavailable' || profileStatus === 'failed') return null;
+  if (pipeline.status === 'unavailable' || pipeline.status === 'failed') return null;
 
   if (isError) return null;
 
@@ -1050,7 +1043,7 @@ export default function ParquetPreview({ fileId, onProgress }: {
           </button>
         </div>
 
-        {/* Table header — gated on columns.length (data), not profileStatus (flag) */}
+        {/* Table header — gated on columns.length (data), not pipeline status */}
         <Profiler id="header" onRender={onRender}>
         <div ref={headerRef} className="flex-1 min-w-0 overflow-hidden font-mono"
           style={columns.length === 0
@@ -1167,7 +1160,7 @@ export default function ParquetPreview({ fileId, onProgress }: {
                React skips this entire subtree unless stage crosses the 1/4 boundary. */}
           {skeletonOverlay}
 
-          {wasmReady && filteredCount > 0 && (
+          {(pipeline.status === 'ready' || pipeline.status === 'ready_background_work') && filteredCount > 0 && (
             <VirtualRows
               key={cacheGen}
               scrollRef={scrollRef}
@@ -1177,11 +1170,12 @@ export default function ParquetPreview({ fileId, onProgress }: {
               columnStats={columnStats}
               colWidths={colWidths}
               totalWidth={totalWidth}
-              onFirstData={handleFirstData}
+              snapshotCache={snapshotCache}
+              pipelineStatus={pipeline.status}
             />
           )}
 
-          {wasmReady && filteredCount === 0 && (
+          {(pipeline.status === 'ready' || pipeline.status === 'ready_background_work') && filteredCount === 0 && (
             <div className="flex flex-col items-center justify-center gap-3" style={{ height: '100%', minHeight: 200 }}>
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"
                 style={{ opacity: 0.3, color: 'var(--color-fg-3)' }}>

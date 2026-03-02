@@ -8,6 +8,9 @@ import AuthProvider from './providers/AuthProvider';
 import './index.css';
 import App from './App';
 
+// Eager DuckDB WASM boot — starts immediately, resolves before user navigates to a file.
+import './lib/duckdb.js';
+
 // ── TEMPORARY: Font rendering debugger ───────────────────────────────────────
 if (import.meta.env.DEV) {
   document.fonts.addEventListener('loadingdone', (e) => {

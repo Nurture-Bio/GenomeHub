@@ -16,38 +16,35 @@ import duckdb_worker_eh from '@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.
 // Re-export for convenience
 export { duckdb };
 
-// ── Module-level singleton ────────────────────────────────
+// ── Module-level singleton — boots eagerly on import ──────
 
 let _db:          duckdb.AsyncDuckDB | null = null;
 let _conn:        duckdb.AsyncDuckDBConnection | null = null;
-let _bootPromise: Promise<void> | null = null;
+
+const _bootPromise: Promise<void> = (async () => {
+  try {
+    const t0 = performance.now();
+    // EH bundle requires SharedArrayBuffer (COOP/COEP headers).
+    // Runtime check — NOT import.meta.env.DEV which is unreliable in Docker.
+    // Production (CloudFront COOP/COEP) → SharedArrayBuffer → EH bundle.
+    // Dev (no headers) → no SharedArrayBuffer → MVP bundle.
+    const useEH = typeof SharedArrayBuffer !== 'undefined';
+    const bundle = useEH
+      ? { mainModule: duckdb_wasm_eh,  mainWorker: duckdb_worker_eh,  pthreadWorker: null }
+      : { mainModule: duckdb_wasm_mvp, mainWorker: duckdb_worker_mvp, pthreadWorker: null };
+    const worker = new Worker(bundle.mainWorker!);
+    _db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), worker);
+    await _db.instantiate(bundle.mainModule, bundle.pthreadWorker ?? undefined);
+    _conn = await _db.connect();
+    console.log(`[PQ:perf] DuckDB WASM global boot: ${(performance.now() - t0).toFixed(1)}ms (${useEH ? 'EH' : 'MVP'})`);
+  } catch (e) {
+    _db = null;
+    _conn = null;
+    throw e;
+  }
+})();
 
 export async function ensureDb(): Promise<{ db: duckdb.AsyncDuckDB; conn: duckdb.AsyncDuckDBConnection }> {
-  if (_db && _conn) return { db: _db, conn: _conn };
-  if (_bootPromise) { await _bootPromise; return { db: _db!, conn: _conn! }; }
-
-  _bootPromise = (async () => {
-    try {
-      // EH bundle requires SharedArrayBuffer (COOP/COEP headers).
-      // Runtime check — NOT import.meta.env.DEV which is unreliable in Docker.
-      // Production (CloudFront COOP/COEP) → SharedArrayBuffer → EH bundle.
-      // Dev (no headers) → no SharedArrayBuffer → MVP bundle.
-      const useEH = typeof SharedArrayBuffer !== 'undefined';
-      const bundle = useEH
-        ? { mainModule: duckdb_wasm_eh,  mainWorker: duckdb_worker_eh,  pthreadWorker: null }
-        : { mainModule: duckdb_wasm_mvp, mainWorker: duckdb_worker_mvp, pthreadWorker: null };
-      const worker = new Worker(bundle.mainWorker!);
-      _db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), worker);
-      await _db.instantiate(bundle.mainModule, bundle.pthreadWorker ?? undefined);
-      _conn = await _db.connect();
-    } catch (e) {
-      _bootPromise = null;
-      _db = null;
-      _conn = null;
-      throw e;
-    }
-  })();
-
   await _bootPromise;
   return { db: _db!, conn: _conn! };
 }

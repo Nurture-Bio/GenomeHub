@@ -26,6 +26,7 @@ import type {
   DataProfileCardinality,
   DataProfileCharLengths,
   EnrichableAttributes,
+  JsonValue, JsonObject,
 } from '@genome-hub/shared';
 import { AppDataSource } from '../app_data.js';
 import { duckdbSrc, duckdbSetup } from './storage.js';
@@ -37,7 +38,7 @@ import { duckdbSrc, duckdbSetup } from './storage.js';
  * Returns only the valid keys.
  */
 const VALID_KEYS = new Set<keyof EnrichableAttributes>([
-  'columnStats', 'cardinality', 'charLengths',
+  'columnStats', 'cardinality', 'charLengths', 'initialRows',
 ]);
 
 /** All enrichable attribute keys — used for eager compute at upload time. */
@@ -157,6 +158,11 @@ async function hydrateAttribute(
       if (profile.charLengths !== undefined) return;
       try { profile.charLengths = await enrichCharLengths(session, profile); }
       catch { profile.charLengths = null; }
+      return;
+    case 'initialRows':
+      if (profile.initialRows !== undefined) return;
+      try { profile.initialRows = await enrichInitialRows(session, profile); }
+      catch { profile.initialRows = null; }
       return;
   }
 }
@@ -369,6 +375,38 @@ async function enrichCardinality(
     }));
   }
 
+  return result;
+}
+
+/** Max serialized payload for initialRows: 64 KB. Rows beyond this are dropped. */
+const INITIAL_ROWS_BYTE_BUDGET = 64 * 1024;
+const INITIAL_ROWS_MAX = 100;
+
+async function enrichInitialRows(
+  session: DuckDbSession,
+  profile: DataProfile,
+): Promise<JsonObject[]> {
+  if (profile.rowCount === 0) return [];
+  const flatCols = expandSchema(profile.schema);
+  const selectList = flatCols.length
+    ? flatCols.map(c => `${c.sqlExpr} AS "${c.name}"`).join(', ')
+    : '*';
+  const rows = await session.query(
+    `SELECT ${selectList} FROM read_parquet('${session.safeSrc}') LIMIT ${INITIAL_ROWS_MAX}`
+  );
+  // Coerce BigInt → Number, enforce byte budget (break at row boundary)
+  const result: JsonObject[] = [];
+  let bytes = 2; // account for opening '[' and closing ']'
+  for (const r of rows) {
+    const out: Record<string, JsonValue> = {};
+    for (const [k, v] of Object.entries(r as Record<string, unknown>)) {
+      out[k] = typeof v === 'bigint' ? Number(v) : v as JsonValue;
+    }
+    const rowBytes = Buffer.byteLength(JSON.stringify(out), 'utf8');
+    if (bytes + rowBytes + 1 > INITIAL_ROWS_BYTE_BUDGET && result.length > 0) break;
+    result.push(out);
+    bytes += rowBytes + 1; // +1 for comma separator
+  }
   return result;
 }
 

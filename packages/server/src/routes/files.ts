@@ -243,7 +243,7 @@ router.get('/:id/parquet-url', asyncWrap(async (req, res) => {
     try {
       dataProfile = await extractBaseProfile(file.parquetS3Key);
       // Fire-and-forget persist
-      repo.update(file.id, { dataProfile }).catch(() => {});
+      repo.update(file.id, { dataProfile: dataProfile }).catch(() => {});
     } catch (err) {
       console.error(JSON.stringify({
         tag: '[BASE_PROFILE_FAILED]',

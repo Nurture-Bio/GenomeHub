@@ -15,6 +15,14 @@
  * @module
  */
 
+// ── JSON primitive — the exact domain of JSONB-serializable values ────────────
+// Interfaces are lazily evaluated by TypeScript, breaking the infinite recursion
+// that TypeORM's QueryDeepPartialEntity triggers on inline recursive type literals.
+
+export interface JsonObject { [key: string]: JsonValue; }
+export interface JsonArray extends Array<JsonValue> {}
+export type JsonValue = string | number | boolean | null | JsonObject | JsonArray;
+
 // ── Raw data shapes (pure data, no optionality) ─────────────────────────────
 
 export interface DataProfileColumn {
@@ -44,6 +52,7 @@ export interface EnrichableAttributes {
   columnStats: Record<string, DataProfileStats>;
   cardinality: Record<string, DataProfileCardinality>;
   charLengths: Record<string, DataProfileCharLengths>;
+  initialRows: JsonObject[];
 }
 
 // ── Lazy Wrapper — T | null (null = negative cache, do not retry) ───────────
