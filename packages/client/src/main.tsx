@@ -79,37 +79,27 @@ const queryClient = new QueryClient({
   },
 });
 
-// Explicitly trigger font loading — document.fonts.ready resolves immediately
-// when no content uses the fonts yet (pre-React). We must request them first.
-Promise.all([
-  document.fonts.load('400 1em "DM Sans"'),
-  document.fonts.load('700 1em "DM Sans"'),
-  document.fonts.load('400 1em "JetBrains Mono"'),
-  document.fonts.load('400 1em "Outfit"'),
-  document.fonts.load('700 1em "Outfit"'),
-]).then(() => {
-  createRoot(document.getElementById('root')!).render(
-    <StrictMode>
-      <BrowserRouter>
-        <QueryClientProvider client={queryClient}>
-          <AuthProvider>
-            <App />
-            <Toaster
-              position="bottom-right"
-              toastOptions={{
-                style: {
-                  background: 'var(--color-elevated)',
-                  color: 'var(--color-fg)',
-                  border: '1px solid var(--color-line)',
-                  fontFamily: 'var(--font-sans)',
-                  fontSize: 'var(--font-size-body)',
-                },
-              }}
-            />
-          </AuthProvider>
-          <ReactQueryDevtools initialIsOpen={false} />
-        </QueryClientProvider>
-      </BrowserRouter>
-    </StrictMode>
-  );
-});
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <BrowserRouter>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <App />
+          <Toaster
+            position="bottom-right"
+            toastOptions={{
+              style: {
+                background: 'var(--color-elevated)',
+                color: 'var(--color-fg)',
+                border: '1px solid var(--color-line)',
+                fontFamily: 'var(--font-sans)',
+                fontSize: 'var(--font-size-body)',
+              },
+            }}
+          />
+        </AuthProvider>
+        <ReactQueryDevtools initialIsOpen={false} />
+      </QueryClientProvider>
+    </BrowserRouter>
+  </StrictMode>
+);

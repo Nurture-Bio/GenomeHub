@@ -20,9 +20,10 @@
  * @module
  */
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect } from 'react';
 import { apiFetch } from '../lib/api.js';
 import { useAppStore } from '../stores/useAppStore.js';
+import { useDerivedState } from './useDerivedState.js';
 import type { DataProfile, EnrichableAttributes } from '@genome-hub/shared';
 
 // ── Polling constants ────────────────────────────────────────────────────────
@@ -93,39 +94,21 @@ export function useDataProfile(
 ): { profile: DataProfile | null; loading: boolean } {
   const mergeFileProfile = useAppStore(s => s.mergeFileProfile);
 
-  // Seed local state from Zustand store if available, else from baseProfile
+  // Read Zustand store — may already have enriched attrs from a prior mount.
   const storeProfile = useAppStore(s => fileId ? s.fileProfiles[fileId]?.dataProfile ?? null : null);
-  const [profile, setProfile] = useState<DataProfile | null>(storeProfile ?? baseProfile);
-  const [loading, setLoading] = useState(false);
-  const profileRef = useRef(profile);
-  profileRef.current = profile;
 
-  // Sync base profile when it arrives (from useParquetPreview → Zustand → here)
-  useEffect(() => {
-    if (baseProfile && !profileRef.current) {
-      setProfile(baseProfile);
-    }
-  }, [baseProfile]);
-
-  // Sync from Zustand only if it has MORE enriched keys than local state.
-  // Never overwrite an enriched profile with a base-only profile (causes flash).
-  useEffect(() => {
-    if (!storeProfile || storeProfile === profileRef.current) return;
-    const local = profileRef.current;
-    if (!local) {
-      setProfile(storeProfile);
-      return;
-    }
-    const storeHasMore = ['columnStats', 'cardinality', 'charLengths'].some(
-      k => (storeProfile as Record<string, unknown>)[k] !== undefined &&
-           (local as Record<string, unknown>)[k] === undefined
-    );
-    if (storeHasMore) setProfile(storeProfile);
-  }, [storeProfile]);
-
-  // Derive effective profile synchronously — eliminates the one-frame gap
-  // where profile state is null but storeProfile/baseProfile are already available.
-  const effectiveProfile = profile ?? storeProfile ?? baseProfile;
+  // Effective profile: merge base sources + server fetch patch synchronously.
+  // Priority: fetchPatch > storeProfile > baseProfile.
+  // No useEffect sync — zero nested-update re-renders.
+  const [effectiveProfile, setFetchPatch] = useDerivedState(
+    (patch: Partial<DataProfile>) => {
+      const base = storeProfile ?? baseProfile;
+      if (!base) return null;
+      return Object.keys(patch).length > 0 ? { ...base, ...patch } : base;
+    },
+    [storeProfile, baseProfile],
+    {} as Partial<DataProfile>,
+  );
 
   // Compute which requested keys are missing (=== undefined, not null)
   const missingKeys = effectiveProfile
@@ -133,15 +116,18 @@ export function useDataProfile(
     : [];
   const missingStr = missingKeys.join(',');
 
+  // Loading derived synchronously — true when we have missing keys to fetch.
+  // When fetch completes → setFetchPatch fills the keys → missingKeys empties
+  // → loading becomes false. No setLoading setState needed.
+  const loading = fileId !== null && missingKeys.length > 0;
+
   useEffect(() => {
     if (!fileId || !effectiveProfile || missingKeys.length === 0) return;
     const ac = new AbortController();
-    setLoading(true);
 
     fetchProfileAttributes(fileId, missingKeys, ac.signal)
       .then(serverProfile => {
         if (ac.signal.aborted || !serverProfile) return;
-        // Build the patch of enriched attributes
         const patch: Partial<DataProfile> = {};
         for (const key of attributes) {
           if (serverProfile[key] !== undefined) {
@@ -150,17 +136,14 @@ export function useDataProfile(
         }
         if (serverProfile.profiledAt) patch.profiledAt = serverProfile.profiledAt;
 
-        // Merge into local state
-        setProfile(prev => prev ? { ...prev, ...patch } : serverProfile);
+        // Merge into local patch state
+        setFetchPatch(prev => ({ ...prev, ...patch }));
 
         // Merge into Zustand store — single source of truth
         if (fileId) mergeFileProfile(fileId, patch);
       })
       .catch(() => {
         // Fetch failed or aborted — don't poison the profile
-      })
-      .finally(() => {
-        if (!ac.signal.aborted) setLoading(false);
       });
 
     return () => ac.abort();

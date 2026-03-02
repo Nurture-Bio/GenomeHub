@@ -5,26 +5,37 @@
  * Data layer: rows come from fetchWindow() → Map cache, not a SAB cursor.
  */
 
-import { useRef, useMemo, useState, useCallback, useEffect, memo } from 'react';
-import type { CSSProperties, RefObject } from 'react';
+import { useRef, useMemo, useState, useCallback, useEffect, memo, Profiler } from 'react';
+import type { CSSProperties, RefObject, ProfilerOnRenderCallback } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import * as Popover from '@radix-ui/react-popover';
 import { Text } from '../ui';
 import { useParquetPreview, isNumericType, DROPDOWN_MAX } from '../hooks/useParquetPreview';
 import { useDataProfile } from '../hooks/useDataProfile';
+import { useDerivedState } from '../hooks/useDerivedState';
 import { apiFetch } from '../lib/api';
 import { useAppStore } from '../stores/useAppStore';
 import type { ColumnInfo, ColumnStats, ColumnCardinality, FilterSpec, FilterOp, SortSpec, ProfileStatus, WasmStatus } from '../hooks/useParquetPreview';
+
+// ── TEMPORARY: Render profiler ──────────────────────────────────────────────
+const onRender: ProfilerOnRenderCallback = (id, phase, actualMs, baseMs, startTime, commitTime) => {
+  if (import.meta.env.DEV) {
+    console.log(`[RENDER] ${id}`, { phase, actualMs: actualMs.toFixed(1), baseMs: baseMs.toFixed(1), startTime: startTime.toFixed(0), commitTime: commitTime.toFixed(0) });
+  }
+};
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const ROW_H       = 28;
 const PANEL_H     = 560;
 const SIDEBAR_W   = 216;
-const PX_PER_CHAR = 7.5;
-const MIN_COL_W   = 50;
-const MAX_COL_W   = 300;
-const COL_PADDING = 20;
+const PX_PER_CHAR   = 7.5;
+const CELL_PAD_X    = 6;       // padding: '_ 6px' on header/data cells
+const CHEVRON_W     = 8;       // SortChevron svg width
+const HEADER_GAP    = 8;       // gap-1 between ColName and chevron
+const COL_CHROME    = CELL_PAD_X * 2 + CHEVRON_W + HEADER_GAP;
+const MIN_COL_W     = 50;
+const MAX_COL_W     = 300;
 const WINDOW_SIZE = 200;  // rows per fetch window
 
 // ── Formatting ────────────────────────────────────────────────────────────────
@@ -58,10 +69,13 @@ function colW(type: string): number {
 }
 
 function colWFromName(name: string, type: string, maxCharLen?: number): number {
-  const headerChars = Math.max(8, name.length);
+  // Header wraps at `.` — width only needs to fit the longest segment.
+  // Child segments get a `› ` prefix (2 chars).
+  const segments = name.split('.');
+  const headerChars = Math.max(...segments.map((s, i) => s.length + (i > 0 ? 2 : 0)));
   const dataChars = maxCharLen ?? headerChars;
   const chars = Math.max(headerChars, dataChars);
-  const px    = Math.round(chars * PX_PER_CHAR) + COL_PADDING;
+  const px    = Math.round(chars * PX_PER_CHAR) + COL_CHROME;
   return Math.min(MAX_COL_W, Math.max(MIN_COL_W, px));
 }
 
@@ -76,6 +90,21 @@ function SortChevron({ dir }: { dir: 'asc' | 'desc' | null }) {
     }}>
       <path d="M4 0L7.5 4.5H0.5L4 0Z" />
     </svg>
+  );
+}
+
+// ── ColName — break at `.` (always newline), then at `_` (if needed) ─────────
+
+function ColName({ name }: { name: string }) {
+  const parts = name.split('.');
+  if (parts.length === 1) return <span>{name}</span>;
+  return (
+    <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.3 }}>
+      <span style={{ color: 'var(--color-fg-3)' }}>{parts[0]}</span>
+      {parts.slice(1).map((part, i) => (
+        <span key={i}><span style={{ color: 'var(--color-fg-3)' }}>› </span>{part}</span>
+      ))}
+    </span>
   );
 }
 
@@ -512,6 +541,7 @@ const VirtualRows = memo(function VirtualRows({
         fetchingRef.current.delete(key);
         if (!firstDataFired.current && fetched.length > 0) {
           firstDataFired.current = true;
+          console.log('[VR:firstData]', performance.now().toFixed(1) + 'ms', { rowsFetched: fetched.length });
           onFirstData?.();
         }
         setRows(prev => {
@@ -541,8 +571,8 @@ const VirtualRows = memo(function VirtualRows({
             <div key={vRow.key} className="flex"
               style={{
                 position: 'absolute', top: 0, left: 0, width: '100%', height: ROW_H,
-                transform: `translateY(${vRow.start}px)`,
-                background: vRow.index % 2 === 1 ? 'oklch(0.120 0.020 250 / 0.3)' : undefined,
+                transform: `translateY(${Math.round(vRow.start)}px)`,
+                background: vRow.index % 2 === 1 ? 'oklch(0.120 0.020 250)' : 'var(--color-void)',
               }}
             >
               {columns.map(c => {
@@ -560,7 +590,9 @@ const VirtualRows = memo(function VirtualRows({
                       borderBottom: '1px solid var(--color-line)',
                       lineHeight: `${ROW_H}px`,
                     }}>
-                      <div className="skeleton rounded" style={{ height: 12, width: `${pct}%`, marginTop: 8 }} />
+                      <div className="skeleton rounded" style={{ height: 12, width: `${pct}%`, marginTop: 8,
+                        ...(isNum ? { marginLeft: 'auto' } : {}),
+                      }} />
                     </div>
                   );
                 }
@@ -697,25 +729,57 @@ export default function ParquetPreview({ fileId }: {
   }, []);
   const stage = pipelineIndex(profileStatus, wasmStatus, isQuerying, hasData);
 
+  // ── TEMPORARY: Stage transition profiler ──────────────────────────────────
+  const prevStageRef = useRef(stage);
+  const renderCountRef = useRef(0);
+  renderCountRef.current++;
+  if (stage !== prevStageRef.current) {
+    console.log(`[STAGE] ${prevStageRef.current} → ${stage}`, {
+      t: performance.now().toFixed(1) + 'ms',
+      render: renderCountRef.current,
+      profileStatus, wasmStatus, hasData, hasCurrentData,
+      cols: columns.length,
+      filteredCount,
+    });
+    prevStageRef.current = stage;
+  }
+  useEffect(() => {
+    console.log(`[STAGE:COMMIT] stage=${stage} render=#${renderCountRef.current}`,
+      performance.now().toFixed(1) + 'ms');
+  });
+  // ── end profiler ──────────────────────────────────────────────────────────
+
   // ── Synchronous initializers — Frame 1 ready, no useEffect ───────────────
 
   const charLengths = profile?.charLengths ?? null;
 
-  const [colWidths, setColWidths] = useState<Record<string, number>>(() => {
-    const init: Record<string, number> = {};
-    for (const c of columns) init[c.name] = colWFromName(c.name, c.type, charLengths?.[c.name]?.max);
-    return init;
-  });
+  // Column widths: base defaults from column metadata, user resize overrides on top.
+  const [colWidths, setColWidthOverrides] = useDerivedState(
+    (overrides: Record<string, number>) => {
+      const result: Record<string, number> = {};
+      for (const c of columns) {
+        result[c.name] = overrides[c.name] ?? colWFromName(c.name, c.type, charLengths?.[c.name]?.max);
+      }
+      return result;
+    },
+    [columns, charLengths],
+    {} as Record<string, number>,
+  );
 
-  const [rangeState, setRangeState] = useState<Record<string, [number, number]>>(() => {
-    const init: Record<string, [number, number]> = {};
-    for (const c of columns) {
-      if (!isNumericType(c.type)) continue;
-      const s = columnStats[c.name];
-      if (s) init[c.name] = [s.min, s.max];
-    }
-    return init;
-  });
+  // Range state: base defaults from columnStats, user-modified overrides on top.
+  const [rangeState, setRangeOverrides] = useDerivedState(
+    (overrides: Record<string, [number, number]>) => {
+      const result: Record<string, [number, number]> = {};
+      for (const c of columns) {
+        if (!isNumericType(c.type)) continue;
+        const s = columnStats[c.name];
+        if (s) result[c.name] = overrides[c.name] ?? [s.min, s.max];
+      }
+      return result;
+    },
+    [columns, columnStats],
+    {} as Record<string, [number, number]>,
+  );
 
   const triggerRef = useRef<() => void>(() => {});
   const [selected,           setSelected]           = useState<Record<string, Set<string>>>({});
@@ -724,34 +788,6 @@ export default function ParquetPreview({ fileId }: {
   const [constrainedStats,   setConstrainedStats]   = useState<Record<string, ColumnStats>>({});
   const [pendingConstraints, setPendingConstraints] = useState(false);
 
-  // ── Incremental updates — new columns or stats arriving after mount ────────
-
-  useEffect(() => {
-    if (columns.length === 0) return;
-    setColWidths(prev => {
-      let changed = false;
-      const next = { ...prev };
-      for (const c of columns) {
-        const w = colWFromName(c.name, c.type, charLengths?.[c.name]?.max);
-        if (!(c.name in next) || (charLengths?.[c.name] && next[c.name] !== w)) {
-          next[c.name] = w;
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [columns, charLengths]);
-
-  useEffect(() => {
-    const init: Record<string, [number, number]> = {};
-    for (const c of columns) {
-      if (!isNumericType(c.type)) continue;
-      const s = columnStats[c.name];
-      if (s && !rangeState[c.name]) init[c.name] = [s.min, s.max];
-    }
-    if (Object.keys(init).length > 0) setRangeState(prev => ({ ...init, ...prev }));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [columnStats]);
 
   useEffect(() => () => { if (debRef.current) clearTimeout(debRef.current); }, []);
 
@@ -808,7 +844,7 @@ export default function ParquetPreview({ fileId }: {
   // ── Filter handlers ──────────────────────────────────────────────────────────
 
   const handleRangeChange = useCallback((name: string, lo: number, hi: number) => {
-    setRangeState(prev => ({ ...prev, [name]: [lo, hi] }));
+    setRangeOverrides(prev => ({ ...prev, [name]: [lo, hi] }));
     if (debRef.current) clearTimeout(debRef.current);
     debRef.current = setTimeout(() => triggerRef.current(), 120);
   }, []);
@@ -835,17 +871,9 @@ export default function ParquetPreview({ fileId }: {
   }, []);
 
   const handleClearAll = useCallback(() => {
-    setRangeState({});
+    setRangeOverrides({});
     setSelected({});
     setTextFilters({});
-    // Need to re-init ranges from stats
-    const init: Record<string, [number, number]> = {};
-    for (const c of columns) {
-      if (!isNumericType(c.type)) continue;
-      const s = columnStats[c.name];
-      if (s) init[c.name] = [s.min, s.max];
-    }
-    setRangeState(init);
     setConstrainedStats({});
     setPendingConstraints(false);
     // Clear filters on the hook
@@ -873,7 +901,7 @@ export default function ParquetPreview({ fileId }: {
     resizingRef.current = { name, startX, startW };
     const onMove = (e: MouseEvent) => {
       if (!resizingRef.current) return;
-      setColWidths(prev => ({
+      setColWidthOverrides(prev => ({
         ...prev,
         [resizingRef.current!.name]: Math.max(50, resizingRef.current!.startW + e.clientX - resizingRef.current!.startX),
       }));
@@ -898,6 +926,60 @@ export default function ParquetPreview({ fileId }: {
     const card = columnCardinality[c.name];
     return !card || card.distinct > 5;
   }), [columns, columnCardinality]);
+
+  // Frozen snapshot for the skeleton grid — captured once at stage 1, never changes.
+  // Prevents skeleton re-renders (animation restarts) as data arrives during stages 1-3.
+  const skelRef = useRef<{ cols: ColumnInfo[], widths: Record<string, number> } | null>(null);
+  if (tableColumns.length > 0 && !skelRef.current) {
+    skelRef.current = {
+      cols: tableColumns,
+      widths: Object.fromEntries(tableColumns.map(c => [c.name, colWidths[c.name] ?? colWFromName(c.name, c.type)])),
+    };
+  }
+
+  // Memoized skeleton JSX — React skips diffing this subtree entirely across stages 1-3.
+  const skelData = skelRef.current;
+  const skeletonGrid = useMemo(() => {
+    if (!skelData) return null;
+    return (
+      <div className="flex flex-col">
+        {Array.from({ length: Math.ceil(PANEL_H / ROW_H) }, (_, i) => (
+          <div key={i} className="flex" style={{ height: ROW_H }}>
+            {skelData.cols.map(c => {
+              const isNum = isNumericType(c.type);
+              return (
+                <div key={c.name} style={{
+                  width: skelData.widths[c.name] ?? colWFromName(c.name, c.type),
+                  minWidth: 50, flexShrink: 0, padding: '0 6px',
+                  borderBottom: '1px solid var(--color-line)',
+                  lineHeight: `${ROW_H}px`,
+                }}>
+                  <div className="skeleton rounded"
+                    style={{ height: 12, width: `${55 + ((i * 17 + c.name.length * 11) % 40)}%`, marginTop: 8,
+                      ...(isNum ? { marginLeft: 'auto' } : {}),
+                    }} />
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    );
+  }, [skelData]);
+
+  // Memoize the entire skeleton overlay — React won't touch this DOM subtree
+  // unless stage changes. Prevents Chrome repaints from sibling updates.
+  const skelVisible = stage >= 1 && stage < 4;
+  const skeletonOverlay = useMemo(() => (
+    <div style={{
+      position: 'absolute', inset: 0, zIndex: 10,
+      background: 'var(--color-void)',
+      opacity: skelVisible ? 1 : 0,
+      pointerEvents: skelVisible ? 'auto' : 'none',
+    }}>
+      {skeletonGrid}
+    </div>
+  ), [skelVisible, skeletonGrid]);
 
   const totalWidth   = tableColumns.reduce((s, c) => s + (colWidths[c.name] ?? colWFromName(c.name, c.type)), 0);
   const hasAnyFilter = Object.entries(rangeState).some(([name, [lo, hi]]) => {
@@ -932,9 +1014,6 @@ export default function ParquetPreview({ fileId }: {
 
     <div className="flex flex-col" style={{
       background: 'var(--color-void)', height: PANEL_H,
-      opacity: stage >= 1 ? 1 : 0,
-      transition: 'opacity var(--t-phi) var(--ease-phi)',
-      backfaceVisibility: 'hidden',
     }}>
 
       {/* Pinned header row — sidebar header + table header share one flex row.
@@ -987,6 +1066,7 @@ export default function ParquetPreview({ fileId }: {
         </div>
 
         {/* Table header — gated on columns.length (data), not profileStatus (flag) */}
+        <Profiler id="header" onRender={onRender}>
         <div ref={headerRef} className="flex-1 min-w-0 overflow-hidden font-mono"
           style={columns.length === 0
             ? { background: 'var(--color-raised)', borderBottom: '2px solid var(--color-line)' }
@@ -1003,12 +1083,12 @@ export default function ParquetPreview({ fileId }: {
                       width: w, minWidth: 50, flexShrink: 0, padding: '3px 6px',
                       background: 'var(--color-raised)',
                       borderBottom: `2px solid ${sortDir ? 'var(--color-cyan)' : 'var(--color-line)'}`,
-                      whiteSpace: 'nowrap', fontSize: 'var(--font-size-xs)',
+                      fontSize: 'var(--font-size-xs)',
                     }}
                     onClick={() => handleSortClick(c.name)}
                   >
-                    <div className="flex items-center gap-1">
-                      <span className="truncate">{c.name}</span>
+                    <div className="flex items-start gap-1">
+                      <ColName name={c.name} />
                       <SortChevron dir={sortDir} />
                     </div>
                     <span style={{ fontSize: 'calc(var(--font-size-xs) - 1px)', opacity: 0.35 }}>{c.type}</span>
@@ -1025,6 +1105,7 @@ export default function ParquetPreview({ fileId }: {
             </div>
           )}
         </div>
+        </Profiler>
       </div>
 
       {/* Body row */}
@@ -1032,7 +1113,8 @@ export default function ParquetPreview({ fileId }: {
 
         {/* Sidebar body — ALWAYS the same container div for layout stability.
              Content fades in when data arrives; no DOM structure change between states. */}
-        <div className="hidden md:flex flex-col shrink-0 border-r border-line" style={{ width: SIDEBAR_W }}>
+        <Profiler id="sidebar" onRender={onRender}>
+        <div className="hidden md:flex flex-col shrink-0 border-r border-line" style={{ width: SIDEBAR_W, background: 'var(--color-void)' }}>
           {columns.length > 0 ? (
             <>
               <FilterSidebar
@@ -1072,46 +1154,23 @@ export default function ParquetPreview({ fileId }: {
             </div>
           )}
         </div>
+        </Profiler>
 
         {/* Table body — ALWAYS the same scroll container. Loading states are overlays,
              not different DOM branches. Eliminates layout shift on state transitions. */}
+        <Profiler id="tableBody" onRender={onRender}>
         <div
           ref={scrollRef}
           className="flex-1 min-w-0 overflow-auto"
-          style={{ position: 'relative' }}
+          style={{ position: 'relative', background: 'var(--color-void)' }}
           onScroll={() => {
             if (headerRef.current && scrollRef.current)
               headerRef.current.scrollLeft = scrollRef.current.scrollLeft;
           }}
         >
-          {/* Skeleton grid — always mounted, opacity-driven.
-               Hidden at stage 0 (no columns) and stage 4 (data painted). */}
-          <div style={{
-            position: 'absolute', inset: 0, zIndex: 10,
-            background: 'var(--color-void)',
-            opacity: (stage >= 1 && !hasCurrentData) ? 1 : 0,
-            pointerEvents: (stage >= 1 && !hasCurrentData) ? 'auto' : 'none',
-            transition: 'opacity var(--t-phi) var(--ease-phi)',
-            backfaceVisibility: 'hidden',
-          }}>
-            <div className="flex flex-col">
-              {Array.from({ length: Math.ceil(PANEL_H / ROW_H) }, (_, i) => (
-                <div key={i} className="flex" style={{ height: ROW_H }}>
-                  {tableColumns.map(c => (
-                    <div key={c.name} style={{
-                      width: colWidths[c.name] ?? colWFromName(c.name, c.type),
-                      minWidth: 50, flexShrink: 0, padding: '0 6px',
-                      borderBottom: '1px solid var(--color-line)',
-                      lineHeight: `${ROW_H}px`,
-                    }}>
-                      <div className="skeleton rounded"
-                        style={{ height: 12, width: `${55 + ((i * 17 + c.name.length * 11) % 40)}%`, marginTop: 8 }} />
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </div>
+          {/* Skeleton grid — fully memoized (overlay + content).
+               React skips this entire subtree unless stage crosses the 1/4 boundary. */}
+          {skeletonOverlay}
 
           {wasmReady && filteredCount > 0 && (
             <VirtualRows
@@ -1146,6 +1205,7 @@ export default function ParquetPreview({ fileId }: {
               </div>
             )}
           </div>
+        </Profiler>
       </div>
     </div>
     </>
