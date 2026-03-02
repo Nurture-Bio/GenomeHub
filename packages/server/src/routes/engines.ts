@@ -1,10 +1,13 @@
 import { Readable } from 'stream';
 import { Router } from 'express';
 import { randomUUID } from 'crypto';
+import { createReadStream, createWriteStream } from 'fs';
+import { pipeline } from 'stream/promises';
 import { AppDataSource } from '../app_data.js';
 import { Engine, GenomicFile, User } from '../entities/index.js';
 import { asyncWrap } from '../lib/async_wrap.js';
 import { s3, BUCKET, putObjectStream, buildS3Key, headObject } from '../lib/s3.js';
+import { isLocal, storagePath, localFileSize, ensureDir } from '../lib/storage.js';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { detectFormat } from '@genome-hub/shared';
 import * as edges from '../lib/edge_service.js';
@@ -15,17 +18,18 @@ const router = Router();
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-/** Extract filename and content-type from a result response. */
+/** Apply user-chosen output name, preserving the extension from the engine result. */
+function applyOutputName(outputName: string, defaultFilename: string): string {
+  const ext = defaultFilename.includes('.') ? defaultFilename.slice(defaultFilename.lastIndexOf('.')) : '';
+  const base = outputName.replace(/\.[^.]+$/, ''); // strip extension if user included one
+  return base + ext;
+}
+
+/** Build a default filename from the content-type. The engine doesn't own filenames. */
 function parseResultMeta(
   headers: Headers,
   methodId: string,
 ): { filename: string; contentType: string } {
-  const cd = headers.get('content-disposition');
-  if (cd) {
-    const m = cd.match(/filename[^;=\n]*=(?:['"]([^'"]*)|([^;\n]*))/i);
-    const fn = (m?.[1] ?? m?.[2] ?? '').trim();
-    if (fn) return { filename: fn, contentType: headers.get('content-type') ?? 'application/octet-stream' };
-  }
   const ct = headers.get('content-type') ?? 'application/octet-stream';
   const extMap: Record<string, string> = {
     'application/json':          'json',
@@ -41,8 +45,11 @@ function parseResultMeta(
 // In-memory — jobs are tracked within the server process lifetime.
 
 interface EngineJob {
-  status:       'queued' | 'running' | 'complete' | 'failed';
+  status:       'queued' | 'running' | 'saving' | 'complete' | 'failed';
   progress:     { pct_complete: number | null; rate_per_sec: number | null; eta_seconds: number | null };
+  step:         string | null;
+  stage:        string | null;
+  items:        { complete: number; total: number } | null;
   error:        string | null;
   fileId?:      string;
   filename?:    string;
@@ -62,6 +69,7 @@ async function runAsyncJob(
   inputFileIds: string[],
   uploadedBy:   string | null,
   userId:       string | null,
+  outputName:   string | undefined,
 ): Promise<void> {
   const job = jobRegistry.get(hubJobId)!;
   const fileRepo = AppDataSource.getRepository(GenomicFile);
@@ -81,10 +89,16 @@ async function runAsyncJob(
       const poll = await pollRes.json() as {
         status:   'queued' | 'running' | 'complete' | 'failed';
         progress: { pct_complete: number | null; rate_per_sec: number | null; eta_seconds: number | null };
+        step:     string | null;
+        stage:    string | null;
+        items:    { complete: number; total: number } | null;
         error:    string | null;
       };
 
       job.progress = poll.progress;
+      job.step     = poll.step ?? null;
+      job.stage    = poll.stage ?? null;
+      job.items    = poll.items ?? null;
 
       if (poll.status === 'failed') throw new Error(poll.error ?? 'Engine job failed');
       if (poll.status === 'complete') break;
@@ -92,27 +106,40 @@ async function runAsyncJob(
       job.status = poll.status; // 'queued' | 'running'
     }
 
-    // Fetch result stream from engine, pipe directly to S3
+    // Engine complete — now saving result to storage
+    job.status = 'saving';
+
+    // Fetch result stream from engine, pipe directly to storage
     const streamRes = await fetch(`${engineUrl}/api/jobs/${engineJobId}/stream`);
     if (!streamRes.ok) throw new Error(`Stream fetch failed: ${streamRes.status}`);
 
-    const { filename, contentType } = parseResultMeta(streamRes.headers, methodId);
+    const { filename: defaultFilename, contentType } = parseResultMeta(streamRes.headers, methodId);
+    const filename = outputName ? applyOutputName(outputName, defaultFilename) : defaultFilename;
     const resultFileId = randomUUID();
     const s3Key = buildS3Key(resultFileId, filename);
 
-    await putObjectStream(
-      s3Key,
-      Readable.fromWeb(streamRes.body! as import('stream/web').ReadableStream),
-      contentType,
-    );
+    if (isLocal) {
+      await ensureDir(s3Key);
+      const destPath = storagePath(s3Key);
+      const nodeBody = Readable.fromWeb(streamRes.body! as import('stream/web').ReadableStream);
+      await pipeline(nodeBody, createWriteStream(destPath));
+    } else {
+      await putObjectStream(
+        s3Key,
+        Readable.fromWeb(streamRes.body! as import('stream/web').ReadableStream),
+        contentType,
+      );
+    }
 
-    const head = await headObject(s3Key);
+    const sizeBytes = isLocal
+      ? await localFileSize(s3Key)
+      : (await headObject(s3Key)).ContentLength ?? 0;
     const fmt = detectFormat(filename);
     const resultFile = fileRepo.create({
       id:          resultFileId,
       filename,
       s3Key,
-      sizeBytes:   head.ContentLength ?? 0,
+      sizeBytes,
       format:      fmt,
       type:        ['derived'],
       status:      'ready',
@@ -244,7 +271,7 @@ router.post('/:id/methods/:methodId', asyncWrap(async (req, res) => {
   if (!engine) { res.status(404).json({ error: 'engine not found' }); return; }
 
   const { methodId } = req.params;
-  const body = req.body as Record<string, string>;
+  const { _outputName, ...body } = req.body as Record<string, string>;
   const userId = (res.locals.user as User)?.id ?? null;
   const uploadedBy = (res.locals.user as User)?.email ?? null;
 
@@ -290,8 +317,15 @@ router.post('/:id/methods/:methodId', asyncWrap(async (req, res) => {
       );
       const epilogue = encoder.encode(`\r\n--${boundary}--\r\n`);
 
-      const s3Res  = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: file.s3Key }));
-      const s3Body = s3Res.Body!.transformToWebStream() as ReadableStream<Uint8Array>;
+      let s3Body: ReadableStream<Uint8Array>;
+      if (isLocal) {
+        const filePath = storagePath(file.s3Key);
+        const nodeStream = createReadStream(filePath);
+        s3Body = Readable.toWeb(nodeStream) as ReadableStream<Uint8Array>;
+      } else {
+        const s3Res = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: file.s3Key }));
+        s3Body = s3Res.Body!.transformToWebStream() as ReadableStream<Uint8Array>;
+      }
 
       const multipartStream = new ReadableStream<Uint8Array>({
         async start(controller) {
@@ -351,38 +385,51 @@ router.post('/:id/methods/:methodId', asyncWrap(async (req, res) => {
     jobRegistry.set(hubJobId, {
       status:      'queued',
       progress:    { pct_complete: null, rate_per_sec: null, eta_seconds: null },
+      step:        null,
+      stage:       null,
+      items:       null,
       error:       null,
       engineJobId,
       engineUrl:   engine.url,
     });
 
     // Fire and forget — client polls GET /api/engines/jobs/:jobId
-    runAsyncJob(hubJobId, engineJobId, engine.url, engine.name, methodId, inputFileIds, uploadedBy, userId)
+    runAsyncJob(hubJobId, engineJobId, engine.url, engine.name, methodId, inputFileIds, uploadedBy, userId, _outputName)
       .catch(() => { /* error already captured in job.error */ });
 
     res.status(202).json({ jobId: hubJobId });
     return;
   }
 
-  // 4b. Sync (200): pipe body stream directly to S3
-  const { filename, contentType } = parseResultMeta(methodRes.headers, methodId);
+  // 4b. Sync (200): pipe body stream directly to storage
+  const { filename: defaultFilename, contentType } = parseResultMeta(methodRes.headers, methodId);
+  const filename = _outputName ? applyOutputName(_outputName, defaultFilename) : defaultFilename;
   const resultFileId = randomUUID();
   const s3Key = buildS3Key(resultFileId, filename);
 
-  await putObjectStream(
-    s3Key,
-    Readable.fromWeb(methodRes.body! as import('stream/web').ReadableStream),
-    contentType,
-  );
+  if (isLocal) {
+    await ensureDir(s3Key);
+    const destPath = storagePath(s3Key);
+    const nodeBody = Readable.fromWeb(methodRes.body! as import('stream/web').ReadableStream);
+    await pipeline(nodeBody, createWriteStream(destPath));
+  } else {
+    await putObjectStream(
+      s3Key,
+      Readable.fromWeb(methodRes.body! as import('stream/web').ReadableStream),
+      contentType,
+    );
+  }
 
   // 5. Create GenomicFile record and provenance edges
-  const head = await headObject(s3Key);
+  const sizeBytes = isLocal
+    ? await localFileSize(s3Key)
+    : (await headObject(s3Key)).ContentLength ?? 0;
   const fmt = detectFormat(filename);
   const resultFile = fileRepo.create({
     id:          resultFileId,
     filename,
     s3Key,
-    sizeBytes:   head.ContentLength ?? 0,
+    sizeBytes,
     format:      fmt,
     type:        ['derived'],
     status:      'ready',

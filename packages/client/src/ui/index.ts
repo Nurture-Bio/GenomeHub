@@ -8,6 +8,8 @@ export { default as InlineInput }     from './InlineInput';
 export { default as ChipEditor }     from './ChipEditor';
 export { default as HashPill }       from './HashPill';
 export { default as FilterChip }     from './FilterChip';
+export { default as Stepper }        from './Stepper';
+export type { StepperStep, StepHealth } from './Stepper';
 export { default as HashChipPopover } from './HashChipPopover';
 export type { HashChipItem }         from './HashChipPopover';
 export type { ComboBoxItem }         from './ComboBox';

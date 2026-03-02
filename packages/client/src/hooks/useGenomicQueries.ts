@@ -1016,6 +1016,13 @@ export interface EngineStatus {
   createdAt: string;
 }
 
+export interface EngineMethodOption {
+  value:        string;
+  label:        string;
+  description?: string;
+  parameters?:  Record<string, string | number | boolean>;
+}
+
 export interface EngineMethodParam {
   name:         string;
   type:         string;
@@ -1023,6 +1030,12 @@ export interface EngineMethodParam {
   description:  string;
   default?:     string;
   accept?:      string[];
+  options?:     EngineMethodOption[];
+}
+
+export interface EngineMethodStep {
+  key:   string;
+  label: string;
 }
 
 export interface EngineMethod {
@@ -1030,17 +1043,21 @@ export interface EngineMethod {
   name:        string;
   description: string;
   async?:      boolean;
+  steps?:      EngineMethodStep[];
   parameters:  EngineMethodParam[];
   returns:     { type: string; description: string };
 }
 
 export interface EngineJobStatus {
-  status:   'queued' | 'running' | 'complete' | 'failed';
+  status:   'queued' | 'running' | 'saving' | 'complete' | 'failed';
   progress: {
     pct_complete: number | null;
     rate_per_sec: number | null;
     eta_seconds:  number | null;
   };
+  step:      string | null;
+  stage:     string | null;
+  items:     { complete: number; total: number } | null;
   error:     string | null;
   fileId?:   string;
   filename?: string;
@@ -1121,9 +1138,13 @@ export function useEngineJobQuery(jobId?: string) {
     queryFn: () => fetchApi<EngineJobStatus>(`/api/engines/jobs/${jobId}`),
     enabled: !!jobId,
     staleTime: 0,
+    retry: true,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 15000),
     refetchInterval: (query) => {
       const s = query.state.data?.status;
-      return s === 'complete' || s === 'failed' ? false : 2000;
+      if (s === 'complete' || s === 'failed') return false;
+      // Back off polling when erroring, but keep trying
+      return query.state.error ? 5000 : 2000;
     },
   });
 }

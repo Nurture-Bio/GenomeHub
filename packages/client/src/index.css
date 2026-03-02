@@ -87,7 +87,7 @@
   /* ── Typography — Outfit display + DM Sans body ─────── */
 
   --font-size-*: initial;
-  --font-size-xs:      0.6875rem;    /* 11px — captions, fine print */
+  --font-size-xs:      0.75rem;      /* 12px — captions, fine print */
   --font-size-sm:      0.75rem;      /* 12px — overlines, labels */
   --font-size-body:    0.875rem;     /* 14px — body text */
   --font-size-lg:      1.0625rem;    /* 17px — subheadings */
@@ -101,11 +101,11 @@
 
   /* ── Surfaces — Midnight Navy (hue 250) ──────────────── */
 
-  --color-void:     oklch(0.100 0.020 250);
-  --color-base:     oklch(0.150 0.024 250);
-  --color-raised:   oklch(0.205 0.028 250);
-  --color-elevated: oklch(0.260 0.032 250);
-  --color-sidebar:  oklch(0.130 0.025 250);
+  --color-void:       oklch(0.100 0.020 250);
+  --color-row-stripe: var(--color-base);
+  --color-base:       oklch(0.150 0.024 250);
+  --color-raised:     oklch(0.205 0.028 250);
+  --color-elevated:   oklch(0.260 0.032 250);
 
   /* ── Accent — Electric Cyan (hue 195) ────────────────── */
 
@@ -146,10 +146,15 @@
   --glow-violet-sm: 0 0 12px oklch(0.620 0.150 280 / 0.15);
   --glow-focus:     0 0 0 2px oklch(0.750 0.180 195 / 0.50), 0 0 16px oklch(0.750 0.180 195 / 0.15);
 
+  /* ── Error — Red (hue 25) ───────────────────────────── */
+
+  --color-red:      oklch(0.650 0.200 25);
+  --color-red-dim:  oklch(0.350 0.100 25);
+  --color-red-wash: oklch(0.200 0.040 25);
+
   /* ── Semantic ────────────────────────────────────────── */
 
   --color-green:  oklch(0.640 0.170 145);
-  --color-red:    oklch(0.600 0.180 25);
   --color-yellow: oklch(0.750 0.160 85);
 
   /* ── Border radius ───────────────────────────────────── */
@@ -699,6 +704,22 @@
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
+}
+@keyframes flourish {
+  0%   { transform: scale(1);   box-shadow: 0 0 0 0 oklch(0.750 0.180 195 / 0.6); }
+  40%  { transform: scale(1.8); box-shadow: 0 0 20px 4px oklch(0.750 0.180 195 / 0.4); }
+  70%  { transform: scale(1.1); box-shadow: 0 0 10px 2px oklch(0.750 0.180 195 / 0.2); }
+  100% { transform: scale(1);   box-shadow: 0 0 6px 0 oklch(0.750 0.180 195 / 0.15); }
+}
+@keyframes errorFlash {
+  0%   { box-shadow: 0 0 0 var(--color-red); }
+  50%  { box-shadow: 0 0 12px var(--color-red); }
+  100% { box-shadow: 0 0 4px var(--color-red-dim); }
+}
+@keyframes flourishLabel {
+  0%   { opacity: 0; transform: translateY(4px) scale(1); color: var(--color-fg-2); text-shadow: none; }
+  30%  { opacity: 1; transform: translateY(0) scale(1.15); color: var(--color-cyan); text-shadow: 0 0 12px oklch(0.750 0.180 195 / 0.3); }
+  100% { opacity: 1; transform: translateY(0) scale(1);    color: var(--color-cyan); text-shadow: none; }
 }
 @keyframes pageEnter {
   from { opacity: 0; transform: translateY(8px); }

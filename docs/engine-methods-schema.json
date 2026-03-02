@@ -25,6 +25,26 @@
         "description": "If true, the engine returns 202 { job_id } instead of streaming the result immediately. GenomeHub polls GET /api/jobs/:job_id for progress, then fetches GET /api/jobs/:job_id/stream on completion. Default false.",
         "default": false
       },
+      "steps": {
+        "type": "array",
+        "description": "Optional internal phases for this method. GenomeHub wraps these with hub bookend steps (Dispatching, Saving, Complete). If omitted, defaults to a single 'Processing' step.",
+        "minItems": 1,
+        "maxItems": 10,
+        "items": {
+          "type": "object",
+          "required": ["key", "label"],
+          "properties": {
+            "key": {
+              "type": "string",
+              "description": "Unique step identifier reported in poll response step field"
+            },
+            "label": {
+              "type": "string",
+              "description": "Human-readable step name for the UI"
+            }
+          }
+        }
+      },
       "parameters": {
         "type": "array",
         "items": {
@@ -37,8 +57,8 @@
             },
             "type": {
               "type": "string",
-              "enum": ["file", "string"],
-              "description": "file = GenomeHub uploads a file to the engine before calling the method. string = plain value passed through as-is."
+              "enum": ["file", "string", "integer", "select"],
+              "description": "file = GenomeHub uploads a file to the engine. string/integer = plain value passed through. select = dropdown from options array."
             },
             "required": {
               "type": "boolean"
@@ -48,13 +68,43 @@
               "description": "Shown as label or help text"
             },
             "default": {
-              "type": "string",
-              "description": "Default value for optional string params. Shown as placeholder. Omitted if no default."
+              "description": "Default value. Shown as placeholder for string/integer, pre-selects for select.",
+              "oneOf": [
+                { "type": "string" },
+                { "type": "number" }
+              ]
             },
             "accept": {
               "type": "array",
               "items": { "type": "string" },
-              "description": "For file params: list of accepted formats to filter the file picker. e.g. [\"json\", \"bed\", \"bigwig\"]. Omit to accept any file."
+              "description": "For file params: accepted formats to filter the file picker. e.g. [\"gb\", \"fa\"]. Omit to accept any file."
+            },
+            "options": {
+              "type": "array",
+              "description": "For select params: available choices.",
+              "items": {
+                "type": "object",
+                "required": ["value", "label"],
+                "properties": {
+                  "value": {
+                    "type": "string",
+                    "description": "Sent in the dispatch body"
+                  },
+                  "label": {
+                    "type": "string",
+                    "description": "Displayed in the dropdown"
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "Shown as subtitle in the dropdown"
+                  },
+                  "parameters": {
+                    "type": "object",
+                    "description": "Key-value pairs displayed as badges when the option is selected. The engine's internal config — GenomeHub renders but does not interpret.",
+                    "additionalProperties": true
+                  }
+                }
+              }
             }
           }
         }
@@ -66,7 +116,7 @@
           "type": {
             "type": "string",
             "enum": ["file"],
-            "description": "Always file. GenomeHub downloads the result and stores it."
+            "description": "Always file. GenomeHub stores the result."
           },
           "description": {
             "type": "string",
@@ -79,94 +129,55 @@
 
   "examples": [
     {
-      "id": "overlay",
-      "async": false,
-      "name": "Spatial Overlay",
-      "description": "Spatial join of two region sets with tag merge.",
-      "parameters": [
-        {
-          "name": "query",
-          "type": "file",
-          "required": true,
-          "description": "Regions to enrich",
-          "accept": ["json", "bed"]
-        },
-        {
-          "name": "reference",
-          "type": "file",
-          "required": true,
-          "description": "Source of tags",
-          "accept": ["json", "bed"]
-        },
-        {
-          "name": "name_tag",
-          "type": "string",
-          "required": false,
-          "default": "feature_type",
-          "description": "Tag key for promoted reference region name"
-        }
-      ],
-      "returns": {
-        "type": "file",
-        "description": "Regions with merged tags from both inputs"
-      }
-    },
-    {
-      "id": "annotate",
-      "name": "Feature Annotation",
-      "description": "Annotate regions against a feature map. Adds overlap, offset, and relative position.",
-      "parameters": [
-        {
-          "name": "query",
-          "type": "file",
-          "required": true,
-          "description": "Regions to annotate (e.g. guides, peaks)",
-          "accept": ["json", "bed"]
-        },
-        {
-          "name": "features",
-          "type": "file",
-          "required": true,
-          "description": "Feature map (promoters, gene bodies, terminators)",
-          "accept": ["json", "bed"]
-        }
-      ],
-      "returns": {
-        "type": "file",
-        "description": "Annotated regions with positional tags"
-      }
-    },
-    {
-      "id": "crispr_guides",
+      "id": "design_library",
       "async": true,
-      "name": "CRISPR Guide Design",
-      "description": "Design and score CRISPR guides for a genome.",
+      "name": "Library Design",
+      "description": "Design and score a CRISPR guide library targeting gene promoters.",
+      "steps": [
+        { "key": "scanning",  "label": "Scanning genome" },
+        { "key": "scoring",   "label": "Scoring guides" },
+        { "key": "filtering", "label": "Filtering results" }
+      ],
       "parameters": [
         {
           "name": "genome",
           "type": "file",
           "required": true,
           "description": "Target genome",
-          "accept": ["gb", "gbk", "fa", "fasta"]
+          "accept": ["gb", "gbk", "gbff", "genbank", "fa", "fasta", "fna"]
         },
         {
-          "name": "pam",
-          "type": "string",
+          "name": "preset",
+          "type": "select",
           "required": false,
-          "default": "NGG",
-          "description": "PAM sequence (IUPAC)"
+          "default": "spcas9",
+          "description": "CRISPR nuclease preset",
+          "options": [
+            {
+              "value": "spcas9",
+              "label": "SpCas9",
+              "description": "Streptococcus pyogenes Cas9. The most widely used CRISPR nuclease.",
+              "parameters": {"pam": "NGG", "spacer_len": 20, "pam_direction": "downstream"}
+            },
+            {
+              "value": "cas12a",
+              "label": "Cas12a",
+              "description": "Cas12a (Cpf1). Produces staggered double-strand breaks.",
+              "parameters": {"pam": "TTTN", "spacer_len": 24, "pam_direction": "upstream"}
+            }
+          ]
         },
         {
-          "name": "spacer_length",
-          "type": "string",
+          "name": "mismatches",
+          "type": "integer",
           "required": false,
-          "default": "20",
-          "description": "Spacer length in bp"
+          "default": 0,
+          "description": "Max mismatches for off-target scoring (0-3)"
         }
       ],
       "returns": {
         "type": "file",
-        "description": "Scored CRISPR guides"
+        "description": "Scored guide library"
       }
     }
   ]

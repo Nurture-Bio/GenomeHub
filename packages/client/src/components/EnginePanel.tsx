@@ -1,26 +1,21 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { cx } from 'class-variance-authority';
-import { Link } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
 import { statusDot, button, input, modalOverlay } from '../ui/recipes';
-import { Text, Heading, ComboBox, FilterChip } from '../ui';
-import type { ComboBoxItem } from '../ui';
+import { Text, Heading, ComboBox, FilterChip, Stepper } from '../ui';
+import type { ComboBoxItem, StepperStep, StepHealth } from '../ui';
 import { FORMAT_META } from '../lib/formats';
-import { queryKeys } from '../lib/queryKeys';
-import { apiFetch } from '../lib/api';
 import {
   useEnginesQuery,
   useEngineMethodsQuery,
-  useRunMethodMutation,
-  useEngineJobQuery,
   useFilesQuery,
   useCollectionsQuery,
 } from '../hooks/useGenomicQueries';
 import type { EngineMethod, EngineStatus } from '../hooks/useGenomicQueries';
-import { toast } from 'sonner';
+import { useEngineMethod } from '../hooks/useEngineMethod';
+import type { Phase } from '../hooks/useEngineMethod';
 
-// ── Progress helpers ──────────────────────────────────────
+// ── Progress helpers ──────────────────────────────────
 
 function formatEta(seconds: number): string {
   if (seconds < 60)   return `${seconds}s`;
@@ -28,39 +23,73 @@ function formatEta(seconds: number): string {
   return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
 }
 
-// ── Schema-driven method form ─────────────────────────────
+// ── Step builder ──────────────────────────────────────
+
+const HUB_STEPS_PRE:  StepperStep[] = [{ key: 'dispatch', label: 'Dispatching' }];
+const HUB_STEPS_POST: StepperStep[] = [{ key: 'saving', label: 'Saving result' }, { key: 'complete', label: 'Complete' }];
+const DEFAULT_ENGINE_STEPS: StepperStep[] = [{ key: 'processing', label: 'Processing' }];
+
+function buildStepperSteps(method: EngineMethod): StepperStep[] {
+  const engineSteps = method.steps?.length ? method.steps : DEFAULT_ENGINE_STEPS;
+  return [...HUB_STEPS_PRE, ...engineSteps, ...HUB_STEPS_POST];
+}
+
+function resolveActiveStep(
+  phase: Phase,
+  pollStatus: string | null,
+  pollStep: string | null,
+  steps: StepperStep[],
+  failedAtStep: number | null,
+): number {
+  if (phase === 'failing' || phase === 'fading') {
+    return failedAtStep != null && failedAtStep >= 0 ? failedAtStep : steps.length - 1;
+  }
+  if (phase === 'completing') return steps.length - 1;  // Complete
+  if (phase === 'dispatching') return 0;  // Dispatching
+
+  // phase === 'active': use poll data
+  if (pollStatus === 'saving') return steps.length - 2;  // Saving
+  if (pollStatus === 'queued') return 0;  // Still at Dispatching
+  if (pollStep) {
+    const idx = steps.findIndex(s => s.key === pollStep);
+    if (idx >= 0) return idx;
+  }
+  return 1;  // Default to first engine step
+}
+
+function deriveStepHealth(
+  phase: Phase,
+  pollLost: boolean,
+  activeStep: number,
+  steps: StepperStep[],
+): Record<string, StepHealth> {
+  const h: Record<string, StepHealth> = {};
+  if (pollLost && steps[activeStep]) {
+    h[steps[activeStep].key] = 'warning';
+  }
+  if (phase === 'failing' && steps[activeStep]) {
+    h[steps[activeStep].key] = 'error';
+  }
+  return h;
+}
+
+// ── Schema-driven method form ─────────────────────────
 
 function MethodForm({ engineId, method }: { engineId: string; method: EngineMethod }) {
-  const qc = useQueryClient();
   const { data: files } = useFilesQuery();
   const { data: collections } = useCollectionsQuery();
-  const { runMethod, pending } = useRunMethodMutation();
-  const [params, setParams] = useState<Record<string, string>>({});
+  const engine = useEngineMethod();
+  const [params, setParams] = useState<Record<string, string>>(() => {
+    const defaults: Record<string, string> = {};
+    for (const p of method.parameters) {
+      if (p.default !== undefined) defaults[p.name] = p.default;
+    }
+    return defaults;
+  });
   const [fmtFilter,  setFmtFilter]  = useState('');
   const [orgFilter,  setOrgFilter]  = useState('');
   const [colFilter,  setColFilter]  = useState('');
   const [typeFilter, setTypeFilter] = useState('');
-  const [activeJobId, setActiveJobId] = useState<string | null>(null);
-
-  const { data: jobStatus } = useEngineJobQuery(activeJobId ?? undefined);
-
-  // Watch for job completion or failure
-  useEffect(() => {
-    if (!jobStatus) return;
-    if (jobStatus.status === 'complete') {
-      qc.invalidateQueries({ queryKey: queryKeys.files.all });
-      qc.invalidateQueries({ queryKey: queryKeys.stats.storage });
-      toast.success(
-        jobStatus.fileId
-          ? <Link to={`/files/${jobStatus.fileId}`} className="no-underline hover:underline">{jobStatus.filename ?? 'View result'}</Link>
-          : (jobStatus.filename ?? 'Done'),
-      );
-      setActiveJobId(null);
-    } else if (jobStatus.status === 'failed') {
-      toast.error(jobStatus.error ?? 'Method failed');
-      setActiveJobId(null);
-    }
-  }, [jobStatus, qc]);
 
   const hasFileParams = method.parameters.some(p => p.type === 'file');
 
@@ -100,128 +129,242 @@ function MethodForm({ engineId, method }: { engineId: string; method: EngineMeth
     .filter(p => p.required)
     .every(p => params[p.name]);
 
-  const handleRun = async () => {
-    try {
-      const result = await runMethod({ engineId, methodId: method.id, params });
-      if (result?.jobId) {
-        setActiveJobId(result.jobId);
-      }
-    } catch {
-      // onError in mutation handles the toast
-    }
+  const handleRun = () => {
+    engine.run(engineId, method.id, params);
   };
 
-  const handleCancel = async () => {
-    if (!activeJobId) return;
-    try {
-      await apiFetch(`/api/engines/jobs/${activeJobId}`, { method: 'DELETE' });
-    } catch { /* best-effort */ }
-    setActiveJobId(null);
-  };
+  const isActive = engine.phase !== 'idle';
 
-  const isRunning = pending || !!activeJobId;
-  const progress  = jobStatus?.progress ?? null;
+  // Build dynamic stepper steps from method schema
+  const stepperSteps = useMemo(() => buildStepperSteps(method), [method]);
+  const activeStep = resolveActiveStep(engine.phase, engine.pollStatus, engine.pollStep, stepperSteps, engine.failedAtStep);
+  const stepHealth = deriveStepHealth(engine.phase, engine.pollLost, activeStep, stepperSteps);
 
   return (
     <div className="flex flex-col gap-2 py-2 border-t border-line">
-      <div>
-        <Text variant="body" className="font-semibold">{method.name}</Text>
-        <Text variant="dim" as="div" className="mt-0.5">{method.description}</Text>
-      </div>
+      {/* Form — hidden when active, preserved in DOM */}
+      <div style={{
+        opacity: isActive ? 0 : 1,
+        pointerEvents: isActive ? 'none' : 'auto',
+        transition: 'opacity var(--t-phi) var(--ease-phi)',
+        position: isActive ? 'absolute' : 'relative',
+        visibility: isActive ? 'hidden' : 'visible',
+      }}>
+        <div className="flex flex-col gap-2">
+          <div>
+            <Text variant="body" className="font-semibold">{method.name}</Text>
+            <Text variant="dim" as="div" className="mt-0.5">{method.description}</Text>
+          </div>
 
-      {hasFileParams && (formatItems.length > 1 || orgItems.length > 1 || colItems.length > 1 || typeItems.length > 1) && (
-        <div className="flex gap-1 flex-wrap">
-          {formatItems.length > 1 && (
-            <FilterChip label="All formats" items={formatItems} value={fmtFilter} onValueChange={setFmtFilter} />
-          )}
-          {orgItems.length > 1 && (
-            <FilterChip label="All organisms" items={orgItems} value={orgFilter} onValueChange={setOrgFilter} />
-          )}
-          {colItems.length > 1 && (
-            <FilterChip label="All collections" items={colItems} value={colFilter} onValueChange={setColFilter} />
-          )}
-          {typeItems.length > 1 && (
-            <FilterChip label="All types" items={typeItems} value={typeFilter} onValueChange={setTypeFilter} />
-          )}
-        </div>
-      )}
-
-      {method.parameters.map(p => (
-        <div key={p.name} className="flex flex-col gap-0.5">
-          <Text variant="muted">{p.name.replace(/_/g, ' ')}{p.required ? '' : ' (optional)'}</Text>
-          {p.type === 'file' ? (
-            <ComboBox
-              items={fileItemsFor(p.accept)}
-              value={params[p.name] ?? ''}
-              onValueChange={v => setParams(prev => ({ ...prev, [p.name]: v }))}
-              placeholder={p.description}
-              size="sm"
-            />
-          ) : (
-            <input
-              className={input({ variant: 'default', size: 'sm' })}
-              placeholder={p.default ?? p.description}
-              value={params[p.name] ?? ''}
-              onChange={e => setParams(prev => ({ ...prev, [p.name]: e.target.value }))}
-            />
-          )}
-        </div>
-      ))}
-
-      {/* Run button / progress area */}
-      {activeJobId && progress ? (
-        <div className="mt-1 flex flex-col gap-1.5">
-          {progress.pct_complete !== null ? (
-            <>
-              {/* Progress bar */}
-              <div className="h-1 rounded-full bg-raised overflow-hidden">
-                <div
-                  className="h-full bg-cyan rounded-full transition-[width] duration-500 ease-out"
-                  style={{ width: `${Math.round(progress.pct_complete * 100)}%` }}
-                />
-              </div>
-              {/* Live stats */}
-              <div className="flex gap-2.5 font-mono">
-                <Text variant="dim">{Math.round(progress.pct_complete * 100)}%</Text>
-                {progress.eta_seconds !== null && (
-                  <Text variant="dim">ETA {formatEta(progress.eta_seconds)}</Text>
-                )}
-                {progress.rate_per_sec !== null && (
-                  <Text variant="dim">{progress.rate_per_sec.toFixed(1)}/s</Text>
-                )}
-              </div>
-            </>
-          ) : (
-            /* Indeterminate progress bar while pct_complete is null */
-            <div className="flex flex-col gap-1.5">
-              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--color-raised)' }}>
-                <div className="h-full w-[60%] progress-stripe" style={{ background: 'var(--color-cyan)' }} />
-              </div>
-              <Text variant="dim">Running...</Text>
+          {hasFileParams && (formatItems.length > 1 || orgItems.length > 1 || colItems.length > 1 || typeItems.length > 1) && (
+            <div className="flex gap-1 flex-wrap">
+              {formatItems.length > 1 && (
+                <FilterChip label="All formats" items={formatItems} value={fmtFilter} onValueChange={setFmtFilter} />
+              )}
+              {orgItems.length > 1 && (
+                <FilterChip label="All organisms" items={orgItems} value={orgFilter} onValueChange={setOrgFilter} />
+              )}
+              {colItems.length > 1 && (
+                <FilterChip label="All collections" items={colItems} value={colFilter} onValueChange={setColFilter} />
+              )}
+              {typeItems.length > 1 && (
+                <FilterChip label="All types" items={typeItems} value={typeFilter} onValueChange={setTypeFilter} />
+              )}
             </div>
           )}
+
+          {method.parameters.map(p => (
+            <div key={p.name} className="flex flex-col gap-0.5">
+              <Text variant="muted">{p.name.replace(/_/g, ' ')}{p.required ? '' : ' (optional)'}</Text>
+              {p.type === 'file' ? (
+                <ComboBox
+                  items={fileItemsFor(p.accept)}
+                  value={params[p.name] ?? ''}
+                  onValueChange={v => setParams(prev => ({ ...prev, [p.name]: v }))}
+                  placeholder={p.description}
+                  size="sm"
+                />
+              ) : p.type === 'select' && p.options?.length ? (
+                <>
+                  <ComboBox
+                    items={p.options.map(o => ({ id: o.value, label: o.label, description: o.description }))}
+                    value={params[p.name] ?? p.default ?? ''}
+                    onValueChange={v => setParams(prev => ({ ...prev, [p.name]: v }))}
+                    placeholder={p.description}
+                    size="sm"
+                  />
+                  {(() => {
+                    const sel = p.options!.find(o => o.value === (params[p.name] ?? p.default));
+                    return sel?.parameters ? (
+                      <div className="flex gap-1.5 flex-wrap mt-0.5">
+                        {Object.entries(sel.parameters).map(([k, v]) => (
+                          <span key={k} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-sm bg-raised font-mono" style={{ fontSize: '0.8em' }}>
+                            <span className="text-fg-3">{k.replace(/_/g, ' ')}</span>
+                            <span className="text-cyan">{String(v)}</span>
+                          </span>
+                        ))}
+                      </div>
+                    ) : null;
+                  })()}
+                </>
+              ) : (
+                <input
+                  className={input({ variant: 'default', size: 'sm' })}
+                  placeholder={p.default ?? p.description}
+                  value={params[p.name] ?? ''}
+                  onChange={e => setParams(prev => ({ ...prev, [p.name]: e.target.value }))}
+                />
+              )}
+            </div>
+          ))}
+
+          {/* Output name */}
+          <div className="flex flex-col gap-0.5">
+            <Text variant="muted">output name</Text>
+            <input
+              className={input({ variant: 'default', size: 'sm' })}
+              placeholder={`${method.id}_result`}
+              value={params._outputName ?? ''}
+              onChange={e => setParams(prev => ({ ...prev, _outputName: e.target.value }))}
+            />
+          </div>
+
           <button
-            type="button"
-            onClick={handleCancel}
-            className="self-start font-sans text-body text-fg-3 hover:text-red transition-colors duration-fast bg-transparent border-none cursor-pointer p-0 leading-none"
+            className={cx(button({ intent: 'primary', size: 'sm' }), 'mt-1')}
+            disabled={!allRequiredFilled}
+            onClick={handleRun}
           >
-            Cancel
+            Run
           </button>
         </div>
-      ) : (
-        <button
-          className={cx(button({ intent: 'primary', size: 'sm', pending: isRunning }), 'mt-1')}
-          disabled={!allRequiredFilled || isRunning}
-          onClick={handleRun}
-        >
-          {isRunning ? 'Running...' : 'Run'}
-        </button>
+      </div>
+
+      {/* Stepper — shown when active */}
+      {isActive && (
+        <MethodProgress
+          steps={stepperSteps}
+          activeStep={activeStep}
+          stepHealth={stepHealth}
+          opacity={engine.phase === 'fading' ? 0 : 1}
+          engine={engine}
+          onCancel={engine.phase === 'active' || engine.phase === 'dispatching' ? engine.cancel : undefined}
+        />
       )}
     </div>
   );
 }
 
-// ── Engine method dialog ──────────────────────────────────
+// ── Engine method stepper ──────────────────────────────
+
+function MethodProgress({ steps, activeStep, stepHealth, opacity, engine, onCancel }: {
+  steps: StepperStep[];
+  activeStep: number;
+  stepHealth: Record<string, StepHealth>;
+  opacity: number;
+  engine: ReturnType<typeof useEngineMethod>;
+  onCancel?: () => void;
+}) {
+  const { progress, pollLost, stage, items } = engine;
+  const pct = progress?.pct_complete != null ? Math.round(progress.pct_complete * 100) : null;
+
+  // Header slot — progress bar above dots
+  const header = pct != null ? (
+    <div className="flex flex-col gap-1.5">
+      <div className="h-1 rounded-full overflow-hidden" style={{ background: 'var(--color-raised)' }}>
+        <div
+          className="h-full rounded-full"
+          style={{
+            width: `${pct}%`,
+            background: pollLost ? 'var(--color-amber-dim)' : 'var(--color-cyan)',
+            transition: 'width 500ms ease-out, background var(--t-phi) var(--ease-phi)',
+          }}
+        />
+      </div>
+      <div className="flex gap-2.5 font-mono justify-center" style={{ fontSize: 'var(--font-size-xs)' }}>
+        <Text variant="dim">{pct}%</Text>
+        {progress!.eta_seconds != null && (
+          <Text variant="dim">ETA {formatEta(progress!.eta_seconds)}</Text>
+        )}
+        {progress!.rate_per_sec != null && (
+          <Text variant="dim">{progress!.rate_per_sec.toFixed(1)}/s</Text>
+        )}
+      </div>
+    </div>
+  ) : null;
+
+  // Detail slot — below the step label
+  const detail = (
+    <div className="flex flex-col gap-2">
+      {/* Stage sublabel */}
+      {stage && (
+        <Text variant="dim" className="text-center font-mono" style={{ fontSize: 'var(--font-size-xs)' }}>
+          {stage}
+        </Text>
+      )}
+      {/* n/x item counter */}
+      {items && (
+        <Text variant="dim" className="text-center font-mono" style={{ fontSize: 'var(--font-size-xs)' }}>
+          {items.complete} / {items.total}
+        </Text>
+      )}
+      {/* Connection lost warning */}
+      {pollLost && (
+        <div
+          className="flex items-center justify-center gap-1.5 rounded-sm font-mono"
+          style={{
+            fontSize: 'var(--font-size-xs)',
+            color: 'var(--color-amber)',
+            background: 'var(--color-amber-wash)',
+            padding: '4px 8px',
+            animation: 'pulse 1.5s ease-in-out infinite',
+          }}
+        >
+          Connection lost — retrying...
+        </div>
+      )}
+      {/* Cancel button */}
+      {onCancel && (
+        <button
+          type="button"
+          onClick={onCancel}
+          className="self-center font-mono cursor-pointer border rounded-sm transition-colors"
+          style={{
+            fontSize: 'var(--font-size-xs)',
+            color: 'var(--color-amber)',
+            borderColor: 'var(--color-amber-dim)',
+            background: 'var(--color-amber-wash)',
+            padding: '4px 12px',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.background = 'var(--color-amber-dim)';
+            e.currentTarget.style.color = 'var(--color-void)';
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.background = 'var(--color-amber-wash)';
+            e.currentTarget.style.color = 'var(--color-amber)';
+          }}
+        >
+          Cancel
+        </button>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="mt-1">
+      <Stepper
+        steps={steps}
+        active={activeStep}
+        header={header}
+        detail={detail}
+        stepHealth={stepHealth}
+        opacity={opacity}
+      />
+    </div>
+  );
+}
+
+// ── Engine method dialog ──────────────────────────────
 
 function EngineMethodDialog({
   engine,
@@ -303,7 +446,7 @@ function EngineMethodDialog({
   );
 }
 
-// ── Sidebar engine list ─────────────────────────────────────
+// ── Sidebar engine list ─────────────────────────────────
 
 export default function EnginePanel() {
   const { data: engines } = useEnginesQuery();
