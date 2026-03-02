@@ -232,7 +232,7 @@ export function useParquetPreview(fileId: string) {
   // Row cache: offset → row data
   const rowCache = useRef<Map<number, Record<string, unknown>>>(new Map());
   const filtersRef = useRef<FilterSpec[]>([]);
-  const sortRef = useRef<SortSpec | null>(null);
+  const sortRef = useRef<SortSpec[]>([]);
   const selectListRef = useRef<string>(cachedExpanded?.selectExprs.join(', ') ?? '*');
 
   useEffect(() => {
@@ -501,8 +501,10 @@ export function useParquetPreview(fileId: string) {
 
     const { conn } = await ensureDb();
     const { clause, params, nextIdx } = compileWhere(filtersRef.current);
-    const orderBy = sortRef.current
-      ? `ORDER BY ${colToSql(sortRef.current.column)} ${sortRef.current.direction.toUpperCase()}`
+    const orderBy = sortRef.current.length > 0
+      ? `ORDER BY ${sortRef.current.map(s =>
+          `${colToSql(s.column)} ${s.direction.toUpperCase()}`
+        ).join(', ')}`
       : '';
 
     const result = await execQuery(conn, {
@@ -526,7 +528,7 @@ export function useParquetPreview(fileId: string) {
 
   const applyFilters = useCallback(async (
     filters: FilterSpec[],
-    sort: SortSpec | null,
+    sort: SortSpec[],
   ): Promise<{
     filteredCount: number;
     constrainedStats?: Record<string, ColumnStats>;

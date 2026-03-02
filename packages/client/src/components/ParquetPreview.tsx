@@ -8,6 +8,12 @@
 import { useRef, useMemo, useState, useCallback, useEffect, memo, Profiler } from 'react';
 import type { CSSProperties, RefObject, ProfilerOnRenderCallback } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
+import {
+  useReactTable,
+  getCoreRowModel,
+  type SortingState,
+  type ColumnDef,
+} from '@tanstack/react-table';
 import * as Popover from '@radix-ui/react-popover';
 import { Text } from '../ui';
 import { useParquetPreview, isNumericType, DROPDOWN_MAX } from '../hooks/useParquetPreview';
@@ -81,15 +87,24 @@ function colWFromName(name: string, type: string, maxCharLen?: number): number {
 
 // ── SortChevron ───────────────────────────────────────────────────────────────
 
-function SortChevron({ dir }: { dir: 'asc' | 'desc' | null }) {
+function SortChevron({ dir, index }: { dir: 'asc' | 'desc' | false | null; index?: number }) {
+  const active = dir === 'asc' || dir === 'desc';
   return (
-    <svg width="8" height="5" viewBox="0 0 8 5" fill="currentColor" style={{
-      flexShrink: 0, transition: 'transform var(--t-fast) var(--ease-move)',
-      transform: dir === 'desc' ? 'rotate(180deg)' : 'none',
-      opacity: dir ? 1 : 0.3, color: dir ? 'var(--color-cyan)' : 'inherit',
-    }}>
-      <path d="M4 0L7.5 4.5H0.5L4 0Z" />
-    </svg>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+      <svg width="8" height="5" viewBox="0 0 8 5" fill="currentColor" style={{
+        transition: 'transform var(--t-fast) var(--ease-move)',
+        transform: dir === 'desc' ? 'rotate(180deg)' : 'none',
+        opacity: active ? 1 : 0.3,
+        color: active ? 'var(--color-cyan)' : 'inherit',
+      }}>
+        <path d="M4 0L7.5 4.5H0.5L4 0Z" />
+      </svg>
+      {index !== undefined && index >= 0 && (
+        <span style={{ fontSize: 9, color: 'var(--color-cyan)', fontWeight: 600 }}>
+          {index + 1}
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -784,9 +799,35 @@ export default function ParquetPreview({ fileId }: {
   const triggerRef = useRef<() => void>(() => {});
   const [selected,           setSelected]           = useState<Record<string, Set<string>>>({});
   const [textFilters,        setTextFilters]        = useState<Record<string, string>>({});
-  const [sort,               setSort]               = useState<SortSpec | null>(null);
+  const [sorting,            setSorting]             = useState<SortingState>([]);
   const [constrainedStats,   setConstrainedStats]   = useState<Record<string, ColumnStats>>({});
   const [pendingConstraints, setPendingConstraints] = useState(false);
+
+  // ── TanStack Table (header sort state only) ────────────────────────────────
+
+  const columnDefs: ColumnDef<unknown>[] = useMemo(() =>
+    columns.map(c => ({
+      id: c.name,
+      accessorKey: c.name,
+      meta: { type: c.type },
+    })),
+    [columns],
+  );
+
+  const table = useReactTable({
+    data: [],
+    columns: columnDefs,
+    state: { sorting },
+    onSortingChange: setSorting,
+    manualSorting: true,
+    enableMultiSort: true,
+    getCoreRowModel: getCoreRowModel(),
+  });
+
+  const sortSpecs: SortSpec[] = useMemo(() =>
+    sorting.map(s => ({ column: s.id, direction: s.desc ? 'desc' as const : 'asc' as const })),
+    [sorting],
+  );
 
 
   useEffect(() => () => { if (debRef.current) clearTimeout(debRef.current); }, []);
@@ -822,7 +863,7 @@ export default function ParquetPreview({ fileId }: {
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
 
     setPendingConstraints(true);
-    applyFilters(filters, sort).then(result => {
+    applyFilters(filters, sortSpecs).then(result => {
       if (result.constrainedStats) setConstrainedStats(result.constrainedStats);
       else setConstrainedStats({});
       setPendingConstraints(false);
@@ -830,16 +871,16 @@ export default function ParquetPreview({ fileId }: {
       console.error('DuckDB Filter Error:', err);
       setPendingConstraints(false);
     });
-  }, [wasmReady, rangeState, selected, textFilters, sort, columnStats, applyFilters]);
+  }, [wasmReady, rangeState, selected, textFilters, sortSpecs, columnStats, applyFilters]);
 
   // Keep ref synced so debounced callbacks always call the latest version
   triggerRef.current = triggerFilters;
 
-  // Catch-up: apply accumulated filters when WASM becomes ready
+  // Catch-up: apply accumulated filters when WASM becomes ready or sort changes
   useEffect(() => {
     if (wasmReady) triggerFilters();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wasmReady]);
+  }, [wasmReady, sorting]);
 
   // ── Filter handlers ──────────────────────────────────────────────────────────
 
@@ -877,23 +918,8 @@ export default function ParquetPreview({ fileId }: {
     setConstrainedStats({});
     setPendingConstraints(false);
     // Clear filters on the hook
-    applyFilters([], sort);
-  }, [columns, columnStats, sort, applyFilters]);
-
-  // ── Sort ────────────────────────────────────────────────────────────────────
-
-  const handleSortClick = useCallback((name: string) => {
-    setSort(prev => {
-      const next = !prev || prev.column !== name
-        ? { column: name, direction: 'asc' as const }
-        : prev.direction === 'asc'
-          ? { column: name, direction: 'desc' as const }
-          : null;
-      // Trigger filter re-apply with new sort
-      setTimeout(() => triggerFilters(), 0);
-      return next;
-    });
-  }, [triggerFilters]);
+    applyFilters([], sortSpecs);
+  }, [columns, columnStats, sortSpecs, applyFilters]);
 
   // ── Column resize ──────────────────────────────────────────────────────────
 
@@ -1071,39 +1097,49 @@ export default function ParquetPreview({ fileId }: {
           style={columns.length === 0
             ? { background: 'var(--color-raised)', borderBottom: '2px solid var(--color-line)' }
             : undefined}>
-          {columns.length > 0 && (
-            <div className="flex" style={{ width: totalWidth }}>
-              {tableColumns.map(c => {
-                const w       = colWidths[c.name] ?? colW(c.type);
-                const sortDir = sort && sort.column === c.name ? sort.direction : null;
-                return (
-                  <div key={c.name}
-                    className="text-left font-semibold text-fg-2 select-none relative group cursor-pointer"
-                    style={{
-                      width: w, minWidth: 50, flexShrink: 0, padding: '3px 6px',
-                      background: 'var(--color-raised)',
-                      borderBottom: `2px solid ${sortDir ? 'var(--color-cyan)' : 'var(--color-line)'}`,
-                      fontSize: 'var(--font-size-xs)',
-                    }}
-                    onClick={() => handleSortClick(c.name)}
-                  >
-                    <div className="flex items-start gap-1">
-                      <ColName name={c.name} />
-                      <SortChevron dir={sortDir} />
+          {columns.length > 0 && (() => {
+            const headerGroup = table.getHeaderGroups()[0];
+            const tableColumnSet = new Set(tableColumns.map(c => c.name));
+            const columnMap = new Map(columns.map(c => [c.name, c]));
+            return (
+              <div className="flex" style={{ width: totalWidth }}>
+                {headerGroup.headers.map(header => {
+                  if (!tableColumnSet.has(header.id)) return null;
+                  const c = columnMap.get(header.id)!;
+                  const w = colWidths[c.name] ?? colW(c.type);
+                  const sorted = header.column.getIsSorted();
+                  const sortIdx = header.column.getSortIndex();
+                  const multiSort = sorting.length > 1;
+
+                  return (
+                    <div key={header.id}
+                      className="text-left font-semibold text-fg-2 select-none relative group cursor-pointer"
+                      style={{
+                        width: w, minWidth: 50, flexShrink: 0, padding: '3px 6px',
+                        background: 'var(--color-raised)',
+                        borderBottom: `2px solid ${sorted ? 'var(--color-cyan)' : 'var(--color-line)'}`,
+                        fontSize: 'var(--font-size-xs)',
+                      }}
+                      onClick={header.column.getToggleSortingHandler()}
+                    >
+                      <div className="flex items-start gap-1">
+                        <ColName name={c.name} />
+                        <SortChevron dir={sorted || null} index={multiSort ? sortIdx : -1} />
+                      </div>
+                      <span style={{ fontSize: 'calc(var(--font-size-xs) - 1px)', opacity: 0.35 }}>{c.type}</span>
+                      <div
+                        className="absolute top-0 right-0 bottom-0 opacity-0 group-hover:opacity-100"
+                        style={{ width: 3, cursor: 'col-resize', background: 'var(--color-line)', transition: 'opacity var(--t-fast)' }}
+                        onMouseDown={e => { e.stopPropagation(); handleResizeStart(c.name, e.clientX, w); }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--color-cyan)'; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'var(--color-line)'; }}
+                      />
                     </div>
-                    <span style={{ fontSize: 'calc(var(--font-size-xs) - 1px)', opacity: 0.35 }}>{c.type}</span>
-                    <div
-                      className="absolute top-0 right-0 bottom-0 opacity-0 group-hover:opacity-100"
-                      style={{ width: 3, cursor: 'col-resize', background: 'var(--color-line)', transition: 'opacity var(--t-fast)' }}
-                      onMouseDown={e => { e.stopPropagation(); handleResizeStart(c.name, e.clientX, w); }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--color-cyan)'; }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'var(--color-line)'; }}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
         </Profiler>
       </div>
