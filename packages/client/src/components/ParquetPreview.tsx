@@ -156,7 +156,6 @@ function RangeSlider({ name, min, max, low, high, onRangeChange, constrainedMin,
   constrainedMax?: number;
   pending?:        boolean;
 }) {
-  const [tooltip, setTooltip] = useState<'low' | 'high' | null>(null);
 
   const range   = max - min || 1;
   const lowPct  = ((low  - min) / range) * 100;
@@ -224,8 +223,6 @@ function RangeSlider({ name, min, max, low, high, onRangeChange, constrainedMin,
           min={min} max={max} step={step} value={low}
           style={lowThumbStyle}
           onChange={e => onRangeChange(name, Math.min(Number(e.target.value), high), high)}
-          onMouseEnter={() => lowOob  && setTooltip('low')}
-          onMouseLeave={() => setTooltip(null)}
         />
         <input
           type="range"
@@ -233,24 +230,7 @@ function RangeSlider({ name, min, max, low, high, onRangeChange, constrainedMin,
           min={min} max={max} step={step} value={high}
           style={highThumbStyle}
           onChange={e => onRangeChange(name, low, Math.max(Number(e.target.value), low))}
-          onMouseEnter={() => highOob && setTooltip('high')}
-          onMouseLeave={() => setTooltip(null)}
         />
-        {tooltip !== null && (
-          <div style={{
-            position: 'absolute', bottom: 'calc(100% + 6px)',
-            left: `${tooltip === 'low' ? lowPct : highPct}%`,
-            transform: 'translateX(-50%)',
-            pointerEvents: 'none', whiteSpace: 'nowrap',
-            background: 'var(--color-raised)', border: '1px solid var(--color-amber)',
-            borderRadius: 4, padding: '3px 7px',
-            fontSize: 'calc(var(--font-size-xs) - 1px)',
-            color: 'var(--color-amber)', fontFamily: 'var(--font-mono)',
-            boxShadow: '0 2px 8px oklch(0 0 0 / 0.4)', zIndex: 50,
-          }}>
-            No data in this region
-          </div>
-        )}
       </div>
       <div className="flex justify-between font-mono mt-0.5" style={{ fontSize: 'var(--font-size-xs)' }}>
         <span style={{ color: lowOob  ? 'var(--color-amber)' : full ? 'var(--color-fg-3)' : 'var(--color-fg-2)' }}>

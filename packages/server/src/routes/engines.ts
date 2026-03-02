@@ -78,15 +78,13 @@ async function runAsyncJob(
     job.status = 'running';
 
     // Poll engine until complete or failed
+    let consecutiveFailures = 0;
+    const MAX_POLL_FAILURES = 3;
+
     for (;;) {
       await sleep(2000);
 
-      const pollRes = await fetch(`${engineUrl}/api/jobs/${engineJobId}`, {
-        signal: AbortSignal.timeout(5000),
-      });
-      if (!pollRes.ok) throw new Error(`Poll failed: ${pollRes.status}`);
-
-      const poll = await pollRes.json() as {
+      let poll: {
         status:   'queued' | 'running' | 'complete' | 'failed';
         progress: { pct_complete: number | null; rate_per_sec: number | null; eta_seconds: number | null };
         step:     string | null;
@@ -94,6 +92,28 @@ async function runAsyncJob(
         items:    { complete: number; total: number } | null;
         error:    string | null;
       };
+
+      try {
+        const pollRes = await fetch(`${engineUrl}/api/jobs/${engineJobId}`, {
+          signal: AbortSignal.timeout(5000),
+        });
+        if (!pollRes.ok) throw new Error(`Poll failed: ${pollRes.status}`);
+        poll = await pollRes.json();
+        consecutiveFailures = 0;
+      } catch (pollErr) {
+        consecutiveFailures++;
+        const isConnRefused = pollErr instanceof TypeError
+          || (pollErr instanceof Error && pollErr.cause && (pollErr.cause as NodeJS.ErrnoException).code === 'ECONNREFUSED');
+
+        if (isConnRefused && consecutiveFailures >= MAX_POLL_FAILURES) {
+          throw new Error('Engine stopped responding — it may have crashed (out of memory)');
+        }
+        if (consecutiveFailures >= MAX_POLL_FAILURES) {
+          throw new Error(`Engine unreachable after ${MAX_POLL_FAILURES} retries`);
+        }
+        // Transient — retry
+        continue;
+      }
 
       job.progress = poll.progress;
       job.step     = poll.step ?? null;
@@ -163,6 +183,7 @@ async function runAsyncJob(
     job.fileId   = resultFile.id;
     job.filename = resultFile.filename;
   } catch (err) {
+    console.error('[engine job] failed:', err);
     job.status = 'failed';
     job.error  = err instanceof Error ? err.message : 'Unexpected error';
   }
@@ -276,9 +297,15 @@ router.post('/:id/methods/:methodId', asyncWrap(async (req, res) => {
   const uploadedBy = (res.locals.user as User)?.email ?? null;
 
   // 1. Fetch method schema from engine
-  const schemaRes = await fetch(`${engine.url}/api/methods/${methodId}`, {
-    signal: AbortSignal.timeout(5000),
-  });
+  let schemaRes: Response;
+  try {
+    schemaRes = await fetch(`${engine.url}/api/methods/${methodId}`, {
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch {
+    res.status(502).json({ error: 'Engine is not responding — it may have crashed' });
+    return;
+  }
   if (!schemaRes.ok) {
     res.status(502).json({ error: `Method schema fetch failed: ${schemaRes.status}` });
     return;
@@ -369,7 +396,7 @@ router.post('/:id/methods/:methodId', asyncWrap(async (req, res) => {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
     body:    JSON.stringify(dispatchBody),
-    signal:  AbortSignal.timeout(30000),
+    signal:  AbortSignal.timeout(300_000),  // 5 min — genomic methods can be slow
   });
   if (!methodRes.ok) {
     const errBody = await methodRes.text();

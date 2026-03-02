@@ -148,8 +148,8 @@ export class GenomeHubStack extends cdk.Stack {
     // ── Task definition (two containers: GenomeHub + Needletail) ─
 
     const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
-      cpu:            1024,
-      memoryLimitMiB: 2048,
+      cpu:            2048,
+      memoryLimitMiB: 8192,
       taskRole,
     });
 

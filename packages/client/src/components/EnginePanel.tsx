@@ -470,27 +470,61 @@ function EngineMethodDialog({
 
 // ── Sidebar engine list ─────────────────────────────────
 
+function EngineDownBar({ name, since }: { name: string; since: number }) {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const tick = () => setElapsed(Math.floor((Date.now() - since) / 1000));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [since]);
+  const mm = Math.floor(elapsed / 60);
+  const ss = elapsed % 60;
+  return (
+    <div className="flex items-center gap-1.5 px-4 py-1.5 border-t border-line font-mono"
+      style={{ fontSize: 'var(--font-size-xs)' }}>
+      <div className={statusDot({ status: 'disconnected', size: 'sm' })} />
+      <Text variant="dim">{name}</Text>
+      <Text variant="dim" className="ml-auto tabular-nums" style={{ color: 'var(--color-amber)' }}>
+        {mm > 0 ? `${mm}m ${String(ss).padStart(2, '0')}s` : `${ss}s`} ago
+      </Text>
+    </div>
+  );
+}
+
 export default function EnginePanel() {
   const { data: engines } = useEnginesQuery();
   const running = engines?.filter(e => e.status === 'ok');
   const [selectedEngine, setSelectedEngine] = useState<EngineStatus | null>(null);
+  const downSinceRef = useRef<number | null>(null);
 
-  if (!running?.length) return null;
+  // Track when the selected engine goes down
+  const selectedIsDown = selectedEngine && running && !running.some(e => e.id === selectedEngine.id);
+  if (selectedIsDown && !downSinceRef.current) {
+    downSinceRef.current = Date.now();
+  } else if (!selectedIsDown) {
+    downSinceRef.current = null;
+  }
+
   return (
     <>
-      <div className="flex flex-col gap-0.5 px-4 py-2 border-t border-line">
-        <Text variant="muted">Engines</Text>
-        {running.map(e => (
-          <button
-            key={e.id}
-            onClick={() => setSelectedEngine(e)}
-            className="flex items-center gap-1.5 bg-transparent border-none cursor-pointer p-0 text-left hover:opacity-80 transition-opacity"
-          >
-            <div className={statusDot({ status: 'connected', size: 'sm' })} />
-            <Text variant="dim">{e.name}</Text>
-          </button>
-        ))}
-      </div>
+      {running && running.length > 0 ? (
+        <div className="flex flex-col gap-0.5 px-4 py-2 border-t border-line">
+          <Text variant="muted">Engines</Text>
+          {running.map(e => (
+            <button
+              key={e.id}
+              onClick={() => setSelectedEngine(e)}
+              className="flex items-center gap-1.5 bg-transparent border-none cursor-pointer p-0 text-left hover:opacity-80 transition-opacity"
+            >
+              <div className={statusDot({ status: 'connected', size: 'sm' })} />
+              <Text variant="dim">{e.name}</Text>
+            </button>
+          ))}
+        </div>
+      ) : selectedEngine && downSinceRef.current ? (
+        <EngineDownBar name={selectedEngine.name} since={downSinceRef.current} />
+      ) : null}
 
       {selectedEngine && (
         <EngineMethodDialog
