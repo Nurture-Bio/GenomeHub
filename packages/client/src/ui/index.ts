@@ -6,7 +6,7 @@ export { default as Badge }           from './Badge';
 export { default as ComboBox }        from './ComboBox';
 export { default as InlineInput }     from './InlineInput';
 export { default as ChipEditor }     from './ChipEditor';
-export { default as HashPill }       from './HashPill';
+export { default as HashChip }       from './HashChip';
 export { default as FilterChip }     from './FilterChip';
 export { default as Stepper }        from './Stepper';
 export type { StepperStep, StepHealth } from './Stepper';

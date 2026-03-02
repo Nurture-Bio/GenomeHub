@@ -194,13 +194,13 @@ async function seedTechniques() {
 }
 
 async function seedEngines() {
-  const SEQCHAIN_URL = process.env.SEQCHAIN_URL;
-  if (!SEQCHAIN_URL) return;
+  const NEEDLETAIL_URL = process.env.NEEDLETAIL_URL;
+  if (!NEEDLETAIL_URL) return;
   const repo = AppDataSource.getRepository(Engine);
-  const existing = await repo.findOneBy({ name: 'SeqChain' });
+  const existing = await repo.findOneBy({ name: 'Needletail' });
   if (existing) return;
-  await repo.save(repo.create({ name: 'SeqChain', url: SEQCHAIN_URL }));
-  console.log(`Seeded engine: SeqChain at ${SEQCHAIN_URL}`);
+  await repo.save(repo.create({ name: 'Needletail', url: NEEDLETAIL_URL }));
+  console.log(`Seeded engine: Needletail at ${NEEDLETAIL_URL}`);
 }
 
 /** One-time backfill: engine result files stored with sizeBytes=0. */

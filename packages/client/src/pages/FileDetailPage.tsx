@@ -10,7 +10,8 @@ import {
   type GenomicFile,
 } from '../hooks/useGenomicQueries';
 import { detectFormat, FORMAT_META, formatBytes, formatRelativeTime, isConvertible } from '../lib/formats';
-import { Heading, Text, Card, Badge, Button, InlineInput, Input, ChipEditor, HashPill, iconAction } from '../ui';
+import { Heading, Text, Card, Badge, InlineInput, Input, ChipEditor, HashChip, iconAction, Stepper } from '../ui';
+import type { StepperStep } from '../ui';
 import { CollectionPicker, OrganismPicker, FileTypePicker, RelationPicker } from '../ui';
 import LinksList from '../components/LinksList';
 import FilePreview from '../components/FilePreview';
@@ -36,7 +37,7 @@ function RelationLabel({ relation }: { relation: string }) {
 function FormatPill({ filename }: { filename: string }) {
   const fmt = detectFormat(filename);
   const meta = FORMAT_META[fmt];
-  return <HashPill label={meta.label} colorKey={fmt} />;
+  return <HashChip label={meta.label} colorKey={fmt} />;
 }
 
 export default function FileDetailPage() {
@@ -75,6 +76,12 @@ export default function FileDetailPage() {
   const { removeFiles: removeFromCol } = useRemoveFilesFromCollection();
   const { addFileOrganism } = useAddFileOrganism();
   const { removeFileOrganism } = useRemoveFileOrganism();
+
+  // Generic stepper state — any preview type can populate this via onProgress
+  const [stepperConfig, setStepperConfig] = useState<{
+    steps: StepperStep[];
+    active: number;
+  } | null>(null);
 
   const [addingProv, setAddingProv] = useState(false);
   const [provSearch, setProvSearch] = useState('');
@@ -139,18 +146,24 @@ export default function FileDetailPage() {
   return (
     <div className="flex flex-col gap-3 md:gap-4 p-2 md:p-5 animate-page-enter">
 
-      {/* Title row — skeleton until file metadata arrives */}
-      <div className="flex items-start gap-2 flex-wrap">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-0.5 flex-wrap" style={{ minHeight: '1lh' }}>
-            {file && <HashPill label={meta!.label} colorKey={fmt!} />}
-            {file?.status === 'ready'   && <Badge variant="status" color="green">ready</Badge>}
-            {file?.status === 'pending' && <Badge variant="status" color="yellow">uploading</Badge>}
-            {file?.status === 'error'   && <Badge variant="status" color="red">error</Badge>}
-          </div>
-          <Heading level="heading">{file ? file.filename : '\u00A0'}</Heading>
+      {/* Pipeline stepper — populated by preview components via onProgress */}
+      {stepperConfig && (
+        <div className="flex justify-center w-full">
+          <Stepper steps={stepperConfig.steps} active={stepperConfig.active} />
         </div>
-        <Button intent="primary" size="sm" onClick={handleDownload} disabled={!file}>Download</Button>
+      )}
+
+      {/* Title row */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {file && <HashChip label={meta!.label} colorKey={fmt!} />}
+        <Heading level="heading">{file ? file.filename : '\u00A0'}</Heading>
+        {file && (
+          <HashChip
+            label="export"
+            onClick={handleDownload}
+            style={{ '--hc-bg': 'transparent', '--hc-fg': 'var(--color-fg-3)', '--hc-border': 'var(--color-line)' } as React.CSSProperties}
+          />
+        )}
       </div>
 
       {/* File preview — ParquetPreview always mounts once with fileId.
@@ -158,7 +171,7 @@ export default function FileDetailPage() {
       {file && !isConvertible(file.filename) ? (
         <FilePreview fileId={fileId!} filename={file.filename} sizeBytes={file.sizeBytes} />
       ) : (
-        <ParquetPreview fileId={fileId!} />
+        <ParquetPreview fileId={fileId!} onProgress={setStepperConfig} />
       )}
 
       {/* Metadata — below the data where it belongs */}

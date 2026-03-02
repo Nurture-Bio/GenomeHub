@@ -88,8 +88,13 @@ export default function ComboBox({
               className,
             )}
           >
-            <span className="flex-1 min-w-0 truncate">
-              {loading ? 'Loading...' : selected ? selected.label : placeholder}
+            <span className="flex-1 min-w-0">
+              {loading ? 'Loading...' : selected ? (
+                <>
+                  <span className="block truncate">{selected.label}</span>
+                  {selected.description && <span className="block truncate text-fg-3" style={{ fontSize: '0.85em' }}>{selected.description}</span>}
+                </>
+              ) : placeholder}
             </span>
             <svg width="12" height="12" viewBox="0 0 12 12" className="shrink-0 text-fg-3">
               <path d="M3 5l3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />

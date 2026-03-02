@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import HashPill from './HashPill';
+import HashChip from './HashChip';
 import ComboBox, { type ComboBoxItem } from './ComboBox';
 
 export interface HashChipItem {
@@ -29,7 +29,7 @@ export default function HashChipPopover({
     id:          i.id,
     label:       i.label,
     description: i.description,
-    icon:        <HashPill label={i.label} />,
+    icon:        <HashChip label={i.label} />,
   }));
 
   return (

@@ -196,6 +196,7 @@
 
   /* φ-based reveal — control points at 1/φ² and 1/φ */
   --t-phi:     382ms;
+  --t-phi-half: 191ms;
   --ease-phi:  cubic-bezier(0.382, 0, 0.618, 1);
 
   /* Legacy aliases for transition utilities */
@@ -280,7 +281,7 @@
 
   /* ── Global motion defaults ───────────────────────────── */
 
-  button, a, [role="button"], input, select, textarea {
+  main button, main a, main [role="button"], main input, main select, main textarea {
     transition-property: color, background-color, border-color, opacity, box-shadow, transform;
     transition-duration: var(--t-fast);
     transition-timing-function: var(--ease-out);
@@ -331,6 +332,35 @@
   .tbl-cell     { @apply py-1.5 pl-2.5 pr-3; }
   .tbl-cell-end { @apply py-1.5 pr-2.5; }
   .tbl-row      { @apply px-2 py-1.5; }
+
+  /* ── Row hover — compositor-only (no repaint) ──────── */
+  /* Transitions opacity on a pseudo-element instead of
+     background-color on the row, avoiding full-row repaint.
+     Works on both <div> rows (::before on self) and
+     <tr> rows (::before on child <td>s). */
+  .row-hover {
+    position: relative;
+    isolation: isolate;
+  }
+  .row-hover::before,
+  .row-hover > td::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: var(--row-hover-bg, var(--color-raised));
+    opacity: 0;
+    transition: opacity var(--t-fast) var(--ease-out);
+    pointer-events: none;
+  }
+  .row-hover:hover::before,
+  .row-hover:hover > td::before {
+    opacity: 1;
+  }
+  .row-hover > td {
+    position: relative;
+  }
+
 
   .range-thumb {
     pointer-events: none;
@@ -394,6 +424,27 @@
   /* ── Heatmap cell transition ───────────────────────── */
   .dt-heat {
     transition: background var(--t-fast) var(--ease-out);
+  }
+
+  /* ── Stepper SVG classes ─────────────────────────── */
+  .stepper-ping {
+    will-change: transform, opacity;
+    animation: stepperPing 2s var(--ease-phi) infinite;
+  }
+  .stepper-reveal {
+    animation: stepperReveal 400ms var(--ease-phi) forwards;
+  }
+  .stepper-flourish {
+    will-change: transform;
+    animation: stepperFlourish 618ms var(--ease-phi) both;
+  }
+  .stepper-flourish-ping {
+    will-change: transform, opacity;
+    animation: stepperFlourishPing 618ms var(--ease-phi) both;
+  }
+  .stepper-conn-flourish {
+    opacity: 0;
+    animation: stepperConnFlourish 618ms var(--ease-phi) both;
   }
 }
 
@@ -614,7 +665,7 @@
 /* ── Hash-colored chips and filter buttons ────────────── */
 
 .hash-chip {
-  @apply inline-flex items-center gap-1 px-1.5 py-px rounded-full transition-[filter];
+  @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full transition-[filter,box-shadow];
   font-family:         var(--font-sans);
   font-size:           var(--font-size-body);
   transition-duration: var(--t-fast);
@@ -705,16 +756,31 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
 }
-@keyframes flourish {
-  0%   { transform: scale(1);   box-shadow: 0 0 0 0 oklch(0.750 0.180 195 / 0.6); }
-  40%  { transform: scale(1.8); box-shadow: 0 0 20px 4px oklch(0.750 0.180 195 / 0.4); }
-  70%  { transform: scale(1.1); box-shadow: 0 0 10px 2px oklch(0.750 0.180 195 / 0.2); }
-  100% { transform: scale(1);   box-shadow: 0 0 6px 0 oklch(0.750 0.180 195 / 0.15); }
+/* ── Stepper SVG animations (GPU-composited) ───────── */
+/* All continuous animations use only transform + opacity.
+   One-shot reveals use stroke-dashoffset (SVG-internal paint). */
+
+@keyframes stepperPing {
+  0%, 100% { transform: scale(1); opacity: 0.3; }
+  50%      { transform: scale(2.2); opacity: 0; }
 }
-@keyframes errorFlash {
-  0%   { box-shadow: 0 0 0 var(--color-red); }
-  50%  { box-shadow: 0 0 12px var(--color-red); }
-  100% { box-shadow: 0 0 4px var(--color-red-dim); }
+@keyframes stepperReveal {
+  to { stroke-dashoffset: 0; }
+}
+@keyframes stepperFlourish {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(1.5); }
+  65%  { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+@keyframes stepperFlourishPing {
+  0%   { transform: scale(1); opacity: 0.4; }
+  100% { transform: scale(3); opacity: 0; }
+}
+@keyframes stepperConnFlourish {
+  0%   { opacity: 0; }
+  40%  { opacity: 0.5; }
+  100% { opacity: 0.15; }
 }
 @keyframes flourishLabel {
   0%   { opacity: 0; transform: translateY(4px) scale(1); color: var(--color-fg-2); text-shadow: none; }
@@ -927,5 +993,5 @@
 }
 
 .animate-fade-in {
-  animation: fadeOpacity var(--t-phi) var(--ease-phi) both;
+  animation: fadeOpacity var(--t-phi-half) var(--ease-phi) both;
 }

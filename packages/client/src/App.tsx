@@ -238,27 +238,33 @@ export default function App() {
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 bg-black/50 z-overlay animate-fade-in" />
           <Dialog.Content
-            className="fixed inset-y-0 left-0 z-modal flex flex-col animate-slide-in-left sidebar-surface grain-overlay"
+            className="fixed inset-y-0 left-0 z-modal flex flex-col animate-slide-in-left relative"
             style={{ width: 260 }}
             aria-label="Navigation"
           >
-            <SidebarBrand />
-            <SidebarNav onNavClick={() => setMobileMenuOpen(false)} />
-            <EnginePanel />
-            <SidebarFooter user={user} logout={logout} />
+            <div className="inset-0 sidebar-surface grain-overlay pointer-events-none" style={{ position: 'absolute' }} />
+            <div className="relative z-10 flex flex-col flex-1 min-h-0">
+              <SidebarBrand />
+              <SidebarNav onNavClick={() => setMobileMenuOpen(false)} />
+              <EnginePanel />
+              <SidebarFooter user={user} logout={logout} />
+            </div>
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
 
       {/* Desktop sidebar — static, in normal flex flow */}
       <aside
-        className="hidden md:flex flex-col shrink-0 sidebar-surface grain-overlay"
+        className="hidden md:flex flex-col shrink-0 relative"
         style={{ width: 260 }}
       >
-        <SidebarBrand />
-        <SidebarNav />
-        <EnginePanel />
-        <SidebarFooter user={user} logout={logout} />
+        <div className="inset-0 sidebar-surface grain-overlay pointer-events-none" style={{ position: 'absolute' }} />
+        <div className="relative z-10 flex flex-col flex-1 min-h-0">
+          <SidebarBrand />
+          <SidebarNav />
+          <EnginePanel />
+          <SidebarFooter user={user} logout={logout} />
+        </div>
       </aside>
 
       {/* Global dialogs */}

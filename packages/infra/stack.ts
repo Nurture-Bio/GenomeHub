@@ -28,7 +28,7 @@ import { Construct } from 'constructs';
 // Absolute paths — never depend on CWD
 const __dirname  = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT  = path.resolve(__dirname, '../..');
-const SEQCHAIN   = path.resolve(REPO_ROOT, '../SeqChain');
+const NEEDLETAIL = path.resolve(REPO_ROOT, '../needletail');
 
 export class GenomeHubStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -145,7 +145,7 @@ export class GenomeHubStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
-    // ── Task definition (two containers: GenomeHub + SeqChain) ─
+    // ── Task definition (two containers: GenomeHub + Needletail) ─
 
     const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
       cpu:            1024,
@@ -169,7 +169,7 @@ export class GenomeHubStack extends cdk.Stack {
         AWS_REGION:       this.region,
         S3_BUCKET:        bucket.bucketName,
         GOOGLE_CLIENT_ID: '631098657995-b6gm7u609caa7si5h8ep3tj1cf8m9in2.apps.googleusercontent.com',
-        SEQCHAIN_URL:     'http://localhost:8001',
+        NEEDLETAIL_URL:   'http://localhost:8002',
       },
       secrets: {
         DATABASE_URL: ecs.Secret.fromSecretsManager(db.secret!),
@@ -177,24 +177,20 @@ export class GenomeHubStack extends cdk.Stack {
       essential: true,
     });
 
-    // SeqChain container — Python analysis engine (sidecar)
+    // Needletail container — Rust analysis engine (sidecar)
     // Shares the task's network namespace, so GenomeHub reaches it
-    // at localhost:8001. Shares the task IAM role, so it gets S3
+    // at localhost:8002. Shares the task IAM role, so it gets S3
     // access automatically. No ALB routing — internal only.
-    const seqchainLogGroup = new logs.LogGroup(this, 'SeqChainLogs', {
-      logGroupName:  '/genome-hub/seqchain',
+    const needletailLogGroup = new logs.LogGroup(this, 'NeedletailLogs', {
+      logGroupName:  '/genome-hub/needletail',
       retention:     logs.RetentionDays.ONE_MONTH,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
-    taskDef.addContainer('seqchain', {
-      // To use a pre-built image from ECR instead:
-      //   image: ecs.ContainerImage.fromEcrRepository(repo, 'latest'),
-      image: ecs.ContainerImage.fromAsset(SEQCHAIN, {
-        file: 'Dockerfile.api',
-      }),
-      portMappings: [{ containerPort: 8001 }],
-      logging: ecs.LogDrivers.awsLogs({ logGroup: seqchainLogGroup, streamPrefix: 'seqchain' }),
+    taskDef.addContainer('needletail', {
+      image: ecs.ContainerImage.fromAsset(NEEDLETAIL),
+      portMappings: [{ containerPort: 8002 }],
+      logging: ecs.LogDrivers.awsLogs({ logGroup: needletailLogGroup, streamPrefix: 'needletail' }),
       environment: {
         AWS_REGION: this.region,
         S3_BUCKET:  bucket.bucketName,

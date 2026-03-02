@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { cx } from 'class-variance-authority';
 import { statusDot, button, input, modalOverlay } from '../ui/recipes';
@@ -58,19 +58,14 @@ function resolveActiveStep(
 }
 
 function deriveStepHealth(
-  phase: Phase,
   pollLost: boolean,
   activeStep: number,
   steps: StepperStep[],
-): Record<string, StepHealth> {
-  const h: Record<string, StepHealth> = {};
+): Record<string, StepHealth> | undefined {
   if (pollLost && steps[activeStep]) {
-    h[steps[activeStep].key] = 'warning';
+    return { [steps[activeStep].key]: 'warning' };
   }
-  if (phase === 'failing' && steps[activeStep]) {
-    h[steps[activeStep].key] = 'error';
-  }
-  return h;
+  return undefined;
 }
 
 // ── Schema-driven method form ─────────────────────────
@@ -135,21 +130,32 @@ function MethodForm({ engineId, method }: { engineId: string; method: EngineMeth
 
   const isActive = engine.phase !== 'idle';
 
-  // Build dynamic stepper steps from method schema
-  const stepperSteps = useMemo(() => buildStepperSteps(method), [method]);
-  const activeStep = resolveActiveStep(engine.phase, engine.pollStatus, engine.pollStep, stepperSteps, engine.failedAtStep);
-  const stepHealth = deriveStepHealth(engine.phase, engine.pollLost, activeStep, stepperSteps);
+  // Build dynamic stepper steps from method schema.
+  // Error message baked directly into the failed step — Stepper renders it natively.
+  const baseSteps = useMemo(() => buildStepperSteps(method), [method]);
+  const activeStep = resolveActiveStep(engine.phase, engine.pollStatus, engine.pollStep, baseSteps, engine.failedAtStep);
+  const stepperSteps = useMemo(() => {
+    if (engine.error && baseSteps[activeStep]) {
+      const copy = [...baseSteps];
+      copy[activeStep] = { ...copy[activeStep], error: engine.error };
+      return copy;
+    }
+    return baseSteps;
+  }, [baseSteps, activeStep, engine.error]);
+  const stepHealth = deriveStepHealth(engine.pollLost, activeStep, baseSteps);
 
   return (
     <div className="flex flex-col gap-2 py-2 border-t border-line">
-      {/* Form — hidden when active, preserved in DOM */}
-      <div style={{
-        opacity: isActive ? 0 : 1,
-        pointerEvents: isActive ? 'none' : 'auto',
-        transition: 'opacity var(--t-phi) var(--ease-phi)',
-        position: isActive ? 'absolute' : 'relative',
-        visibility: isActive ? 'hidden' : 'visible',
-      }}>
+      {isActive ? (
+        <Stepper
+          steps={stepperSteps}
+          active={activeStep}
+          stepHealth={stepHealth}
+          opacity={engine.phase === 'fading' ? 0 : 1}
+          header={<ProgressBar engine={engine} activeStep={activeStep} />}
+          detail={<MethodDetail engine={engine} />}
+        />
+      ) : (
         <div className="flex flex-col gap-2">
           <div>
             <Text variant="body" className="font-semibold">{method.name}</Text>
@@ -218,7 +224,6 @@ function MethodForm({ engineId, method }: { engineId: string; method: EngineMeth
             </div>
           ))}
 
-          {/* Output name */}
           <div className="flex flex-col gap-0.5">
             <Text variant="muted">output name</Text>
             <input
@@ -237,78 +242,101 @@ function MethodForm({ engineId, method }: { engineId: string; method: EngineMeth
             Run
           </button>
         </div>
-      </div>
-
-      {/* Stepper — shown when active */}
-      {isActive && (
-        <MethodProgress
-          steps={stepperSteps}
-          activeStep={activeStep}
-          stepHealth={stepHealth}
-          opacity={engine.phase === 'fading' ? 0 : 1}
-          engine={engine}
-          onCancel={engine.phase === 'active' || engine.phase === 'dispatching' ? engine.cancel : undefined}
-        />
       )}
     </div>
   );
 }
 
-// ── Engine method stepper ──────────────────────────────
+// ── Progress bar (above stepper dots) ────────────────────
+//
+// Visual state is decoupled from data state. The bar has trailing
+// memory: when the active step advances, it tweens to 100% before
+// resetting for the new step. Container height is fixed — no layout
+// shifts regardless of data availability.
 
-function MethodProgress({ steps, activeStep, stepHealth, opacity, engine, onCancel }: {
-  steps: StepperStep[];
-  activeStep: number;
-  stepHealth: Record<string, StepHealth>;
-  opacity: number;
-  engine: ReturnType<typeof useEngineMethod>;
-  onCancel?: () => void;
-}) {
-  const { progress, pollLost, stage, items } = engine;
-  const pct = progress?.pct_complete != null ? Math.round(progress.pct_complete * 100) : null;
+function ProgressBar({ engine, activeStep }: { engine: ReturnType<typeof useEngineMethod>; activeStep: number }) {
+  const { progress, items, pollLost } = engine;
 
-  // Header slot — progress bar above dots
-  const header = pct != null ? (
-    <div className="flex flex-col gap-1.5">
+  // 1. Raw data truth
+  const rawPct = progress?.pct_complete != null
+    ? Math.round(progress.pct_complete * 100)
+    : items && items.total > 0
+      ? Math.round((items.complete / items.total) * 100)
+      : null;
+
+  // 2. Decoupled visual memory
+  const [visualPct, setVisualPct] = useState(0);
+  const [isTweening, setIsTweening] = useState(false);
+  const prevStepRef = useRef(activeStep);
+
+  useEffect(() => {
+    if (activeStep > prevStepRef.current) {
+      // Step advanced — shoot to 100% to close out the previous step
+      setIsTweening(true);
+      setVisualPct(100);
+
+      const timer = setTimeout(() => {
+        prevStepRef.current = activeStep;
+        setVisualPct(rawPct ?? 0);
+        setIsTweening(false);
+      }, 300);
+      return () => clearTimeout(timer);
+    } else if (!isTweening) {
+      // Normal update within the same step
+      setVisualPct(rawPct ?? 0);
+    }
+  }, [activeStep, rawPct, isTweening]);
+
+  // 3. Fixed container — never return null, never shift layout
+  const barColor = pollLost ? 'var(--color-amber-dim)' : 'var(--color-cyan)';
+  const hasData = rawPct != null || isTweening;
+
+  return (
+    <div className="flex flex-col gap-1.5" style={{ minHeight: 28 }}>
       <div className="h-1 rounded-full overflow-hidden" style={{ background: 'var(--color-raised)' }}>
         <div
           className="h-full rounded-full"
           style={{
-            width: `${pct}%`,
-            background: pollLost ? 'var(--color-amber-dim)' : 'var(--color-cyan)',
-            transition: 'width 500ms ease-out, background var(--t-phi) var(--ease-phi)',
+            width: `${visualPct}%`,
+            background: barColor,
+            transition: 'width 200ms ease-out, background var(--t-phi) var(--ease-phi)',
           }}
         />
       </div>
-      <div className="flex gap-2.5 font-mono justify-center" style={{ fontSize: 'var(--font-size-xs)' }}>
-        <Text variant="dim">{pct}%</Text>
-        {progress!.eta_seconds != null && (
-          <Text variant="dim">ETA {formatEta(progress!.eta_seconds)}</Text>
+      <div
+        className="flex gap-2.5 font-mono justify-center"
+        style={{
+          fontSize: 'var(--font-size-xs)',
+          opacity: hasData ? 1 : 0,
+          transition: 'opacity 200ms ease',
+        }}
+      >
+        <Text variant="dim">{visualPct}%</Text>
+        {progress?.eta_seconds != null && (
+          <Text variant="dim">ETA {formatEta(progress.eta_seconds)}</Text>
         )}
-        {progress!.rate_per_sec != null && (
-          <Text variant="dim">{progress!.rate_per_sec.toFixed(1)}/s</Text>
+        {progress?.rate_per_sec != null && (
+          <Text variant="dim">{progress.rate_per_sec.toFixed(1)}/s</Text>
         )}
       </div>
     </div>
-  ) : null;
+  );
+}
 
-  // Detail slot — below the step label
-  const detail = (
+// ── Engine method detail (below stepper label) ──────────
+
+function MethodDetail({ engine }: { engine: ReturnType<typeof useEngineMethod> }) {
+  const { stage, items, pollLost, phase } = engine;
+  const isFailed = phase === 'failing';
+
+  return (
     <div className="flex flex-col gap-2">
-      {/* Stage sublabel */}
-      {stage && (
+      {!isFailed && stage && (
         <Text variant="dim" className="text-center font-mono" style={{ fontSize: 'var(--font-size-xs)' }}>
           {stage}
         </Text>
       )}
-      {/* n/x item counter */}
-      {items && (
-        <Text variant="dim" className="text-center font-mono" style={{ fontSize: 'var(--font-size-xs)' }}>
-          {items.complete} / {items.total}
-        </Text>
-      )}
-      {/* Connection lost warning */}
-      {pollLost && (
+      {pollLost && !isFailed && (
         <div
           className="flex items-center justify-center gap-1.5 rounded-sm font-mono"
           style={{
@@ -322,11 +350,26 @@ function MethodProgress({ steps, activeStep, stepHealth, opacity, engine, onCanc
           Connection lost — retrying...
         </div>
       )}
-      {/* Cancel button */}
-      {onCancel && (
+      {isFailed && (
         <button
           type="button"
-          onClick={onCancel}
+          onClick={engine.reset}
+          className="self-center font-mono cursor-pointer border rounded-sm transition-colors"
+          style={{
+            fontSize: 'var(--font-size-xs)',
+            color: 'var(--color-red)',
+            borderColor: 'var(--color-red-dim)',
+            background: 'var(--color-red-wash)',
+            padding: '4px 12px',
+          }}
+        >
+          Dismiss
+        </button>
+      )}
+      {!isFailed && (phase === 'active' || phase === 'dispatching') && (
+        <button
+          type="button"
+          onClick={engine.cancel}
           className="self-center font-mono cursor-pointer border rounded-sm transition-colors"
           style={{
             fontSize: 'var(--font-size-xs)',
@@ -335,31 +378,10 @@ function MethodProgress({ steps, activeStep, stepHealth, opacity, engine, onCanc
             background: 'var(--color-amber-wash)',
             padding: '4px 12px',
           }}
-          onMouseEnter={e => {
-            e.currentTarget.style.background = 'var(--color-amber-dim)';
-            e.currentTarget.style.color = 'var(--color-void)';
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.background = 'var(--color-amber-wash)';
-            e.currentTarget.style.color = 'var(--color-amber)';
-          }}
         >
           Cancel
         </button>
       )}
-    </div>
-  );
-
-  return (
-    <div className="mt-1">
-      <Stepper
-        steps={steps}
-        active={activeStep}
-        header={header}
-        detail={detail}
-        stepHealth={stepHealth}
-        opacity={opacity}
-      />
     </div>
   );
 }

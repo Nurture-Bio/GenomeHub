@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react';
-import HashPill from './HashPill';
+import HashChip from './HashChip';
 import type { HashChipItem } from './HashChipPopover';
 
 export interface ChipEditorProps {
@@ -50,14 +50,14 @@ export default function ChipEditor({
     <div className="group/editor flex gap-1 flex-wrap items-center">
 
       {visible.map(item => (
-        <HashPill
+        <HashChip
           key={item.id}
           label={renderLabel ? '' : item.label}
           colorKey={item.label}
           onRemove={!disabled ? () => onRemove(item.id) : undefined}
         >
           {renderLabel ? renderLabel(item) : undefined}
-        </HashPill>
+        </HashChip>
       ))}
 
       {overflow > 0 && (

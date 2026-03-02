@@ -9,7 +9,7 @@ import {
   useAddCollectionTechnique, useRemoveCollectionTechnique,
 } from '../hooks/useGenomicQueries';
 import { useConfirmDelete } from '../hooks/useConfirmDelete';
-import { Badge, Text, Heading, Card, ChipEditor, HashPill, FilterChip, inlineInput, iconAction } from '../ui';
+import { Badge, Text, Heading, Card, ChipEditor, HashChip, FilterChip, inlineInput, iconAction } from '../ui';
 import { TechniquePicker, OrganismPicker, FileTypePicker } from '../ui';
 
 function SkeletonRow() {
@@ -157,7 +157,7 @@ export default function CollectionsPage() {
                     </tr>
                   )}
                   {filtered.map((c, i) => (
-                    <tr key={c.id} className="border-b border-line hover:bg-base transition-colors duration-fast group stagger-item"
+                    <tr key={c.id} className="border-b border-line group stagger-item row-hover"
                       style={{ '--i': Math.min(i, 15) } as React.CSSProperties}>
                       <td className="tbl-cell">
                         <Link to={`/collections/${c.id}`} className="no-underline">
@@ -260,13 +260,13 @@ export default function CollectionsPage() {
               <Link key={c.id} to={`/collections/${c.id}`} className="no-underline">
                 <Card className="p-2.5 flex flex-col gap-1 hover:border-cyan transition-colors duration-fast cursor-pointer">
                   <div className="flex items-center gap-2 flex-wrap">
-                    {c.techniques.map(t => <HashPill key={t.id} label={t.name} />)}
+                    {c.techniques.map(t => <HashChip key={t.id} label={t.name} />)}
                     <Text variant="body" className="truncate flex-1 min-w-0">{c.name}</Text>
-                    {c.types.map(t => <HashPill key={t} label={t} />)}
+                    {c.types.map(t => <HashChip key={t} label={t} />)}
                   </div>
                   {c.description && <Text variant="dim" className="truncate">{c.description}</Text>}
                   <div className="flex items-center gap-2 flex-wrap">
-                    {c.organisms.map(o => <HashPill key={o.id} label={o.displayName} />)}
+                    {c.organisms.map(o => <HashChip key={o.id} label={o.displayName} />)}
                     <Text variant="dim">{c.fileCount} files</Text>
                   </div>
                 </Card>

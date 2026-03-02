@@ -181,14 +181,12 @@ export function useEngineMethod() {
     }
   }, [jobData, state.jobId, qc]);
 
-  // Terminal animation: completing/failing → fade → reset
+  // Terminal animation: completing → fade → reset (auto)
+  // failing stays visible until user dismisses
   useEffect(() => {
     if (state.phase === 'completing') {
       clearTimers();
       holdTimerRef.current = setTimeout(() => send({ type: 'FADE' }), COMPLETE_HOLD_MS);
-    } else if (state.phase === 'failing') {
-      clearTimers();
-      holdTimerRef.current = setTimeout(() => send({ type: 'FADE' }), FAIL_HOLD_MS);
     } else if (state.phase === 'fading') {
       clearTimers();
       fadeTimerRef.current = setTimeout(() => send({ type: 'RESET' }), FADE_MS);

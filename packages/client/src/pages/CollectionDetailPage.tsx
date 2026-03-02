@@ -8,7 +8,7 @@ import {
   useAddCollectionTechnique, useRemoveCollectionTechnique,
 } from '../hooks/useGenomicQueries';
 import { detectFormat, FORMAT_META, formatBytes } from '../lib/formats';
-import { Heading, Text, Badge, InlineInput, Input, ChipEditor, HashPill, iconAction } from '../ui';
+import { Heading, Text, Badge, InlineInput, Input, ChipEditor, HashChip, iconAction } from '../ui';
 import { TechniquePicker, OrganismPicker, FileTypePicker } from '../ui';
 import LinksList from '../components/LinksList';
 import { useAppStore } from '../stores/useAppStore';
@@ -177,7 +177,7 @@ export default function CollectionDetailPage() {
                   const meta = FORMAT_META[fmt];
                   const checked = addSelected.has(file.id);
                   return (
-                    <label key={file.id} className="flex items-center gap-2 px-1.5 py-1 rounded-sm cursor-pointer hover:bg-base transition-colors duration-fast">
+                    <label key={file.id} className="flex items-center gap-2 px-1.5 py-1 rounded-sm cursor-pointer row-hover">
                       <input
                         type="checkbox"
                         checked={checked}
@@ -190,9 +190,9 @@ export default function CollectionDetailPage() {
                         }}
                         className="accent-cyan shrink-0"
                       />
-                      <HashPill label={meta.label} colorKey={fmt} />
+                      <HashChip label={meta.label} colorKey={fmt} />
                       <Text variant="mono" className="truncate flex-1 min-w-0">{file.filename}</Text>
-                      {file.types.map(t => <HashPill key={t} label={t} />)}
+                      {file.types.map(t => <HashChip key={t} label={t} />)}
                       <Text variant="dim" className="shrink-0">{formatBytes(file.sizeBytes)}</Text>
                     </label>
                   );
@@ -223,11 +223,11 @@ export default function CollectionDetailPage() {
                   const fmt = detectFormat(file.filename);
                   const meta = FORMAT_META[fmt];
                   return (
-                    <tr key={file.id} className="border-b border-line hover:bg-base transition-colors duration-fast group stagger-item"
+                    <tr key={file.id} className="border-b border-line group stagger-item row-hover"
                       style={{ '--i': Math.min(i, 15) } as React.CSSProperties}>
                       <td className="tbl-cell">
                         <div className="flex items-center gap-2">
-                          <HashPill label={meta.label} colorKey={fmt} />
+                          <HashChip label={meta.label} colorKey={fmt} />
                           <Link to={`/files/${file.id}`} className="no-underline">
                             <Text variant="mono" className="truncate hover:text-cyan transition-colors duration-fast">
                               {file.filename}
@@ -237,7 +237,7 @@ export default function CollectionDetailPage() {
                       </td>
                       <td className="tbl-cell">
                         <div className="flex gap-0.5 flex-wrap">
-                          {file.types.map(t => <HashPill key={t} label={t} />)}
+                          {file.types.map(t => <HashChip key={t} label={t} />)}
                         </div>
                       </td>
                       <td className="tbl-cell text-right">

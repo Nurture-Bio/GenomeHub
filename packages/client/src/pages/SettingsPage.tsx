@@ -27,7 +27,7 @@ interface EditableRowProps {
 
 function EditableRow({ id, index, name, description, onSave, onDelete }: EditableRowProps) {
   return (
-    <tr className="border-b border-line group hover:bg-base transition-colors duration-fast stagger-item"
+    <tr className="border-b border-line group stagger-item row-hover"
       style={{ '--i': Math.min(index ?? 0, 15) } as React.CSSProperties}>
       <td className="tbl-cell overflow-hidden">
         <InlineInput value={name} fullWidth className="font-semibold" onCommit={val => onSave(id, { name: val })} />
@@ -128,7 +128,7 @@ interface EngineRowProps {
 
 function EngineRow({ id, index, name, url, status, onSave, onDelete }: EngineRowProps) {
   return (
-    <tr className="border-b border-line group hover:bg-base transition-colors duration-fast stagger-item"
+    <tr className="border-b border-line group stagger-item row-hover"
       style={{ '--i': Math.min(index ?? 0, 15) } as React.CSSProperties}>
       <td className="tbl-cell overflow-hidden">
         <div className="flex items-center gap-1.5">

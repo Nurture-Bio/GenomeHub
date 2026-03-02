@@ -85,7 +85,7 @@ export default function OrganismsPage() {
               : (
                 <>
                   {data?.map((o, i) => (
-                    <tr key={o.id} className="border-b border-line hover:bg-base transition-colors duration-fast group stagger-item"
+                    <tr key={o.id} className="border-b border-line group stagger-item row-hover"
                       style={{ '--i': Math.min(i, 15) } as React.CSSProperties}>
                       <td className="tbl-cell overflow-hidden">
                         <div className="flex items-baseline gap-1 min-w-0">

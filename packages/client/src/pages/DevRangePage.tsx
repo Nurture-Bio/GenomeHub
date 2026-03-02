@@ -197,7 +197,7 @@ const VirtualRows = memo(function VirtualRows({
               style={{
                 position: 'absolute', top: 0, left: 0, width: '100%', height: ROW_HEIGHT,
                 transform: `translateY(${vRow.start}px)`,
-                background: vRow.index % 2 === 1 ? 'oklch(0.120 0.020 250 / 0.3)' : undefined,
+                background: vRow.index % 2 === 1 ? 'var(--color-row-stripe)' : undefined,
               }}
             >
               {row === undefined ? (

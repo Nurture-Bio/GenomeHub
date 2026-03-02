@@ -9,7 +9,7 @@ import {
 } from '../hooks/useGenomicQueries';
 import { useConfirm } from '../hooks/useConfirm';
 import { detectFormat, FORMAT_META, formatBytes, formatRelativeTime } from '../lib/formats';
-import { Button, Badge, Input, Text, Heading, Card, ChipEditor, HashPill, FilterChip, iconAction } from '../ui';
+import { Button, Badge, Input, Text, Heading, Card, ChipEditor, HashChip, FilterChip, iconAction } from '../ui';
 import LoadingCrossfade from '../components/LoadingCrossfade';
 import { CollectionPicker, OrganismPicker, FileTypePicker } from '../ui';
 
@@ -94,7 +94,7 @@ function FileRow({
 }: FileRowProps) {
   return (
     <div
-      className="grid items-center border-b border-line transition-colors duration-fast hover:bg-base tbl-row stagger-item"
+      className="grid items-center border-b border-line tbl-row stagger-item row-hover"
       style={{
         gridTemplateColumns: GRID_COLS,
         gap: GRID_GAP,
@@ -210,7 +210,7 @@ function FileCard({ file, loading = false, onDownload, selected, onSelect }: Fil
         />
         {loading
           ? <div className="skeleton skel-format-icon shrink-0" />
-          : <HashPill label={meta.label} colorKey={fmt} />
+          : <HashChip label={meta.label} colorKey={fmt} />
         }
         {loading
           ? <div className="skeleton h-[1lh] flex-1" />
@@ -224,8 +224,8 @@ function FileCard({ file, loading = false, onDownload, selected, onSelect }: Fil
         <>
           <div className="flex items-center gap-2 flex-wrap pl-5.5">
             <Text variant="dim">{formatBytes(file.sizeBytes)}</Text>
-            {file.types.map(t => <HashPill key={t} label={t} />)}
-            {file.organisms.map(o => <HashPill key={o.id} label={o.displayName} />)}
+            {file.types.map(t => <HashChip key={t} label={t} />)}
+            {file.organisms.map(o => <HashChip key={o.id} label={o.displayName} />)}
             {file.status === 'ready'   && <Badge variant="status" color="green">ready</Badge>}
             {file.status === 'pending' && <Badge variant="status" color="yellow">uploading</Badge>}
             {file.status === 'error'   && <Badge variant="status" color="red">error</Badge>}

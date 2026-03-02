@@ -16,6 +16,7 @@ import {
 } from '@tanstack/react-table';
 import * as Popover from '@radix-ui/react-popover';
 import { Text } from '../ui';
+import type { StepperStep } from '../ui';
 import { useParquetPreview, isNumericType, DROPDOWN_MAX } from '../hooks/useParquetPreview';
 import { useDataProfile } from '../hooks/useDataProfile';
 import { useDerivedState } from '../hooks/useDerivedState';
@@ -123,9 +124,9 @@ function ColName({ name }: { name: string }) {
   );
 }
 
-// ── PipelineStatus — verbose loading indicator for biologists ─────────────────
+// ── Pipeline steps + index for Parquet preview ────────────────────────────────
 
-const PIPELINE_STEPS = [
+const PARQUET_STEPS = [
   { key: 'profile',  label: 'Reading schema' },
   { key: 'boot',     label: 'Starting engine' },
   { key: 'register', label: 'Opening dataset' },
@@ -133,50 +134,18 @@ const PIPELINE_STEPS = [
   { key: 'ready',    label: 'Ready' },
 ] as const;
 
-function pipelineIndex(profileStatus: ProfileStatus, wasmStatus: WasmStatus, isQuerying: boolean, hasData: boolean): number {
+function pipelineIndex(profileStatus: ProfileStatus, wasmStatus: WasmStatus, isQuerying: boolean, hasData: boolean, wasmError?: string | null): number {
   if (profileStatus === 'polling' || profileStatus === 'error') return 0;
+  if (wasmStatus === 'error') {
+    // Disambiguate boot vs register failure from the error message
+    return wasmError?.includes('Failed to load dataset') ? 2 : 1;
+  }
   if (wasmStatus === 'idle' || wasmStatus === 'booting') return 1;
   if (wasmStatus === 'registering') return 2;
   if (hasData) return 4; // ready
   return 3; // drawing rows
 }
 
-function PipelineStatus({ profileStatus, wasmStatus, isQuerying, hasData }: {
-  profileStatus: ProfileStatus;
-  wasmStatus: WasmStatus;
-  isQuerying: boolean;
-  hasData: boolean;
-}) {
-  const active = pipelineIndex(profileStatus, wasmStatus, isQuerying, hasData);
-  return (
-    <div className="flex flex-col items-center gap-2" style={{ opacity: 0.6 }}>
-      <div className="flex items-center gap-1" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-xs)', color: 'var(--color-fg-3)' }}>
-        {PIPELINE_STEPS.map((step, i) => {
-          const reached = i <= active;
-          const current = i === active;
-          return (
-            <span key={step.key} className="flex items-center gap-1">
-              {i > 0 && <span style={{
-                color: reached ? 'var(--color-cyan)' : 'var(--color-line)',
-                transition: 'color var(--t-phi) var(--ease-phi)',
-              }}>{'—'}</span>}
-              <span style={{
-                display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
-                background: reached ? 'var(--color-cyan)' : 'var(--color-line)',
-                boxShadow: current && i < PIPELINE_STEPS.length - 1 ? '0 0 6px var(--color-cyan)' : 'none',
-                animation: current && i < PIPELINE_STEPS.length - 1 ? 'pulse 1.5s ease-in-out infinite' : 'none',
-                transition: 'background var(--t-phi) var(--ease-phi), box-shadow var(--t-phi) var(--ease-phi)',
-              }} />
-            </span>
-          );
-        })}
-      </div>
-      <Text variant="dim" style={{ fontSize: 'var(--font-size-xs)' }}>
-        {PIPELINE_STEPS[active].label}
-      </Text>
-    </div>
-  );
-}
 
 // ── RangeSlider ───────────────────────────────────────────────────────────────
 
@@ -587,7 +556,7 @@ const VirtualRows = memo(function VirtualRows({
               style={{
                 position: 'absolute', top: 0, left: 0, width: '100%', height: ROW_H,
                 transform: `translateY(${Math.round(vRow.start)}px)`,
-                background: vRow.index % 2 === 1 ? 'oklch(0.120 0.020 250)' : 'var(--color-void)',
+                background: vRow.index % 2 === 1 ? 'var(--color-row-stripe)' : 'var(--color-void)',
               }}
             >
               {columns.map(c => {
@@ -645,8 +614,9 @@ const VirtualRows = memo(function VirtualRows({
 
 // ── ParquetPreview ─────────────────────────────────────────────────────────────
 
-export default function ParquetPreview({ fileId }: {
+export default function ParquetPreview({ fileId, onProgress }: {
   fileId: string;
+  onProgress?: (config: { steps: StepperStep[]; active: number } | null) => void;
 }) {
   const {
     profileStatus, columns, totalRows, filteredCount,
@@ -763,6 +733,31 @@ export default function ParquetPreview({ fileId }: {
       performance.now().toFixed(1) + 'ms');
   });
   // ── end profiler ──────────────────────────────────────────────────────────
+
+  // ── Broadcast pipeline state to parent via onProgress ──────────────────────
+  const isError = profileStatus === 'error' || wasmStatus === 'error';
+  const displayError = isError ? (error || wasmError) : undefined;
+  const currentActive = isError
+    ? pipelineIndex(profileStatus, wasmStatus, isQuerying, hasData, wasmError)
+    : stage;
+  const currentSteps: StepperStep[] = isError
+    ? PARQUET_STEPS.map((s, i) =>
+        i === currentActive && displayError ? { ...s, error: displayError } : s
+      )
+    : [...PARQUET_STEPS];
+
+  useEffect(() => {
+    if (profileStatus === 'unavailable' || profileStatus === 'failed') {
+      onProgress?.(null);
+      return;
+    }
+    onProgress?.({ steps: currentSteps, active: currentActive });
+  }, [currentActive, isError, displayError]);
+
+  // Cleanup: clear stepper when unmounting
+  useEffect(() => {
+    return () => onProgress?.(null);
+  }, [onProgress]);
 
   // ── Synchronous initializers — Frame 1 ready, no useEffect ───────────────
 
@@ -970,7 +965,7 @@ export default function ParquetPreview({ fileId }: {
     return (
       <div className="flex flex-col">
         {Array.from({ length: Math.ceil(PANEL_H / ROW_H) }, (_, i) => (
-          <div key={i} className="flex" style={{ height: ROW_H }}>
+          <div key={i} className="flex" style={{ height: ROW_H, background: i % 2 === 1 ? 'var(--color-row-stripe)' : undefined }}>
             {skelData.cols.map(c => {
               const isNum = isNumericType(c.type);
               return (
@@ -1017,27 +1012,11 @@ export default function ParquetPreview({ fileId }: {
 
   // ── Loading / error states ─────────────────────────────────────────────────
 
-  if (profileStatus === 'error' || wasmStatus === 'error') {
-    const displayError = error || wasmError;
-    return (
-      <div className="flex items-center justify-center py-8">
-        <Text variant="dim" style={{ color: 'var(--color-red)' }}>{displayError}</Text>
-      </div>
-    );
-  }
-
   if (profileStatus === 'unavailable' || profileStatus === 'failed') return null;
 
-  return (
-    <>
-    {/* Pipeline status — always visible, fixed height, outside the table */}
-    <div style={{
-      height: 32,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }}>
-      <PipelineStatus profileStatus={profileStatus} wasmStatus={wasmStatus} isQuerying={isQuerying} hasData={hasData} />
-    </div>
+  if (isError) return null;
 
+  return (
     <div className="flex flex-col" style={{
       background: 'var(--color-void)', height: PANEL_H,
     }}>
@@ -1244,6 +1223,5 @@ export default function ParquetPreview({ fileId }: {
         </Profiler>
       </div>
     </div>
-    </>
   );
 }

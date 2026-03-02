@@ -258,7 +258,7 @@ const VirtualRows = memo(function VirtualRows({
                 width: '100%',
                 height: ROW_HEIGHT,
                 transform: `translateY(${vRow.start}px)`,
-                background: vRow.index % 2 === 1 ? 'oklch(0.120 0.020 250 / 0.3)' : undefined,
+                background: vRow.index % 2 === 1 ? 'var(--color-row-stripe)' : undefined,
               }}
             >
               {tableColumns.map(col => {

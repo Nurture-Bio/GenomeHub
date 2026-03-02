@@ -17,7 +17,7 @@ export async function resolveUser(req: Request): Promise<User | null> {
   // Never set this in production.
   const devToken = process.env.DEV_AUTH_TOKEN;
   if (devToken && token === devToken) {
-    return { id: 'dev', email: 'dev@local', name: 'Dev User', picture: null } as unknown as User;
+    return { id: '00000000-0000-0000-0000-000000000000', email: 'dev@local', name: 'Dev User', picture: null } as unknown as User;
   }
 
   const repo = AppDataSource.getRepository(User);

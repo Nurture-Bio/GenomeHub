@@ -1,4 +1,4 @@
-import HashPill from './HashPill';
+import HashChip from './HashChip';
 import HashChipPopover, { type HashChipItem } from './HashChipPopover';
 
 interface FilterChipProps {
@@ -17,7 +17,7 @@ export default function FilterChip({ label, items, value, onValueChange, classNa
       className={['hash-filter-btn inline-flex items-center gap-1', className].filter(Boolean).join(' ')}
       data-active={!!selected}
     >
-      {selected ? <HashPill label={selected.label} /> : label}
+      {selected ? <HashChip label={selected.label} /> : label}
       <svg width="10" height="10" viewBox="0 0 10 10" className="shrink-0 opacity-60">
         <path d="M2.5 4l2.5 2.5L7.5 4" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
       </svg>

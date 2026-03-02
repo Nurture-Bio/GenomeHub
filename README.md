@@ -14,7 +14,7 @@ GenomeHub is the data layer in a broader ecosystem for computational genomics:
 | Project | Role |
 |---|---|
 | **GenomeHub** | Store and organize sequencing files (FASTQ, BAM, VCF, ...) |
-| [SeqChain](https://github.com/ryandward/SeqChain) | Composable analysis toolkit for CRISPR design, Tn-seq, chromatin annotation |
+| [Needletail](https://github.com/ryandward/needletail) | High-performance CRISPR guide library design engine (Rust) |
 | [Epigenome2Phenome](https://github.com/ryandward/ATACFlux) | Interactive visualization linking epigenomic state to metabolic flux |
 
 ---
@@ -147,7 +147,7 @@ This mode uses your real Google OAuth login against production. The `VITE_DEV_AU
 
 #### Connecting an engine
 
-To connect a local analysis engine, start it separately, then go to Settings and add it with its URL (for example, SeqChain at `http://localhost:8001`). The sidebar will show a green dot when it connects.
+To connect a local analysis engine, start it separately, then go to Settings and add it with its URL (for example, Needletail at `http://localhost:8002`). The sidebar will show a green dot when it connects.
 
 ### Deploy to AWS
 
@@ -499,7 +499,7 @@ Upload completes → parquet_status = 'converting'
 
 #### Strand coexistence
 
-The Strand SAB pipeline is preserved for real-time streaming use cases (live SeqChain results). The Parquet path handles large static datasets. The routing logic in `FilePreview.tsx`:
+The Strand SAB pipeline is preserved for real-time streaming use cases (live engine results). The Parquet path handles large static datasets. The routing logic in `FilePreview.tsx`:
 
 1. Poll `GET /api/files/:id/parquet-url`
 2. If `ready` → `<ParquetPreview>` (DuckDB WASM)

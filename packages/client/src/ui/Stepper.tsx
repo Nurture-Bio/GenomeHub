@@ -1,26 +1,53 @@
+import { useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { Text } from './Text';
 
 export interface StepperStep {
   key: string;
   label: string;
+  error?: string;
 }
 
 export type StepHealth = 'normal' | 'warning' | 'error';
 
+// ── SVG geometry ─────────────────────────────────────
+//
+// All rendering is pure SVG. Continuous animations use only
+// transform + opacity (GPU-composited). One-shot transitions
+// use stroke/fill (SVG-internal paint, no surrounding repaint).
+
+const R      = 7;     // outer ring radius
+const CORE   = 2.5;   // inner core radius
+const RING   = 1.5;   // ring stroke width
+const GAP    = 48;    // center-to-center node spacing
+const PAD    = 4;     // connector inset from ring edge
+const MX     = 20;    // SVG horizontal margin (room for ping at scale 2.5)
+const CY     = 22;    // vertical center
+const H      = 44;    // SVG height
+const CONN_W = 1.5;   // connector stroke width
+const GLOW_W = 6;     // flourish glow line width (fake glow via opacity)
+
+const STEP_PACE_MS = 382; // 1000/φ² — must match CSS --t-phi
+
+// derived
+const CONN = GAP - 2 * R - 2 * PAD; // connector line length (26px)
+
+function accentFor(h: StepHealth): string {
+  return h === 'error' ? 'var(--color-red)' : h === 'warning' ? 'var(--color-amber)' : 'var(--color-cyan)';
+}
+
 /**
- * Stepper — the state engine display. Center of attention during multi-stage workflows.
+ * Stepper — pure SVG state engine display.
  *
- * Renders on its own void backdrop so it reads correctly regardless of parent surface.
- * Layout order: header → dot chain → active label → detail.
+ * Visual state is decoupled from data state. The incoming `active`
+ * prop is the data truth; internally the Stepper maintains a
+ * `visualActive` that catches up one step at a time with a pacing
+ * delay, ensuring every connector sweep and node ping plays out
+ * even when the backend blows through phases in milliseconds.
  *
- * When the final step is reached, all dots fire a staggered flourish animation
- * and the label lands in cyan with a scale entrance.
- *
- * Per-dot health coloring: only the active dot reflects stepHealth.
- * Reached dots behind active stay cyan (they succeeded). Unreached dots stay --color-line.
+ * Error messages live on StepperStep.error — rendered natively.
  */
-export default function Stepper({ steps, active, header, detail, stepHealth, opacity }: {
+export default function Stepper({ steps, active: dataActive, header, detail, stepHealth, opacity }: {
   steps: readonly StepperStep[];
   active: number;
   header?: ReactNode;
@@ -28,26 +55,43 @@ export default function Stepper({ steps, active, header, detail, stepHealth, opa
   stepHealth?: Record<string, StepHealth>;
   opacity?: number;
 }) {
-  const isFinal = active === steps.length - 1;
-  const activeKey = steps[active]?.key;
-  const health = (activeKey && stepHealth?.[activeKey]) ?? 'normal';
+  const n = steps.length;
 
-  // Color tokens per health state (only applied to the active dot)
-  const healthColor = health === 'error'
-    ? 'var(--color-red)'
-    : health === 'warning'
-      ? 'var(--color-amber)'
-      : 'var(--color-cyan)';
+  // ── Visual pacing: catch-up loop ───────────────────
+  const [visualActive, setVisualActive] = useState(dataActive);
 
-  const healthGlow = health === 'error'
-    ? '0 0 8px var(--color-red), 0 0 16px oklch(0.650 0.200 25 / 0.15)'
-    : health === 'warning'
-      ? '0 0 8px var(--color-amber), 0 0 16px oklch(0.750 0.185 60 / 0.15)'
-      : '0 0 8px var(--color-cyan), 0 0 16px oklch(0.750 0.180 195 / 0.15)';
+  useEffect(() => {
+    // Reset backward immediately (cancel, restart, error)
+    if (dataActive < visualActive) {
+      setVisualActive(dataActive);
+      return;
+    }
+    // Catch up one step at a time
+    if (dataActive > visualActive) {
+      const timer = setTimeout(() => {
+        setVisualActive(prev => prev + 1);
+      }, STEP_PACE_MS);
+      return () => clearTimeout(timer);
+    }
+  }, [dataActive, visualActive]);
 
-  const healthAnim = health === 'error'
-    ? 'errorFlash 1.5s ease-in-out infinite'
-    : 'pulse 1.5s ease-in-out infinite';
+  if (n === 0) return null;
+
+  // ── All rendering uses visualActive ────────────────
+  const active = visualActive;
+  const isFinal = active === n - 1;
+  const activeStep = steps[active];
+  const activeKey = activeStep?.key;
+  const activeError = activeStep?.error;
+
+  // step.error takes precedence → always 'error' health
+  const health: StepHealth = activeError
+    ? 'error'
+    : (activeKey ? stepHealth?.[activeKey] : undefined) ?? 'normal';
+  const accent = accentFor(health);
+
+  const W = 2 * MX + (n - 1) * GAP;
+  const cx = (i: number) => MX + i * GAP;
 
   return (
     <div
@@ -59,69 +103,115 @@ export default function Stepper({ steps, active, header, detail, stepHealth, opa
         transition: 'opacity var(--t-phi) var(--ease-phi)',
       }}
     >
-      {/* Header slot — progress bar above the dots */}
       {header && <div className="mb-2">{header}</div>}
 
-      {/* Dot chain */}
-      <div
-        className="flex items-center justify-center gap-1.5"
-        style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-xs)' }}
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        width={W}
+        height={H}
+        style={{ display: 'block', maxWidth: '100%', height: 'auto', margin: '0 auto', overflow: 'visible' }}
+        role="img"
+        aria-label={`Step ${active + 1} of ${n}: ${activeStep?.label}`}
       >
+        {/* ── Connectors ── */}
+        {Array.from({ length: n - 1 }, (_, i) => {
+          const reached = i + 1 <= active;
+          const revealing = i + 1 === active && !isFinal;
+          const x1 = cx(i) + R + PAD;
+          const x2 = cx(i + 1) - R - PAD;
+
+          return (
+            <g key={`c${i}`}>
+              <line
+                x1={x1} y1={CY} x2={x2} y2={CY}
+                stroke={reached || revealing ? 'var(--color-cyan)' : 'var(--color-line)'}
+                strokeWidth={CONN_W}
+                strokeLinecap="round"
+                style={{ transition: 'stroke var(--t-phi) var(--ease-phi)' }}
+              />
+              {revealing && (
+                <line
+                  key={`r${active}`}
+                  x1={x1} y1={CY} x2={x2} y2={CY}
+                  stroke={accent}
+                  strokeWidth={CONN_W}
+                  strokeLinecap="round"
+                  strokeDasharray={CONN}
+                  strokeDashoffset={CONN}
+                  className="stepper-reveal"
+                />
+              )}
+              {isFinal && reached && (
+                <line
+                  x1={x1} y1={CY} x2={x2} y2={CY}
+                  stroke="var(--color-cyan)"
+                  strokeWidth={GLOW_W}
+                  strokeLinecap="round"
+                  className="stepper-conn-flourish"
+                  style={{ animationDelay: `${(i + 1) * 60}ms` }}
+                />
+              )}
+            </g>
+          );
+        })}
+
+        {/* ── Nodes ── */}
         {steps.map((step, i) => {
           const reached = i <= active;
           const current = i === active;
           const pulsing = current && !isFinal;
 
-          // Active dot uses health color; reached-behind stays cyan; unreached is line
-          const dotColor = current
-            ? healthColor
+          const color = current
+            ? accent
             : reached
               ? 'var(--color-cyan)'
               : 'var(--color-line)';
 
-          const connColor = reached ? (current ? healthColor : 'var(--color-cyan)') : 'var(--color-line)';
-
           return (
-            <span key={step.key} className="flex items-center gap-1.5">
-              {i > 0 && (
-                <span
-                  style={{
-                    display: 'block',
-                    width: 16,
-                    height: isFinal ? 2 : 1,
-                    borderRadius: 1,
-                    background: connColor,
-                    boxShadow: isFinal && reached ? '0 0 6px oklch(0.750 0.180 195 / 0.3)' : 'none',
-                    transition: 'background var(--t-phi) var(--ease-phi), height var(--t-phi) var(--ease-phi), box-shadow var(--t-phi) var(--ease-phi)',
-                  }}
+            <g key={step.key} transform={`translate(${cx(i)},${CY})`}>
+              {isFinal && reached && (
+                <circle
+                  r={R}
+                  fill="var(--color-cyan)"
+                  className="stepper-flourish-ping"
+                  style={{ animationDelay: `${i * 80}ms` }}
                 />
               )}
-              <span
-                style={{
-                  display: 'inline-block',
-                  width: 10,
-                  height: 10,
-                  borderRadius: '50%',
-                  background: dotColor,
-                  boxShadow: pulsing
-                    ? healthGlow
-                    : isFinal && reached
-                      ? '0 0 6px oklch(0.750 0.180 195 / 0.15)'
-                      : reached
-                        ? '0 0 4px oklch(0.750 0.180 195 / 0.1)'
-                        : 'none',
-                  animation: pulsing
-                    ? healthAnim
-                    : isFinal && reached
-                      ? `flourish 618ms var(--ease-phi) ${i * 60}ms both`
-                      : 'none',
-                  transition: 'background var(--t-phi) var(--ease-phi), box-shadow var(--t-phi) var(--ease-phi)',
-                }}
-              />
-            </span>
+
+              {pulsing && (
+                <circle
+                  r={R}
+                  fill={accent}
+                  className="stepper-ping"
+                  style={health === 'error' ? { animationDuration: '1.2s' } : undefined}
+                />
+              )}
+
+              <g
+                className={isFinal && reached ? 'stepper-flourish' : undefined}
+                style={isFinal && reached ? { animationDelay: `${i * 80}ms` } : undefined}
+              >
+                <circle
+                  r={R}
+                  fill="none"
+                  stroke={color}
+                  strokeWidth={RING}
+                  style={{ transition: 'stroke var(--t-phi) var(--ease-phi)' }}
+                />
+                <circle
+                  r={CORE}
+                  fill={color}
+                  style={{
+                    transform: reached ? 'scale(1)' : 'scale(0)',
+                    transition: 'transform var(--t-phi) var(--ease-phi), fill var(--t-phi) var(--ease-phi)',
+                    willChange: 'transform',
+                  }}
+                />
+              </g>
+            </g>
           );
         })}
-      </div>
+      </svg>
 
       {/* Active step label */}
       <div className="text-center mt-2">
@@ -141,16 +231,27 @@ export default function Stepper({ steps, active, header, detail, stepHealth, opa
             transition: 'color var(--t-phi) var(--ease-phi)',
           }}
         >
-          {steps[active]?.label}
+          {activeStep?.label}
         </Text>
       </div>
 
-      {/* Optional detail slot — progress bars, stats, etc. */}
-      {detail && (
-        <div className="mt-2">
-          {detail}
+      {/* Error message — rendered natively from step.error */}
+      {activeError && (
+        <div className="text-center mt-1">
+          <Text
+            variant="dim"
+            style={{
+              fontSize: 'var(--font-size-xs)',
+              fontFamily: 'var(--font-mono)',
+              color: 'var(--color-red)',
+            }}
+          >
+            {activeError}
+          </Text>
         </div>
       )}
+
+      {detail && <div className="mt-2">{detail}</div>}
     </div>
   );
 }

@@ -1144,7 +1144,7 @@ export function useEngineJobQuery(jobId?: string) {
       const s = query.state.data?.status;
       if (s === 'complete' || s === 'failed') return false;
       // Back off polling when erroring, but keep trying
-      return query.state.error ? 5000 : 2000;
+      return query.state.error ? 5000 : 100;
     },
   });
 }

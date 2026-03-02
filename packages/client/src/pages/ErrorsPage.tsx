@@ -60,7 +60,7 @@ export default function ErrorsPage() {
               {data!.map((f, i) => (
                 <div
                   key={f.id}
-                  className="border-b border-line transition-colors duration-fast hover:bg-base stagger-item"
+                  className="border-b border-line stagger-item row-hover"
                   style={{ '--i': Math.min(i, 15) } as React.CSSProperties}
                 >
                   {/* Summary row */}

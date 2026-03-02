@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useMemo } from 'react';
 import { useMultipartUpload, useCollectionsQuery, useTechniquesQuery } from '../hooks/useGenomicQueries';
 import type { Collection, Technique } from '../hooks/useGenomicQueries';
 import { detectFormat, FORMAT_META, formatBytes } from '../lib/formats';
-import { Button, Text, Heading, Input, HashPill } from '../ui';
+import { Button, Text, Heading, Input, HashChip } from '../ui';
 import { CollectionPicker, OrganismPicker, FileTypePicker } from '../ui';
 
 // ── Drop zone ─────────────────────────────────────────────
@@ -96,7 +96,7 @@ function QueueItem({ file, organismId, collectionId, type, description, tags, on
   return (
     <div className="flex flex-col gap-2 p-2.5 bg-base border border-line rounded-md">
       <div className="flex items-center gap-2">
-        <HashPill label={meta.label} colorKey={fmt} />
+        <HashChip label={meta.label} colorKey={fmt} />
         <div className="flex-1 min-w-0">
           <Text variant="mono" className="truncate block">{file.name}</Text>
           <Text variant="dim">{formatBytes(file.size)} · {meta.label}</Text>
@@ -163,7 +163,7 @@ function ProgressBar({ filename, loaded, total, status, error }: ProgressBarProp
   return (
     <div className="flex flex-col gap-1 p-2 bg-base border border-line rounded-md">
       <div className="flex items-center gap-2">
-        <HashPill label={meta.label} colorKey={fmt} />
+        <HashChip label={meta.label} colorKey={fmt} />
         <Text variant="mono" className="flex-1 truncate min-w-0">{filename}</Text>
         <Text variant="dim" className="shrink-0 tabular-nums">
           {status === 'done' ? '✓' : status === 'error' ? '✗' : `${pct}%`}
