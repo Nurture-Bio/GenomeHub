@@ -128,13 +128,15 @@ const PARQUET_STEPS = [
 
 // ── DistributionPlot ──────────────────────────────────────────────────────────
 
-const DistributionPlot = memo(function DistributionPlot({ staticBins, dynamicBins, height, lowPct, highPct, pending }: {
+/** Imperative handle for driving the ghost mask clip without re-rendering. */
+interface DistPlotHandle { setClip(lowPct: number, highPct: number): void; }
+
+const DistributionPlot = memo(function DistributionPlot({ staticBins, dynamicBins, height, pending, handleRef }: {
   staticBins:   number[];
   dynamicBins?: number[];
   height:       number;
-  lowPct:       number;
-  highPct:      number;
   pending?:     boolean;
+  handleRef?:   React.MutableRefObject<DistPlotHandle | null>;
 }) {
   const n = staticBins.length;
   if (n === 0) return null;
@@ -155,16 +157,23 @@ const DistributionPlot = memo(function DistributionPlot({ staticBins, dynamicBin
   const activeMax  = dynamicBins ? dynamicMax : staticMax;
 
   // Ghost mask — ref-driven so drag updates bypass React reconciliation.
-  // The clipPath rect is updated imperatively via useEffect.
+  // lowPct/highPct are pushed in via setClip() — never as props.
   const clipId = useRef(`ghost-mask-${Math.random().toString(36).slice(2, 8)}`).current;
   const clipRectRef = useRef<SVGRectElement>(null);
 
+  // Expose imperative setClip to parent — drives clip at 60fps without re-render
   useEffect(() => {
-    if (clipRectRef.current) {
-      clipRectRef.current.setAttribute('x', String(lowPct));
-      clipRectRef.current.setAttribute('width', String(Math.max(0, highPct - lowPct)));
+    if (handleRef) {
+      handleRef.current = {
+        setClip(lowPct: number, highPct: number) {
+          if (clipRectRef.current) {
+            clipRectRef.current.setAttribute('x', String(lowPct));
+            clipRectRef.current.setAttribute('width', String(Math.max(0, highPct - lowPct)));
+          }
+        },
+      };
     }
-  }, [lowPct, highPct]);
+  }, [handleRef]);
 
   // Memoize static rects — bin data only changes when server responds, not during drag
   const staticRects = useMemo(() =>
@@ -181,6 +190,26 @@ const DistributionPlot = memo(function DistributionPlot({ staticBins, dynamicBin
     [staticBins, staticMax, height, binW],
   );
 
+  // Memoize dynamic rects — only recompute when bin data or height changes
+  const dynamicRects = useMemo(() =>
+    activeBins.map((v, i) => {
+      const barH = (v / activeMax) * height;
+      return (
+        <rect key={i}
+          x={i * binW}
+          width={binW}
+          fill="var(--color-cyan)" opacity={0.45}
+          style={{
+            y: height - barH,
+            height: barH,
+            transition: 'y 300ms ease-out, height 300ms ease-out',
+          }}
+        />
+      );
+    }),
+    [activeBins, activeMax, height, binW],
+  );
+
   return (
     <svg
       viewBox={`0 0 100 ${height}`}
@@ -192,7 +221,7 @@ const DistributionPlot = memo(function DistributionPlot({ staticBins, dynamicBin
     >
       <defs>
         <clipPath id={clipId}>
-          <rect ref={clipRectRef} x={lowPct} y="0" width={Math.max(0, highPct - lowPct)} height={height}
+          <rect ref={clipRectRef} y="0" width="100" height={height}
             style={{ transition: 'x 150ms ease-out, width 150ms ease-out' }} />
         </clipPath>
       </defs>
@@ -208,25 +237,20 @@ const DistributionPlot = memo(function DistributionPlot({ staticBins, dynamicBin
         transition: 'opacity 200ms',
         animation: pending ? 'distPlotBreath 1.5s ease-in-out infinite' : 'none',
       }}>
-        {activeBins.map((v, i) => {
-          const barH = (v / activeMax) * height;
-          return (
-            <rect key={i}
-              x={i * binW}
-              width={binW}
-              fill="var(--color-cyan)" opacity={0.45}
-              style={{
-                y: height - barH,
-                height: barH,
-                transition: 'y 300ms ease-out, height 300ms ease-out',
-              }}
-            />
-          );
-        })}
+        {dynamicRects}
       </g>
     </svg>
   );
-});
+},
+// Custom comparator: only re-render when bin data or pending changes.
+// Clip position is driven imperatively via handleRef.setClip — never triggers re-render.
+(prev, next) =>
+  prev.staticBins === next.staticBins &&
+  prev.dynamicBins === next.dynamicBins &&
+  prev.height === next.height &&
+  prev.pending === next.pending &&
+  prev.handleRef === next.handleRef,
+);
 
 // ── EditableNumber ────────────────────────────────────────────────────────────
 
@@ -344,6 +368,7 @@ function RangeSlider({ name, min, max, low, high, onDrag, onCommit, constrainedM
 
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef<{ lo: number; hi: number } | null>(null);
+  const distPlotRef = useRef<DistPlotHandle | null>(null);
 
   const range   = max - min || 1;
   const lowPct  = ((low  - min) / range) * 100;
@@ -402,6 +427,11 @@ function RangeSlider({ name, min, max, low, high, onDrag, onCommit, constrainedM
     onCommit(name);
   };
 
+  // Drive the ghost mask clip imperatively — no re-render of DistributionPlot
+  useEffect(() => {
+    distPlotRef.current?.setClip(lowPct, highPct);
+  }, [lowPct, highPct]);
+
   const PLOT_H = 20;
 
   return (
@@ -412,9 +442,8 @@ function RangeSlider({ name, min, max, low, high, onDrag, onCommit, constrainedM
             staticBins={staticHistogram}
             dynamicBins={hasConData ? dynamicHistogram : undefined}
             height={PLOT_H}
-            lowPct={lowPct}
-            highPct={highPct}
             pending={pending}
+            handleRef={distPlotRef}
           />
         </div>
       )}
