@@ -86,24 +86,59 @@ $$
 **The Dynamic Layer (The Truth):** Renders `activeBins`. It is **always mounted** (the Genesis Render) and **always clipped** to the Ghost Mask. If it were unclipped, the pre-filtered Genesis shape would flare brightly outside the handles while waiting for the network.
 
 ```tsx
-<svg>
-  <defs>
-    {/* The Ghost Mask glides with the handles */}
-    <clipPath id={clipId}>
-      <rect x={lowPct} width={highPct - lowPct} height={height}
-            style={{ transition: 'x 150ms ease-out, width 150ms ease-out' }} />
-    </clipPath>
-  </defs>
+// DistributionPlot receives NO position props — only data and pending state.
+// The clip is driven imperatively via handleRef.setClip().
 
-  {/* Static Ghost: Unclipped, absolute truth */}
-  <g opacity={0.12}>{staticRects}</g>
+interface DistPlotHandle { setClip(lowPct: number, highPct: number): void; }
 
-  {/* Dynamic Truth: Clipped, breathing, morphing */}
-  <g clipPath={`url(#${clipId})`} style={{ opacity: pending ? 0.5 : 1 }}>
-    {activeRects}
-  </g>
-</svg>
+const DistributionPlot = memo(function DistributionPlot({ staticBins, dynamicBins, height, pending, handleRef }) {
+  const clipRectRef = useRef<SVGRectElement>(null);
+
+  // Expose imperative clip control — parent drives at 60fps, zero re-renders
+  useEffect(() => {
+    if (handleRef) {
+      handleRef.current = {
+        setClip(lowPct, highPct) {
+          clipRectRef.current?.setAttribute('x', String(lowPct));
+          clipRectRef.current?.setAttribute('width', String(Math.max(0, highPct - lowPct)));
+        },
+      };
+    }
+  }, [handleRef]);
+
+  const staticRects  = useMemo(() => /* 64 rects from staticBins */, [staticBins]);
+  const dynamicRects = useMemo(() => /* 64 rects from activeBins */, [activeBins]);
+
+  return (
+    <svg>
+      <defs>
+        <clipPath id={clipId}>
+          <rect ref={clipRectRef} y="0" width="100" height={height}
+                style={{ transition: 'x 150ms ease-out, width 150ms ease-out' }} />
+        </clipPath>
+      </defs>
+
+      {/* Static Ghost: Unclipped, absolute truth */}
+      <g opacity={0.12}>{staticRects}</g>
+
+      {/* Dynamic Truth: Clipped, breathing, morphing */}
+      <g clipPath={`url(#${clipId})`} style={{ opacity: pending ? 0.5 : 1 }}>
+        {dynamicRects}
+      </g>
+    </svg>
+  );
+},
+// Custom comparator: clip position changes NEVER trigger re-render
+(prev, next) =>
+  prev.staticBins === next.staticBins &&
+  prev.dynamicBins === next.dynamicBins &&
+  prev.height === next.height &&
+  prev.pending === next.pending &&
+  prev.handleRef === next.handleRef,
+);
 ```
+
+**The Imperative Bridge:** The parent `RangeSlider` holds a `distPlotRef` and calls `setClip()` in a `useEffect` keyed to `[lowPct, highPct]`. This is a pure DOM mutation — `setAttribute` on the SVG `<rect>` — that never enters React's reconciliation cycle. During a drag, React re-renders the slider inputs (2 lightweight `<input type="range">` elements), but the 128 SVG rects stand perfectly still.
 
 ---
 
@@ -143,6 +178,22 @@ $$
   style={{ transition: 'y 300ms ease-out, height 300ms ease-out' }}
 />
 ```
+
+### The Performance Contract
+
+During a drag, the render cost must be $O(1)$, not $O(N_{\text{bins}})$:
+
+```
+User drags thumb
+  → rAF-throttled setState (1 per frame)
+  → RangeSlider re-renders (2 lightweight <input> elements)
+  → useEffect calls distPlotRef.current.setClip(lowPct, highPct)
+  → setAttribute('x', ...) on a single SVG <rect>
+  → DistributionPlot does NOT re-render (custom memo comparator blocks it)
+  → 128 SVG rects (64 static + 64 dynamic) stay frozen in the DOM
+```
+
+This is not an optimization. This is the *only correct architecture*. Reconciling 128 virtual DOM nodes at 60 FPS is a tax that compounds across every slider on screen. The imperative bridge eliminates that tax entirely.
 
 ---
 
