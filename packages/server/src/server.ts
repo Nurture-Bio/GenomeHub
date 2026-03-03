@@ -34,6 +34,7 @@ import statsRoutes from './routes/stats.js';
 import relationTypeRoutes from './routes/relation_types.js';
 import fileTypeRoutes from './routes/file_types.js';
 import engineRoutes from './routes/engines.js';
+import queryRoutes from './routes/query.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fallbackLimiter = rateLimit({
@@ -92,6 +93,7 @@ app.use('/api', (req: Request, res: Response, next: NextFunction) => {
 
 app.use('/api/collections', collectionRoutes);
 app.use('/api/files', fileRoutes);
+app.use('/api/files', queryRoutes);
 app.use('/api/uploads', uploadRoutes);
 app.use('/api/organisms', organismRoutes);
 app.use('/api/techniques', techniqueRoutes);

@@ -200,42 +200,33 @@ async function mergeProfileToDb(
 
 // ── DuckDB Session ──────────────────────────────────────────────────────────
 
-interface DuckDbSession {
+export interface DuckDbSession {
   query: (sql: string) => Promise<any[]>;
   exec:  (sql: string) => Promise<void>;
   safeSrc: string;
 }
 
-async function openDuckDbSession(parquetS3Key: string): Promise<{
+export async function openDuckDbSession(parquetS3Key: string): Promise<{
   session: DuckDbSession;
   close: () => Promise<void>;
 }> {
-  const duckdb = await import('duckdb');
-  const db = new (duckdb as any).default.Database(':memory:');
-  const conn = db.connect();
+  const { getConnection } = await import('./duckdb.js');
+  const conn = await getConnection();
   const src = duckdbSrc(parquetS3Key);
   const safeSrc = src.replace(/'/g, "''");
 
-  const query = (sql: string): Promise<any[]> =>
-    new Promise((resolve, reject) => {
-      conn.all(sql, (err: Error | null, rows: any[]) => {
-        if (err) reject(err); else resolve(rows ?? []);
-      });
-    });
+  const query = async (sql: string): Promise<any[]> => {
+    const result = await conn.runAndReadAll(sql);
+    return result.getRowObjects();
+  };
 
-  const exec = (sql: string): Promise<void> =>
-    new Promise((resolve, reject) => {
-      conn.exec(sql, (err: Error | null) => {
-        if (err) reject(err); else resolve();
-      });
-    });
-
-  const setup = duckdbSetup();
-  if (setup) await exec(setup);
+  const exec = async (sql: string): Promise<void> => {
+    await conn.run(sql);
+  };
 
   return {
     session: { query, exec, safeSrc },
-    close: () => new Promise<void>(resolve => db.close(() => resolve())),
+    close: async () => { conn.closeSync(); },
   };
 }
 
@@ -249,18 +240,18 @@ const NUMERIC_TYPES = new Set([
   'FLOAT', 'DOUBLE', 'DECIMAL',
 ]);
 
-function isNumeric(duckdbType: string): boolean {
+export function isNumeric(duckdbType: string): boolean {
   const base = duckdbType.split('(')[0].toUpperCase();
   return NUMERIC_TYPES.has(base);
 }
 
-function safeName(name: string): string {
+export function safeName(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
 }
 
 // ── STRUCT expansion ─────────────────────────────────────────────────────────
 
-interface FlatColumn {
+export interface FlatColumn {
   name: string;     // e.g. "tags.offset" — used as key in results
   type: string;     // e.g. "BIGINT"
   sqlExpr: string;  // e.g. "tags"."offset" — used in SQL
@@ -290,7 +281,7 @@ function parseField(s: string): { name: string; type: string } {
 }
 
 /** Expand STRUCT columns into flat dot-notation columns with SQL expressions. */
-function expandSchema(schema: { name: string; type: string }[]): FlatColumn[] {
+export function expandSchema(schema: { name: string; type: string }[]): FlatColumn[] {
   const result: FlatColumn[] = [];
   for (const col of schema) {
     if (col.type.startsWith('STRUCT(')) {

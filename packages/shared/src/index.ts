@@ -10,3 +10,4 @@ export type {
   Lazy,
   JsonValue, JsonObject, JsonArray,
 } from './data_profile.js';
+export type { FilterOp, FilterSpec, SortSpec } from './query_types.js';

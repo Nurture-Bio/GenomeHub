@@ -8,8 +8,8 @@ import AuthProvider from './providers/AuthProvider';
 import './index.css';
 import App from './App';
 
-// Eager DuckDB WASM boot — starts immediately, resolves before user navigates to a file.
-import './lib/duckdb.js';
+// DuckDB WASM boot removed — Parquet queries now run server-side.
+// Legacy JSON preview (useJsonDuckDb) boots WASM lazily on demand.
 
 // ── TEMPORARY: Font rendering debugger ───────────────────────────────────────
 if (import.meta.env.DEV) {

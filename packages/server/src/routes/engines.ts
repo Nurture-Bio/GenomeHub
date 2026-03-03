@@ -9,10 +9,68 @@ import { asyncWrap } from '../lib/async_wrap.js';
 import { s3, BUCKET, putObjectStream, buildS3Key, headObject } from '../lib/s3.js';
 import { isLocal, storagePath, localFileSize, ensureDir } from '../lib/storage.js';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
-import { detectFormat } from '@genome-hub/shared';
+import { detectFormat, isConvertible } from '@genome-hub/shared';
 import * as edges from '../lib/edge_service.js';
+import { convertToParquet } from '../lib/parquet.js';
+import { extractBaseProfile, hydrateAttributes, ALL_KEYS } from '../lib/data_profile.js';
 
 const router = Router();
+
+/**
+ * Fire-and-forget: convert engine result to Parquet (if needed) and hydrate profile.
+ * Sequential: base profile → hydrate stats → mark ready.
+ */
+function profileEngineResult(file: GenomicFile): void {
+  const fileRepo = AppDataSource.getRepository(GenomicFile);
+  const fmt = detectFormat(file.filename);
+
+  if (fmt === 'parquet') {
+    // Native parquet — no conversion needed, just profile
+    (async () => {
+      try {
+        const baseProfile = await extractBaseProfile(file.s3Key);
+        await fileRepo.update(file.id, { dataProfile: baseProfile });
+        await hydrateAttributes(file.s3Key, file.id, baseProfile, ALL_KEYS);
+      } catch (err) {
+        console.error(JSON.stringify({
+          tag: '[ENGINE_PROFILE_FAILED]', fileId: file.id,
+          error: err instanceof Error ? err.message : String(err),
+          timestamp: new Date().toISOString(),
+        }));
+      }
+    })();
+    return;
+  }
+
+  if (!isConvertible(file.filename)) return;
+
+  const parquetKey = file.s3Key + '.parquet';
+  fileRepo.update(file.id, { parquetStatus: 'converting' })
+    .then(() => convertToParquet(file.s3Key, parquetKey, fmt, Number(file.sizeBytes), file.id))
+    .then(async () => {
+      try {
+        const baseProfile = await extractBaseProfile(parquetKey);
+        await fileRepo.update(file.id, { parquetS3Key: parquetKey, dataProfile: baseProfile });
+        await hydrateAttributes(parquetKey, file.id, baseProfile, ALL_KEYS);
+      } catch (err) {
+        console.error(JSON.stringify({
+          tag: '[ENGINE_PROFILE_FAILED]', fileId: file.id,
+          error: err instanceof Error ? err.message : String(err),
+          timestamp: new Date().toISOString(),
+        }));
+      }
+      await fileRepo.update(file.id, { parquetStatus: 'ready' });
+    })
+    .catch(async (err) => {
+      console.error(JSON.stringify({
+        tag: '[ENGINE_PARQUET_FAILED]', fileId: file.id,
+        error: err instanceof Error ? err.message : String(err),
+        timestamp: new Date().toISOString(),
+      }));
+      const errMsg = err instanceof Error ? err.message : String(err);
+      await fileRepo.update(file.id, { parquetStatus: 'failed', parquetError: errMsg });
+    });
+}
 
 // ── Helpers ───────────────────────────────────────────────
 
@@ -179,6 +237,9 @@ async function runAsyncJob(
         userId,
       );
     }
+
+    // Fire-and-forget: convert to Parquet + hydrate profile
+    profileEngineResult(resultFile);
 
     job.status   = 'complete';
     job.fileId   = resultFile.id;
@@ -476,6 +537,9 @@ router.post('/:id/methods/:methodId', asyncWrap(async (req, res) => {
       userId,
     );
   }
+
+  // Fire-and-forget: convert to Parquet + hydrate profile
+  profileEngineResult(resultFile);
 
   res.json({ fileId: resultFile.id, filename: resultFile.filename });
 }));

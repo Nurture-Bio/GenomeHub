@@ -168,7 +168,7 @@ export default function FileDetailPage() {
 
       {/* File preview — ParquetPreview always mounts once with fileId.
            FilePreview only renders for non-convertible files (plain text). */}
-      {file && !isConvertible(file.filename) ? (
+      {file && !isConvertible(file.filename) && detectFormat(file.filename) !== 'parquet' ? (
         <FilePreview fileId={fileId!} filename={file.filename} sizeBytes={file.sizeBytes} />
       ) : (
         <ParquetPreview fileId={fileId!} onProgress={setStepperConfig} />

@@ -1,8 +1,8 @@
 /**
- * ParquetPreview — DuckDB WASM over Parquet with windowed row fetching.
+ * ParquetPreview — server-side DuckDB over Parquet via POST /api/files/:id/query.
  *
  * UI reuses filter sidebar + virtualizer patterns from the preview component family.
- * Data layer: rows come from fetchWindow() → Map cache, not a SAB cursor.
+ * Data layer: rows come from fetchWindow() → server query → Map cache.
  */
 
 import { useRef, useMemo, useState, useCallback, useEffect, memo, Profiler } from 'react';
@@ -128,9 +128,9 @@ function ColName({ name }: { name: string }) {
 
 const PARQUET_STEPS = [
   { key: 'profile',  label: 'Reading schema' },
-  { key: 'boot',     label: 'Starting engine' },
-  { key: 'register', label: 'Opening dataset' },
-  { key: 'query',    label: 'Drawing rows' },
+  { key: 'connect',  label: 'Connecting' },
+  { key: 'query',    label: 'Querying server' },
+  { key: 'draw',     label: 'Drawing rows' },
   { key: 'ready',    label: 'Ready' },
 ] as const;
 
@@ -573,7 +573,7 @@ const VirtualRows = memo(function VirtualRows({
 }: {
   scrollRef:   RefObject<HTMLDivElement | null>;
   rowCount:    number;
-  fetchWindow: (offset: number, limit: number) => Promise<Record<string, unknown>[]>;
+  fetchWindow: (offset: number, limit: number, signal?: AbortSignal) => Promise<Record<string, unknown>[]>;
   columns:     ColumnInfo[];
   columnStats: Record<string, ColumnStats>;
   colWidths:   Record<string, number>;
@@ -586,7 +586,6 @@ const VirtualRows = memo(function VirtualRows({
   const [rows, setRows] = useState<Map<number, Record<string, unknown>>>(() => {
     return snapshotCache?.() ?? new Map();
   });
-  const fetchingRef = useRef<Set<string>>(new Set());
 
   const virtualizer = useVirtualizer({
     count:            rowCount,
@@ -596,46 +595,75 @@ const VirtualRows = memo(function VirtualRows({
     initialRect:      { width: 0, height: 800 },
   });
 
-  // Fetch visible rows — collect all distinct window starts for uncached rows
+  // Debounced fetch — waits 150ms after scroll stops before hitting the server.
+  // Cancels in-flight requests when the viewport moves again.
+  // Evicts rows far from the viewport to cap memory (keeps ±MAX_CACHED_ROWS).
   const items = virtualizer.getVirtualItems();
+  const abortRef = useRef<AbortController | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
   useEffect(() => {
     if (items.length === 0) return;
-
-    // Do not attempt to fetch missing rows until the background engine is fully online.
-    // When the FSM transitions to 'ready', this effect will automatically re-run
-    // and hydrate the skeletons.
     if (pipelineStatus !== 'ready') return;
 
     const start = items[0].index;
     const end   = items[items.length - 1].index;
 
     // Collect all window starts that need fetching
-    const windowStarts = new Set<number>();
+    const windowStarts: number[] = [];
+    const seen = new Set<number>();
     for (let i = start; i <= end; i++) {
       if (!rows.has(i)) {
-        windowStarts.add(Math.floor(i / WINDOW_SIZE) * WINDOW_SIZE);
+        const ws = Math.floor(i / WINDOW_SIZE) * WINDOW_SIZE;
+        if (!seen.has(ws)) { seen.add(ws); windowStarts.push(ws); }
       }
     }
 
-    for (const windowStart of windowStarts) {
-      const key = `${windowStart}`;
-      if (fetchingRef.current.has(key)) continue;
-      fetchingRef.current.add(key);
+    if (windowStarts.length === 0) return;
 
-      fetchWindow(windowStart, WINDOW_SIZE).then(fetched => {
-        fetchingRef.current.delete(key);
+    // Cancel previous debounce + in-flight fetch
+    clearTimeout(timerRef.current);
+    abortRef.current?.abort();
+
+    timerRef.current = setTimeout(() => {
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      Promise.all(
+        windowStarts.map(ws =>
+          fetchWindow(ws, WINDOW_SIZE, controller.signal)
+            .then(fetched => ({ ws, fetched }))
+            .catch(() => null)
+        )
+      ).then(results => {
+        if (controller.signal.aborted) return;
         setRows(prev => {
           const next = new Map(prev);
-          for (let i = 0; i < fetched.length; i++) {
-            next.set(windowStart + i, fetched[i]);
+          for (const r of results) {
+            if (!r) continue;
+            for (let i = 0; i < r.fetched.length; i++) {
+              next.set(r.ws + i, r.fetched[i]);
+            }
+          }
+          // Evict rows far from viewport — keep ±MAX_CACHED_ROWS around center
+          const center = Math.floor((start + end) / 2);
+          const MAX_CACHED_ROWS = 2000;
+          if (next.size > MAX_CACHED_ROWS) {
+            for (const key of next.keys()) {
+              if (Math.abs(key - center) > MAX_CACHED_ROWS / 2) {
+                next.delete(key);
+              }
+            }
           }
           return next;
         });
-      }).catch((err) => {
-        console.error('DuckDB Fetch Error:', err);
-        fetchingRef.current.delete(key);
       });
-    }
+    }, 150);
+
+    return () => {
+      clearTimeout(timerRef.current);
+      abortRef.current?.abort();
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items.length > 0 ? items[0].index : -1, items.length > 0 ? items[items.length - 1].index : -1, fetchWindow, pipelineStatus]);
 
@@ -721,7 +749,7 @@ export default function ParquetPreview({ fileId, onProgress }: {
   } = useParquetPreview(fileId);
 
   // Demand-driven: fetch enrichable attributes from the server
-  // Fires when columns are available — does NOT wait for WASM
+  // Fires when columns are available
   const { profile } = useDataProfile(
     columns.length > 0 ? fileId : null,
     ['columnStats', 'cardinality', 'charLengths', 'initialRows', 'histograms'],
@@ -919,7 +947,7 @@ export default function ParquetPreview({ fileId, onProgress }: {
   // ── Build filter specs and apply ────────────────────────────────────────────
 
   const triggerFilters = useCallback(() => {
-    if (pipeline.status !== 'ready') return; // accumulate in state; applied when WASM boots
+    if (pipeline.status !== 'ready') return; // accumulate in state; applied when server is ready
 
     const filters: FilterSpec[] = [];
 
@@ -954,7 +982,7 @@ export default function ParquetPreview({ fileId, onProgress }: {
       else setConstrainedHistograms({});
       setPendingConstraints(false);
     }).catch((err) => {
-      console.error('DuckDB Filter Error:', err);
+      console.error('Filter query error:', err);
       setPendingConstraints(false);
     });
   }, [pipeline.status, rangeState, selected, textFilters, sortSpecs, columnStats, applyFilters]);
@@ -962,10 +990,9 @@ export default function ParquetPreview({ fileId, onProgress }: {
   // Keep ref synced so debounced callbacks always call the latest version
   triggerRef.current = triggerFilters;
 
-  // Catch-up: apply accumulated filters when WASM becomes ready or sort changes.
-  // On the FIRST ready transition (background WASM boot completing), skip the wipe
-  // unless the user actually has active filters — otherwise this destroys the
-  // pre-flight data that is already painted on screen.
+  // Catch-up: apply accumulated filters when server becomes ready or sort changes.
+  // On the FIRST ready transition, skip the wipe unless the user actually has
+  // active filters — otherwise this destroys the pre-flight data already painted.
   const isFirstReadyRef = useRef(true);
   useEffect(() => {
     if (pipeline.status === 'ready') {
@@ -977,7 +1004,7 @@ export default function ParquetPreview({ fileId, onProgress }: {
         isFirstReadyRef.current = false;
         if (!hasActiveFilters) return;
       }
-      triggerFilters();
+      triggerRef.current();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pipeline.status, sorting]);

@@ -8,7 +8,7 @@
  * @module
  */
 
-import { duckdbSrc, duckdbSetup, ensureDir, isLocal } from './storage.js';
+import { duckdbSrc, ensureDir, isLocal } from './storage.js';
 
 const MAX_CONVERSION_BYTES = 1.5 * 1024 * 1024 * 1024;
 const MAX_RETRIES = 3;
@@ -113,11 +113,10 @@ function duckDbReader(src: string, format: string): string {
 }
 
 async function runDuckDbS3Conversion(ctx: ConversionContext): Promise<void> {
-  const duckdb = await import('duckdb');
-  const db = new (duckdb as any).default.Database(':memory:');
+  const { getConnection } = await import('./duckdb.js');
+  const conn = await getConnection();
 
   try {
-    const conn = db.connect();
     const src = duckdbSrc(ctx.s3Key);
     const dst = duckdbSrc(ctx.parquetS3Key);
     const safeDst = dst.replace(/'/g, "''");
@@ -125,29 +124,12 @@ async function runDuckDbS3Conversion(ctx: ConversionContext): Promise<void> {
     if (isLocal) await ensureDir(ctx.parquetS3Key);
 
     const reader = duckDbReader(src, ctx.format);
-    const setup = duckdbSetup();
-    const sql = `
-      ${setup}
-      COPY (
-        SELECT * FROM ${reader}
-      ) TO '${safeDst}' (FORMAT PARQUET, ROW_GROUP_SIZE 122880, COMPRESSION 'ZSTD');
-    `;
+    const sql =
+      `COPY (SELECT * FROM ${reader}) ` +
+      `TO '${safeDst}' (FORMAT PARQUET, ROW_GROUP_SIZE 122880, COMPRESSION 'ZSTD')`;
 
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        const err = new Error(`DuckDB conversion timed out after ${CONVERSION_TIMEOUT_MS / 1000}s`);
-        logConversionError(ctx, err, { reason: 'timeout' });
-        reject(err);
-      }, CONVERSION_TIMEOUT_MS);
-
-      conn.exec(sql, (err: Error | null) => {
-        clearTimeout(timer);
-        if (err) reject(err);
-        else resolve();
-      });
-    });
+    await conn.run(sql);
   } finally {
-    // Always close the native DuckDB database to prevent zombie threads / memory leaks
-    await new Promise<void>(resolve => db.close(() => resolve()));
+    conn.closeSync();
   }
 }

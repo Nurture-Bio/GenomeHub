@@ -135,12 +135,11 @@ router.post('/complete', asyncWrap(async (req, res) => {
 
       convertToParquet(file.s3Key, parquetKey, detectFormat(file.filename), Number(actualSize), fileId)
         .then(async () => {
-          await repo.update(fileId, { parquetS3Key: parquetKey, parquetStatus: 'ready' });
-          // Eager compute: extract base profile then hydrate all attributes
+          // Sequential: base profile → hydrate stats → mark ready.
+          // Never concurrent — mergeProfileToDb must not race with the base update.
           try {
             const baseProfile = await extractBaseProfile(parquetKey);
-            await repo.update(fileId, { dataProfile: baseProfile });
-            // Full hydration — profile is complete before user visits the page
+            await repo.update(fileId, { parquetS3Key: parquetKey, dataProfile: baseProfile });
             await hydrateAttributes(parquetKey, fileId, baseProfile, ALL_KEYS);
           } catch (profileErr) {
             console.error(JSON.stringify({
@@ -151,6 +150,7 @@ router.post('/complete', asyncWrap(async (req, res) => {
               timestamp: new Date().toISOString(),
             }));
           }
+          await repo.update(fileId, { parquetStatus: 'ready' });
         })
         .catch(async (err) => {
           console.error(JSON.stringify({
@@ -189,12 +189,9 @@ router.post('/complete', asyncWrap(async (req, res) => {
 
     convertToParquet(file.s3Key, parquetKey, detectFormat(file.filename), Number(actualSize), fileId)
       .then(async () => {
-        await repo.update(fileId, { parquetS3Key: parquetKey, parquetStatus: 'ready' });
-        // Eager compute: extract base profile then hydrate all attributes
         try {
           const baseProfile = await extractBaseProfile(parquetKey);
-          await repo.update(fileId, { dataProfile: baseProfile });
-          // Full hydration — profile is complete before user visits the page
+          await repo.update(fileId, { parquetS3Key: parquetKey, dataProfile: baseProfile });
           await hydrateAttributes(parquetKey, fileId, baseProfile, ALL_KEYS);
         } catch (profileErr) {
           console.error(JSON.stringify({
@@ -205,6 +202,7 @@ router.post('/complete', asyncWrap(async (req, res) => {
             timestamp: new Date().toISOString(),
           }));
         }
+        await repo.update(fileId, { parquetStatus: 'ready' });
       })
       .catch(async (err) => {
         console.error(JSON.stringify({

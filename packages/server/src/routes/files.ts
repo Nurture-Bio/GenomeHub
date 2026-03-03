@@ -236,11 +236,9 @@ router.get('/:id/parquet-url', asyncWrap(async (req, res) => {
       const parquetKey = file.s3Key + '.parquet';
       convertToParquet(file.s3Key, parquetKey, detectFormat(file.filename), Number(file.sizeBytes), file.id)
         .then(async () => {
-          await repo.update(file.id, { parquetS3Key: parquetKey, parquetStatus: 'ready' });
-          // Eager compute: full profile ready before user revisits
           try {
             const base = await extractBaseProfile(parquetKey);
-            await repo.update(file.id, { dataProfile: base });
+            await repo.update(file.id, { parquetS3Key: parquetKey, dataProfile: base });
             await hydrateAttributes(parquetKey, file.id, base, ALL_KEYS);
           } catch (e) {
             console.error(JSON.stringify({
@@ -248,6 +246,7 @@ router.get('/:id/parquet-url', asyncWrap(async (req, res) => {
               error: e instanceof Error ? e.message : String(e),
             }));
           }
+          await repo.update(file.id, { parquetStatus: 'ready' });
         })
         .catch(async (err) => {
           console.error(JSON.stringify({
