@@ -569,24 +569,20 @@ const FilterSidebar = memo(function FilterSidebar({
 // ── VirtualRows ───────────────────────────────────────────────────────────────
 
 const VirtualRows = memo(function VirtualRows({
-  scrollRef, rowCount, fetchWindow, columns, columnStats, colWidths, totalWidth, snapshotCache, pipelineStatus,
+  scrollRef, rowCount, fetchRange, getCell, hasRow, columns, columnStats, colWidths, totalWidth, pipelineStatus, cacheGen: _cacheGen,
 }: {
   scrollRef:   RefObject<HTMLDivElement | null>;
   rowCount:    number;
-  fetchWindow: (offset: number, limit: number, signal?: AbortSignal) => Promise<Record<string, unknown>[]>;
+  fetchRange:  (offset: number, limit: number, signal?: AbortSignal) => Promise<void>;
+  getCell:     (globalIndex: number, colName: string) => unknown;
+  hasRow:      (globalIndex: number) => boolean;
   columns:     ColumnInfo[];
   columnStats: Record<string, ColumnStats>;
   colWidths:   Record<string, number>;
   totalWidth:  number;
-  snapshotCache?: () => Map<number, Record<string, unknown>>;
   pipelineStatus: PipelineStatus;
+  cacheGen:    number; // prop change triggers re-render when Arrow data arrives
 }) {
-  // Seed from warm cache synchronously — avoids one-frame skeleton flash.
-  // snapshotCache reads the hook's rowCache ref (pre-populated by greedy fetch or hover prefetch).
-  const [rows, setRows] = useState<Map<number, Record<string, unknown>>>(() => {
-    return snapshotCache?.() ?? new Map();
-  });
-
   const virtualizer = useVirtualizer({
     count:            rowCount,
     getScrollElement: () => scrollRef.current,
@@ -597,23 +593,23 @@ const VirtualRows = memo(function VirtualRows({
 
   // Debounced fetch — waits 150ms after scroll stops before hitting the server.
   // Cancels in-flight requests when the viewport moves again.
-  // Evicts rows far from the viewport to cap memory (keeps ±MAX_CACHED_ROWS).
+  // Eviction handled by the hook's fetchRange (caps at MAX_CACHED_TABLES).
   const items = virtualizer.getVirtualItems();
   const abortRef = useRef<AbortController | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
+  const start = items.length > 0 ? items[0].index : -1;
+  const end   = items.length > 0 ? items[items.length - 1].index : -1;
+
   useEffect(() => {
-    if (items.length === 0) return;
+    if (start < 0) return;
     if (pipelineStatus !== 'ready') return;
 
-    const start = items[0].index;
-    const end   = items[items.length - 1].index;
-
-    // Collect all window starts that need fetching
+    // Collect window starts that need fetching
     const windowStarts: number[] = [];
     const seen = new Set<number>();
     for (let i = start; i <= end; i++) {
-      if (!rows.has(i)) {
+      if (!hasRow(i)) {
         const ws = Math.floor(i / WINDOW_SIZE) * WINDOW_SIZE;
         if (!seen.has(ws)) { seen.add(ws); windowStarts.push(ws); }
       }
@@ -621,7 +617,6 @@ const VirtualRows = memo(function VirtualRows({
 
     if (windowStarts.length === 0) return;
 
-    // Cancel previous debounce + in-flight fetch
     clearTimeout(timerRef.current);
     abortRef.current?.abort();
 
@@ -631,33 +626,11 @@ const VirtualRows = memo(function VirtualRows({
 
       Promise.all(
         windowStarts.map(ws =>
-          fetchWindow(ws, WINDOW_SIZE, controller.signal)
-            .then(fetched => ({ ws, fetched }))
-            .catch(() => null)
+          fetchRange(ws, WINDOW_SIZE, controller.signal).catch(() => {})
         )
-      ).then(results => {
-        if (controller.signal.aborted) return;
-        setRows(prev => {
-          const next = new Map(prev);
-          for (const r of results) {
-            if (!r) continue;
-            for (let i = 0; i < r.fetched.length; i++) {
-              next.set(r.ws + i, r.fetched[i]);
-            }
-          }
-          // Evict rows far from viewport — keep ±MAX_CACHED_ROWS around center
-          const center = Math.floor((start + end) / 2);
-          const MAX_CACHED_ROWS = 2000;
-          if (next.size > MAX_CACHED_ROWS) {
-            for (const key of next.keys()) {
-              if (Math.abs(key - center) > MAX_CACHED_ROWS / 2) {
-                next.delete(key);
-              }
-            }
-          }
-          return next;
-        });
-      });
+      );
+      // No local state update — fetchRange stores the Arrow table in the
+      // hook's cache and bumps cacheGen, which propagates as a prop change.
     }, 150);
 
     return () => {
@@ -665,14 +638,14 @@ const VirtualRows = memo(function VirtualRows({
       abortRef.current?.abort();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items.length > 0 ? items[0].index : -1, items.length > 0 ? items[items.length - 1].index : -1, fetchWindow, pipelineStatus]);
+  }, [start, end, fetchRange, hasRow, pipelineStatus, _cacheGen]);
 
   return (
     <>
       <div style={{ height: virtualizer.getTotalSize(), width: totalWidth }} />
       <div style={{ position: 'relative', width: totalWidth, marginTop: -virtualizer.getTotalSize() }}>
         {items.map(vRow => {
-          const row = rows.get(vRow.index);
+          const rowLoaded = hasRow(vRow.index);
 
           return (
             <div key={vRow.key} className="flex"
@@ -687,8 +660,7 @@ const VirtualRows = memo(function VirtualRows({
                 const isNum  = isNumericType(c.type);
                 const stats  = isNum ? columnStats[c.name] : undefined;
 
-                if (!row) {
-                  // Skeleton placeholder for uncached rows — staggered by row+col
+                if (!rowLoaded) {
                   const pct = 55 + ((vRow.index * 17 + c.name.length * 11) % 40);
                   return (
                     <div key={c.name} style={{
@@ -704,7 +676,8 @@ const VirtualRows = memo(function VirtualRows({
                   );
                 }
 
-                const raw    = row[c.name];
+                // Direct Arrow vector access — no materialized Record
+                const raw    = getCell(vRow.index, c.name);
                 const numVal = isNum ? (typeof raw === 'number' ? raw : NaN) : NaN;
 
                 return (
@@ -744,8 +717,8 @@ export default function ParquetPreview({ fileId, onProgress }: {
   const {
     pipeline, columns, totalRows, filteredCount,
     baseProfile,
-    fetchWindow, applyFilters, isQuerying, cacheGen,
-    snapshotCache,
+    getCell, hasRow, fetchRange,
+    applyFilters, isQuerying, cacheGen,
   } = useParquetPreview(fileId);
 
   // Demand-driven: fetch enrichable attributes from the server
@@ -1324,16 +1297,17 @@ export default function ParquetPreview({ fileId, onProgress }: {
 
           {(pipeline.status === 'ready' || pipeline.status === 'ready_background_work') && filteredCount > 0 && (
             <VirtualRows
-              key={cacheGen}
               scrollRef={scrollRef}
               rowCount={filteredCount}
-              fetchWindow={fetchWindow}
+              fetchRange={fetchRange}
+              getCell={getCell}
+              hasRow={hasRow}
               columns={tableColumns}
               columnStats={columnStats}
               colWidths={colWidths}
               totalWidth={totalWidth}
-              snapshotCache={snapshotCache}
               pipelineStatus={pipeline.status}
+              cacheGen={cacheGen}
             />
           )}
 

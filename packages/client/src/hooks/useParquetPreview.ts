@@ -147,7 +147,7 @@ function expandColumns(rawCols: ColumnInfo[]): ColumnInfo[] {
 import { tableFromIPC, type Table as ArrowTable } from 'apache-arrow';
 
 interface ServerQueryResult {
-  rows: Record<string, unknown>[];
+  viewportTable: ArrowTable | null;
   filteredCount: number;
   constrainedStats: Record<string, { min: number; max: number }>;
   dynamicHistograms: Record<string, number[]>;
@@ -156,7 +156,7 @@ interface ServerQueryResult {
 /** Callbacks fired as each Arrow frame arrives over the wire. */
 interface StreamCallbacks {
   onGod?: (god: { filteredCount: number; constrainedStats: Record<string, { min: number; max: number }> }) => void;
-  onViewport?: (rows: Record<string, unknown>[]) => void;
+  onViewport?: (table: ArrowTable) => void;
 }
 
 // ── Arrow frame parsers ──────────────────────────────────
@@ -190,21 +190,6 @@ function parseHistTable(histTable: ArrowTable): number[] {
   const cntVec = histTable.getChild('cnt');
   if (!cntVec) return new Array(64).fill(0);
   return Array.from(cntVec.toArray());
-}
-
-function arrowTableToRows(table: ArrowTable): Record<string, unknown>[] {
-  const rows: Record<string, unknown>[] = [];
-  const colNames = table.schema.fields.map(f => f.name);
-
-  for (let i = 0; i < table.numRows; i++) {
-    const row: Record<string, unknown> = {};
-    for (const name of colNames) {
-      const val = table.getChild(name)?.get(i);
-      row[name] = typeof val === 'bigint' ? Number(val) : val;
-    }
-    rows.push(row);
-  }
-  return rows;
 }
 
 // ── Streaming frame decoder ──────────────────────────────
@@ -300,7 +285,7 @@ async function serverQuery(
 
   let filteredCount = 0;
   let constrainedStats: Record<string, { min: number; max: number }> = {};
-  let rows: Record<string, unknown>[] = [];
+  let viewportTable: ArrowTable | null = null;
   const dynamicHistograms: Record<string, number[]> = {};
 
   let histIndex = 0;
@@ -315,9 +300,9 @@ async function serverQuery(
       constrainedStats = god.constrainedStats;
       callbacks?.onGod?.(god);
     } else if (index === 1) {
-      // Viewport rows
-      rows = arrowTableToRows(table);
-      callbacks?.onViewport?.(rows);
+      // Viewport — keep the raw Arrow table, no materialization
+      viewportTable = table;
+      callbacks?.onViewport?.(table);
     } else {
       // Histogram frame
       if (histIndex < histColNames.length) {
@@ -327,7 +312,7 @@ async function serverQuery(
     }
   }
 
-  return { rows, filteredCount, constrainedStats, dynamicHistograms };
+  return { viewportTable, filteredCount, constrainedStats, dynamicHistograms };
 }
 
 // ── Hook ─────────────────────────────────────────────────
@@ -361,21 +346,23 @@ export function useParquetPreview(fileId: string) {
   const [isQuerying,    setIsQuerying]    = useState(false);
   const [cacheGen,      setCacheGen]      = useState(0);
 
-  // Row cache: offset → row data
-  const rowCache = useRef<Map<number, Record<string, unknown>>>(new Map());
+  // Arrow table cache: window offset → raw Arrow Table (zero-copy from IPC)
+  const arrowCache = useRef<Map<number, ArrowTable>>(new Map());
+  // Fallback for JSON-seeded initialRows (cleared on first Arrow query)
+  const fallbackRows = useRef<Map<number, Record<string, unknown>>>(new Map());
   const isCacheSeeded = useRef(false);
 
-  // Seed from Zustand on Frame 1
+  // Seed fallback from Zustand on Frame 1
   if (!isCacheSeeded.current) {
     if (cachedProfile?.initialRows?.length) {
       for (let i = 0; i < cachedProfile.initialRows.length; i++) {
-        rowCache.current.set(i, cachedProfile.initialRows[i]);
+        fallbackRows.current.set(i, cachedProfile.initialRows[i]);
       }
     }
     isCacheSeeded.current = true;
   }
 
-  // Current filter/sort state for fetchWindow
+  // Current filter/sort state
   const filtersRef = useRef<FilterSpec[]>([]);
   const sortRef = useRef<SortSpec[]>([]);
 
@@ -405,14 +392,13 @@ export function useParquetPreview(fileId: string) {
       serverReadyRef.current = true;
       dispatch({ type: 'SERVER_READY' });
 
-      // Fire an initial query to get live rows
+      // Fire an initial query — Arrow table replaces JSON fallback
       serverQuery(fileId, [], [], 0, 100)
         .then(result => {
           if (cancelled) return;
-          rowCache.current.clear();
-          for (let i = 0; i < result.rows.length; i++) {
-            rowCache.current.set(i, result.rows[i]);
-          }
+          arrowCache.current.clear();
+          fallbackRows.current.clear();
+          if (result.viewportTable) arrowCache.current.set(0, result.viewportTable);
           setFilteredCount(result.filteredCount);
           setTotalRows(result.filteredCount);
           setCacheGen(g => g + 1);
@@ -438,12 +424,12 @@ export function useParquetPreview(fileId: string) {
             hydrateProfile(serverProfile);
           }
 
-          // Seed cache from initialRows
+          // Seed fallback from initialRows (JSON) — replaced on first Arrow query
           const serverRows = serverProfile?.initialRows ?? null;
           if (serverRows?.length) {
-            rowCache.current.clear();
+            fallbackRows.current.clear();
             for (let i = 0; i < serverRows.length; i++) {
-              rowCache.current.set(i, serverRows[i]);
+              fallbackRows.current.set(i, serverRows[i]);
             }
             const total = serverProfile?.rowCount ?? serverRows.length;
             setTotalRows(total);
@@ -466,14 +452,13 @@ export function useParquetPreview(fileId: string) {
           serverReadyRef.current = true;
           dispatch({ type: 'SERVER_READY' });
 
-          // Fire initial query to populate live rows
+          // Fire initial query — Arrow table replaces JSON fallback
           serverQuery(fileId, [], [], 0, 100)
             .then(result => {
               if (cancelled) return;
-              rowCache.current.clear();
-              for (let i = 0; i < result.rows.length; i++) {
-                rowCache.current.set(i, result.rows[i]);
-              }
+              arrowCache.current.clear();
+              fallbackRows.current.clear();
+              if (result.viewportTable) arrowCache.current.set(0, result.viewportTable);
               setFilteredCount(result.filteredCount);
               setTotalRows(result.filteredCount);
               setCacheGen(g => g + 1);
@@ -501,28 +486,45 @@ export function useParquetPreview(fileId: string) {
     };
   }, [fileId]);
 
-  // ── Fetch a window of rows ──────────────────────────────
+  // ── Direct Arrow accessors ──────────────────────────────
+  // The UI reads Arrow vectors at paint time — no materialization.
+  // BigInt → Number conversion is lazy, only for visible cells.
 
-  const fetchWindow = useCallback(async (
+  const getCell = useCallback((globalIndex: number, colName: string): unknown => {
+    // Arrow cache: O(1) lookup per window
+    for (const [offset, table] of arrowCache.current) {
+      const local = globalIndex - offset;
+      if (local >= 0 && local < table.numRows) {
+        const val = table.getChild(colName)?.get(local);
+        return typeof val === 'bigint' ? Number(val) : val;
+      }
+    }
+    // Fallback: JSON-seeded initialRows (before first Arrow query)
+    const row = fallbackRows.current.get(globalIndex);
+    return row ? row[colName] : undefined;
+  }, []);
+
+  const hasRow = useCallback((globalIndex: number): boolean => {
+    for (const [offset, table] of arrowCache.current) {
+      const local = globalIndex - offset;
+      if (local >= 0 && local < table.numRows) return true;
+    }
+    return fallbackRows.current.has(globalIndex);
+  }, []);
+
+  // ── Fetch a range of rows (stores Arrow table, no return) ─
+
+  const MAX_CACHED_TABLES = 10;
+
+  const fetchRange = useCallback(async (
     offset: number,
     limit: number,
     signal?: AbortSignal,
-  ): Promise<Record<string, unknown>[]> => {
-    if (!serverReadyRef.current) return [];
+  ): Promise<void> => {
+    if (!serverReadyRef.current) return;
 
-    // Return cached rows if available
-    const cached: Record<string, unknown>[] = [];
-    let allCached = true;
-    for (let i = offset; i < offset + limit; i++) {
-      const row = rowCache.current.get(i);
-      if (row) {
-        cached.push(row);
-      } else {
-        allCached = false;
-        break;
-      }
-    }
-    if (allCached && cached.length === limit) return cached;
+    // Skip if this window is already cached
+    if (arrowCache.current.has(offset)) return;
 
     try {
       const result = await serverQuery(
@@ -534,13 +536,22 @@ export function useParquetPreview(fileId: string) {
         signal,
       );
 
-      for (let i = 0; i < result.rows.length; i++) {
-        rowCache.current.set(offset + i, result.rows[i]);
-      }
+      if (result.viewportTable) {
+        arrowCache.current.set(offset, result.viewportTable);
 
-      return result.rows;
+        // Evict tables far from viewport — keep closest MAX_CACHED_TABLES
+        if (arrowCache.current.size > MAX_CACHED_TABLES) {
+          const sorted = [...arrowCache.current.keys()]
+            .sort((a, b) => Math.abs(a - offset) - Math.abs(b - offset));
+          for (let i = MAX_CACHED_TABLES; i < sorted.length; i++) {
+            arrowCache.current.delete(sorted[i]);
+          }
+        }
+
+        setCacheGen(g => g + 1);
+      }
     } catch {
-      return [];
+      // Fetch failed — ignore (abort or network error)
     }
   }, [fileId]);
 
@@ -566,18 +577,16 @@ export function useParquetPreview(fileId: string) {
     try {
       filtersRef.current = filters;
       sortRef.current = sort;
-      rowCache.current.clear();
+      arrowCache.current.clear();
+      fallbackRows.current.clear();
       setCacheGen(g => g + 1);
 
       const result = await serverQuery(fileId, filters, sort, 0, 100, controller.signal, {
         // God Query lands first — update count before rows arrive
         onGod: ({ filteredCount: fc }) => setFilteredCount(fc),
-        // Viewport lands second — seed cache before histograms arrive
-        onViewport: (viewportRows) => {
-          rowCache.current.clear();
-          for (let i = 0; i < viewportRows.length; i++) {
-            rowCache.current.set(i, viewportRows[i]);
-          }
+        // Viewport lands second — store raw Arrow table, no materialization
+        onViewport: (table) => {
+          arrowCache.current.set(0, table);
           setCacheGen(g => g + 1);
         },
       });
@@ -605,22 +614,18 @@ export function useParquetPreview(fileId: string) {
     setIsQuerying(false);
   }, [fileId]);
 
-  /** Synchronous snapshot of the warm rowCache. */
-  const snapshotCache = useCallback((): Map<number, Record<string, unknown>> => {
-    return new Map(rowCache.current);
-  }, []);
-
   return {
     pipeline,
     columns,
     totalRows,
     filteredCount,
     baseProfile,
-    fetchWindow,
+    getCell,
+    hasRow,
+    fetchRange,
     applyFilters,
     isQuerying,
     cacheGen,
-    snapshotCache,
   };
 }
 
