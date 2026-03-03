@@ -135,14 +135,121 @@ const PARQUET_STEPS = [
 ] as const;
 
 
+// ── DistributionPlot ──────────────────────────────────────────────────────────
+
+function DistributionPlot({ staticBins, dynamicBins, height }: {
+  staticBins:   number[];
+  dynamicBins?: number[];
+  height:       number;
+}) {
+  // Independent density normalization — each layer fills its own peak to full height.
+  // Ghost shows the unfiltered shape; cyan shows the filtered shape at local scale.
+  const staticMax  = useMemo(() => Math.max(...staticBins, 1),  [staticBins]);
+  const dynamicMax = useMemo(
+    () => dynamicBins ? Math.max(...dynamicBins, 1) : 1,
+    [dynamicBins],
+  );
+
+  // Monotone cubic interpolation — generates a smooth SVG path through bin-center points
+  const buildPath = useCallback((bins: number[], ceiling: number) => {
+    const n = bins.length;
+    if (n === 0) return '';
+
+    // Points: x spans 0..100, y spans 0..height (0 at top)
+    const pts = bins.map((v, i) => ({
+      x: ((i + 0.5) / n) * 100,
+      y: height - (v / ceiling) * height,
+    }));
+
+    // Monotone tangents (Fritsch-Carlson)
+    const dx: number[] = [];
+    const dy: number[] = [];
+    const m: number[] = [];
+    for (let i = 0; i < n - 1; i++) {
+      dx.push(pts[i + 1].x - pts[i].x);
+      dy.push(pts[i + 1].y - pts[i].y);
+      m.push(dy[i] / dx[i]);
+    }
+
+    const tangents = new Array<number>(n);
+    tangents[0] = m[0] ?? 0;
+    tangents[n - 1] = m[n - 2] ?? 0;
+    for (let i = 1; i < n - 1; i++) {
+      if (m[i - 1] * m[i] <= 0) {
+        tangents[i] = 0;
+      } else {
+        tangents[i] = (m[i - 1] + m[i]) / 2;
+      }
+    }
+
+    // Clamp tangents for monotonicity
+    for (let i = 0; i < n - 1; i++) {
+      if (Math.abs(m[i]) < 1e-10) {
+        tangents[i] = 0;
+        tangents[i + 1] = 0;
+      } else {
+        const a = tangents[i] / m[i];
+        const b = tangents[i + 1] / m[i];
+        const s = a * a + b * b;
+        if (s > 9) {
+          const t = 3 / Math.sqrt(s);
+          tangents[i] = t * a * m[i];
+          tangents[i + 1] = t * b * m[i];
+        }
+      }
+    }
+
+    // Build cubic Bezier path
+    let d = `M${pts[0].x.toFixed(2)},${pts[0].y.toFixed(2)}`;
+    for (let i = 0; i < n - 1; i++) {
+      const seg = dx[i] / 3;
+      const cp1x = pts[i].x + seg;
+      const cp1y = pts[i].y + tangents[i] * seg;
+      const cp2x = pts[i + 1].x - seg;
+      const cp2y = pts[i + 1].y - tangents[i + 1] * seg;
+      d += `C${cp1x.toFixed(2)},${cp1y.toFixed(2)},${cp2x.toFixed(2)},${cp2y.toFixed(2)},${pts[i + 1].x.toFixed(2)},${pts[i + 1].y.toFixed(2)}`;
+    }
+
+    // Close: line to bottom-right, bottom-left, close
+    d += `L100,${height}L0,${height}Z`;
+    return d;
+  }, [height]);
+
+  const hasDynamic = dynamicBins && dynamicBins.some(v => v > 0);
+
+  const staticPath  = useMemo(() => buildPath(staticBins, staticMax),   [staticBins, staticMax, buildPath]);
+  const dynamicPath = useMemo(
+    () => hasDynamic ? buildPath(dynamicBins!, dynamicMax) : '',
+    [hasDynamic, dynamicBins, dynamicMax, buildPath],
+  );
+
+  return (
+    <svg
+      viewBox={`0 0 100 ${height}`}
+      preserveAspectRatio="none"
+      style={{
+        position: 'absolute', inset: 0, width: '100%', height: '100%',
+        pointerEvents: 'none',
+      }}
+    >
+      <path d={staticPath}  fill="var(--color-cyan)" opacity={0.10} />
+      {dynamicPath && (
+        <path d={dynamicPath} fill="var(--color-cyan)" opacity={0.40} />
+      )}
+    </svg>
+  );
+}
+
 // ── RangeSlider ───────────────────────────────────────────────────────────────
 
-function RangeSlider({ name, min, max, low, high, onRangeChange, constrainedMin, constrainedMax, pending }: {
+function RangeSlider({ name, min, max, low, high, onRangeChange, constrainedMin, constrainedMax, pending, staticHistogram, dynamicHistogram }: {
   name: string; min: number; max: number; low: number; high: number;
-  onRangeChange:   (name: string, lo: number, hi: number) => void;
-  constrainedMin?: number;
-  constrainedMax?: number;
-  pending?:        boolean;
+  onRangeChange:    (name: string, lo: number, hi: number) => void;
+  constrainedMin?:  number;
+  constrainedMax?:  number;
+  pending?:         boolean;
+  staticHistogram?: number[];
+  dynamicHistogram?: number[];
 }) {
 
   const range   = max - min || 1;
@@ -155,7 +262,6 @@ function RangeSlider({ name, min, max, low, high, onRangeChange, constrainedMin,
   const hasCon   = constrainedMin !== undefined && constrainedMax !== undefined;
   const conLoPct = hasCon ? Math.max(0,   ((constrainedMin! - min) / range) * 100) : 0;
   const conHiPct = hasCon ? Math.min(100, ((constrainedMax! - min) / range) * 100) : 0;
-  const showCon  = hasCon && (conLoPct > 0.5 || conHiPct < 99.5);
 
   const epsilon = (max - min) * 0.001;
   const lowOob  = !pending && hasCon && low  < constrainedMin! - epsilon;
@@ -181,20 +287,31 @@ function RangeSlider({ name, min, max, low, high, onRangeChange, constrainedMin,
     if (hasCon) onRangeChange(name, constrainedMin!, constrainedMax!);
   };
 
+  const PLOT_H = 20;
+
   return (
     <div>
+      {staticHistogram && staticHistogram.length > 0 && (
+        <div className="relative" style={{ height: PLOT_H, marginBottom: 1 }}>
+          <DistributionPlot
+            staticBins={staticHistogram}
+            dynamicBins={hasCon ? dynamicHistogram : undefined}
+            height={PLOT_H}
+          />
+        </div>
+      )}
       <div className="relative" style={{ height: 20 }}>
         <div className="absolute top-1/2 -translate-y-1/2 rounded-full w-full"
-          style={{ height: 2, background: 'var(--color-line)' }} />
-        {showCon && (
+          style={{ height: 2, background: 'var(--color-cyan)', opacity: 0.10 }} />
+        {hasCon && (
           <div
             className="absolute top-1/2 -translate-y-1/2 rounded-full"
             title="Double-click to clip handles to this range"
             onDoubleClick={handleClipToReality}
             style={{
-              left: `${conLoPct}%`, width: `${conHiPct - conLoPct}%`, height: 6,
+              left: `${conLoPct}%`, width: `${conHiPct - conLoPct}%`, height: 4,
               background: 'var(--color-cyan)',
-              opacity: pending ? 0.10 : 0.20,
+              opacity: pending ? 0.15 : 0.40,
               cursor: 'pointer',
               transition: 'left 150ms ease, width 150ms ease, opacity var(--t-fast)',
             }}
@@ -203,7 +320,7 @@ function RangeSlider({ name, min, max, low, high, onRangeChange, constrainedMin,
         <div className="absolute top-1/2 -translate-y-1/2 rounded-full"
           style={{
             left: `${lowPct}%`, width: `${highPct - lowPct}%`, height: 2,
-            background: 'var(--color-cyan)', opacity: full ? 0.25 : 1,
+            background: 'var(--color-cyan)', opacity: full ? 0.10 : hasCon ? 0.40 : 1,
           }} />
         <input
           type="range"
@@ -340,6 +457,7 @@ const FilterSidebar = memo(function FilterSidebar({
   onRangeChange, onToggleSelect, onClearSelect, onTextChange,
   hasAnyFilter,
   constrainedStats, noResults, pendingConstraints,
+  staticHistograms, constrainedHistograms,
 }: {
   columns:             ColumnInfo[];
   columnStats:         Record<string, ColumnStats>;
@@ -355,6 +473,8 @@ const FilterSidebar = memo(function FilterSidebar({
   constrainedStats:    Record<string, ColumnStats>;
   noResults:           boolean;
   pendingConstraints:  boolean;
+  staticHistograms:    Record<string, number[]>;
+  constrainedHistograms: Record<string, number[]>;
 }) {
   return (
     <div className="flex-1 overflow-y-auto">
@@ -401,6 +521,8 @@ const FilterSidebar = memo(function FilterSidebar({
                     constrainedMax={hasAnyFilter ? constrainedStats[c.name]?.max : undefined}
                     pending={pendingConstraints}
                     onRangeChange={onRangeChange}
+                    staticHistogram={staticHistograms[c.name]}
+                    dynamicHistogram={hasAnyFilter ? constrainedHistograms[c.name] : undefined}
                   />
                 )
               ) : hasCard ? (
@@ -602,7 +724,7 @@ export default function ParquetPreview({ fileId, onProgress }: {
   // Fires when columns are available — does NOT wait for WASM
   const { profile } = useDataProfile(
     columns.length > 0 ? fileId : null,
-    ['columnStats', 'cardinality', 'charLengths', 'initialRows'],
+    ['columnStats', 'cardinality', 'charLengths', 'initialRows', 'histograms'],
     baseProfile,
   );
 
@@ -614,6 +736,7 @@ export default function ParquetPreview({ fileId, onProgress }: {
     hasStats: !!profile?.columnStats,
     hasCardinality: !!profile?.cardinality,
     statsKeys: profile?.columnStats ? Object.keys(profile.columnStats).length : 0,
+    histograms: profile?.histograms ? Object.keys(profile.histograms) : profile?.histograms,
   });
 
   // Derive stats and cardinality from server profile, handling null (negative cache)
@@ -639,6 +762,13 @@ export default function ParquetPreview({ fileId, onProgress }: {
     }
     return result;
   }, [profile?.cardinality]);
+
+  const staticHistograms: Record<string, number[]> = useMemo(() => {
+    const h = profile?.histograms;
+    return h ?? {};
+  }, [profile?.histograms]);
+
+  const [constrainedHistograms, setConstrainedHistograms] = useState<Record<string, number[]>>({});
 
   // ── Reprofile handler ──────────────────────────────────────────────────────
   const setFileProfile = useAppStore(s => s.setFileProfile);
@@ -817,9 +947,11 @@ export default function ParquetPreview({ fileId, onProgress }: {
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
 
     setPendingConstraints(true);
-    applyFilters(filters, sortSpecs).then(result => {
+    applyFilters(filters, sortSpecs, columnStats).then(result => {
       if (result.constrainedStats) setConstrainedStats(result.constrainedStats);
       else setConstrainedStats({});
+      if (result.constrainedHistograms) setConstrainedHistograms(result.constrainedHistograms);
+      else setConstrainedHistograms({});
       setPendingConstraints(false);
     }).catch((err) => {
       console.error('DuckDB Filter Error:', err);
@@ -884,6 +1016,7 @@ export default function ParquetPreview({ fileId, onProgress }: {
     setSelected({});
     setTextFilters({});
     setConstrainedStats({});
+    setConstrainedHistograms({});
     setPendingConstraints(false);
     // Clear filters on the hook
     applyFilters([], sortSpecs);
@@ -1120,6 +1253,8 @@ export default function ParquetPreview({ fileId, onProgress }: {
                 constrainedStats={constrainedStats}
                 noResults={noResults}
                 pendingConstraints={pendingConstraints}
+                staticHistograms={staticHistograms}
+                constrainedHistograms={constrainedHistograms}
               />
               <button
                 onClick={handleReprofile}

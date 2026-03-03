@@ -1,4 +1,5 @@
 export { detectFormat, isConvertible } from './formats.js';
+export { HISTOGRAM_BINS, histogramBucketSql } from './data_profile.js';
 export type {
   DataProfile,
   DataProfileColumn,

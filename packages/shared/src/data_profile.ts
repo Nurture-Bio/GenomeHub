@@ -53,6 +53,16 @@ export interface EnrichableAttributes {
   cardinality: Record<string, DataProfileCardinality>;
   charLengths: Record<string, DataProfileCharLengths>;
   initialRows: JsonObject[];
+  histograms:  Record<string, number[]>;
+}
+
+// ── Histogram helpers — shared between server and client DuckDB ──────────────
+
+export const HISTOGRAM_BINS = 64;
+
+/** DuckDB SQL expression: maps a value into a 0-indexed bin, clamped to [0, BINS-1]. */
+export function histogramBucketSql(col: string, min: number, max: number, bins = HISTOGRAM_BINS): string {
+  return `LEAST(GREATEST(FLOOR((${col}::DOUBLE - ${min}::DOUBLE) / (${max}::DOUBLE - ${min}::DOUBLE) * ${bins}), 0), ${bins - 1})::INTEGER`;
 }
 
 // ── Lazy Wrapper — T | null (null = negative cache, do not retry) ───────────

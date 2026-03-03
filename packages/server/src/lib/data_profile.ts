@@ -20,6 +20,10 @@
  * @module
  */
 
+import {
+  HISTOGRAM_BINS,
+  histogramBucketSql,
+} from '@genome-hub/shared';
 import type {
   DataProfile,
   DataProfileStats,
@@ -38,7 +42,7 @@ import { duckdbSrc, duckdbSetup } from './storage.js';
  * Returns only the valid keys.
  */
 const VALID_KEYS = new Set<keyof EnrichableAttributes>([
-  'columnStats', 'cardinality', 'charLengths', 'initialRows',
+  'columnStats', 'cardinality', 'charLengths', 'initialRows', 'histograms',
 ]);
 
 /** All enrichable attribute keys — used for eager compute at upload time. */
@@ -163,6 +167,11 @@ async function hydrateAttribute(
       if (profile.initialRows !== undefined) return;
       try { profile.initialRows = await enrichInitialRows(session, profile); }
       catch { profile.initialRows = null; }
+      return;
+    case 'histograms':
+      if (profile.histograms !== undefined) return;
+      try { profile.histograms = await enrichHistograms(session, profile); }
+      catch (err) { console.error('[HISTOGRAMS] enrichHistograms failed:', err); profile.histograms = null; }
       return;
   }
 }
@@ -434,5 +443,43 @@ async function enrichCharLengths(
     const mx = Number(row[`cmax_${col.name}`]);
     if (!isNaN(mn) && !isNaN(mx)) result[col.name] = { min: mn, max: mx };
   }
+  return result;
+}
+
+async function enrichHistograms(
+  session: DuckDbSession,
+  profile: DataProfile,
+): Promise<Record<string, number[]>> {
+  // Dependency: need columnStats for global min/max
+  if (profile.columnStats === undefined) {
+    profile.columnStats = await enrichColumnStats(session, profile);
+  }
+  if (!profile.columnStats) return {};
+
+  const flatCols = expandSchema(profile.schema);
+  const numericCols = flatCols.filter(c => isNumeric(c.type));
+  if (numericCols.length === 0 || profile.rowCount === 0) return {};
+
+  const result: Record<string, number[]> = {};
+
+  for (const col of numericCols) {
+    const stats = profile.columnStats[col.name];
+    if (!stats || stats.min === stats.max) continue;
+
+    const bucket = histogramBucketSql(col.sqlExpr, stats.min, stats.max);
+    const rows = await session.query(
+      `SELECT ${bucket} AS bucket, COUNT(*)::INTEGER AS cnt
+       FROM read_parquet('${session.safeSrc}')
+       WHERE ${col.sqlExpr} IS NOT NULL
+       GROUP BY bucket ORDER BY bucket`
+    );
+
+    const bins = new Array<number>(HISTOGRAM_BINS).fill(0);
+    for (const r of rows) {
+      bins[Number(r.bucket)] += Number(r.cnt);
+    }
+    result[col.name] = bins;
+  }
+
   return result;
 }

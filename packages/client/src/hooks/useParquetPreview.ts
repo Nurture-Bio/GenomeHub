@@ -14,6 +14,7 @@ import { useEffect, useReducer, useState, useCallback, useRef } from 'react';
 import { duckdb, ensureDb, coerceBigInts } from '../lib/duckdb.js';
 import { apiFetch } from '../lib/api.js';
 import { useAppStore } from '../stores/useAppStore.js';
+import { HISTOGRAM_BINS, histogramBucketSql } from '@genome-hub/shared';
 import type { DataProfile } from '@genome-hub/shared';
 
 // ── Types ────────────────────────────────────────────────
@@ -627,9 +628,11 @@ export function useParquetPreview(fileId: string) {
   const applyFilters = useCallback(async (
     filters: FilterSpec[],
     sort: SortSpec[],
+    globalStats?: Record<string, ColumnStats>,
   ): Promise<{
     filteredCount: number;
     constrainedStats?: Record<string, ColumnStats>;
+    constrainedHistograms?: Record<string, number[]>;
   }> => {
     if (wasmStatusRef.current !== 'ready') return { filteredCount: 0 };
 
@@ -651,7 +654,29 @@ export function useParquetPreview(fileId: string) {
           ])
         : null;
 
-      const [countRes, conRes] = await Promise.all([
+      // Build histogram queries for numeric columns with non-degenerate global ranges
+      const histCols = filters.length > 0 && globalStats
+        ? numericCols.filter(c => {
+            const s = globalStats[c.name];
+            return s && s.min !== s.max;
+          })
+        : [];
+
+      const nullJoin = clause ? 'AND' : 'WHERE';
+      const histQueries = histCols.map(c => {
+        const s = globalStats![c.name];
+        const col = colToSql(c.name);
+        const bucket = histogramBucketSql(col, s.min, s.max);
+        return execQuery(conn, {
+          sql: `SELECT ${bucket} AS bucket, COUNT(*)::INTEGER AS cnt
+                FROM ${PARQUET_SRC} ${clause}
+                ${nullJoin} ${col} IS NOT NULL
+                GROUP BY bucket ORDER BY bucket`,
+          params,
+        }).catch(() => null);  // don't let histogram failures kill count/stats
+      });
+
+      const [countRes, conRes, ...histResults] = await Promise.all([
         execQuery(conn, {
           sql: `SELECT COUNT(*)::INTEGER AS n FROM ${PARQUET_SRC} ${clause}`,
           params,
@@ -662,6 +687,7 @@ export function useParquetPreview(fileId: string) {
               params,
             })
           : Promise.resolve(null),
+        ...histQueries,
       ]);
 
       const count = Number((countRes.toArray()[0] as Record<string, unknown>).n);
@@ -680,7 +706,22 @@ export function useParquetPreview(fileId: string) {
         }
       }
 
-      return { filteredCount: count, constrainedStats };
+      let constrainedHistograms: Record<string, number[]> | undefined;
+      if (histResults.length > 0) {
+        constrainedHistograms = {};
+        for (let i = 0; i < histCols.length; i++) {
+          const res = histResults[i];
+          if (!res) continue;  // query failed gracefully
+          const bins = new Array<number>(HISTOGRAM_BINS).fill(0);
+          const rows = res.toArray() as Record<string, unknown>[];
+          for (const r of rows) {
+            bins[Number(r.bucket)] += Number(r.cnt);
+          }
+          constrainedHistograms[histCols[i].name] = bins;
+        }
+      }
+
+      return { filteredCount: count, constrainedStats, constrainedHistograms };
     } finally {
       setIsQuerying(false);
     }
