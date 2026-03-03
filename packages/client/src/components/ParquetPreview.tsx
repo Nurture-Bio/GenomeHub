@@ -143,18 +143,21 @@ const DistributionPlot = memo(function DistributionPlot({ staticBins, dynamicBin
 
   // Independent density normalization — each layer fills its own peak to full height.
   const staticMax  = useMemo(() => Math.max(...staticBins, 1),  [staticBins]);
-  const dynamicMax = useMemo(
-    () => dynamicBins ? Math.max(...dynamicBins, 1) : 1,
-    [dynamicBins],
-  );
 
   const binW = 100 / n;
 
-  // Genesis render: dynamic bars always exist in the DOM so CSS can
-  // transition from the first frame.  Before any filter is applied,
-  // they perfectly overlay the static shape.
-  const activeBins = dynamicBins || staticBins;
-  const activeMax  = dynamicBins ? dynamicMax : staticMax;
+  // Retain last known dynamic bins across network gaps — prevents the
+  // "flare" where bars snap back to the static shape while a query is in flight.
+  const lastDynamicRef = useRef<number[] | null>(null);
+  if (dynamicBins && dynamicBins.length > 0) {
+    lastDynamicRef.current = dynamicBins;
+  }
+  const activeBins = (dynamicBins && dynamicBins.length > 0)
+    ? dynamicBins
+    : (lastDynamicRef.current || staticBins);
+  const activeMax = activeBins === staticBins
+    ? staticMax
+    : Math.max(...activeBins, 1);
 
   // Ghost mask — ref-driven so drag updates bypass React reconciliation.
   // lowPct/highPct are pushed in via setClip() — never as props.
@@ -370,6 +373,15 @@ function RangeSlider({ name, min, max, low, high, onDrag, onCommit, constrainedM
   const dragStartRef = useRef<{ lo: number; hi: number } | null>(null);
   const distPlotRef = useRef<DistPlotHandle | null>(null);
 
+  // Retain last known constrained bounds across network gaps — prevents
+  // Amber OOB indicators from flickering off while a query is in flight.
+  const lastConMinRef = useRef<number | undefined>(undefined);
+  const lastConMaxRef = useRef<number | undefined>(undefined);
+  if (constrainedMin !== undefined) lastConMinRef.current = constrainedMin;
+  if (constrainedMax !== undefined) lastConMaxRef.current = constrainedMax;
+  const activeConMin = constrainedMin ?? lastConMinRef.current;
+  const activeConMax = constrainedMax ?? lastConMaxRef.current;
+
   const range   = max - min || 1;
   const lowPct  = ((low  - min) / range) * 100;
   const highPct = ((high - min) / range) * 100;
@@ -377,14 +389,14 @@ function RangeSlider({ name, min, max, low, high, onDrag, onCommit, constrainedM
   const isFloat = !Number.isInteger(min) || !Number.isInteger(max);
   const step    = isFloat ? range / 200 : Math.max(1, Math.round(range / 200));
 
-  const hasConData = constrainedMin !== undefined && constrainedMax !== undefined;
+  const hasConData = activeConMin !== undefined && activeConMax !== undefined;
   const showConMarks = !isDragging && hasConData;
-  const conLoPct = showConMarks ? Math.max(0,   ((constrainedMin! - min) / range) * 100) : 0;
-  const conHiPct = showConMarks ? Math.min(100, ((constrainedMax! - min) / range) * 100) : 0;
+  const conLoPct = showConMarks ? Math.max(0,   ((activeConMin! - min) / range) * 100) : 0;
+  const conHiPct = showConMarks ? Math.min(100, ((activeConMax! - min) / range) * 100) : 0;
 
   const epsilon = (max - min) * 0.001;
-  const lowOob  = !pending && hasConData && low  < constrainedMin! - epsilon;
-  const highOob = !pending && hasConData && high > constrainedMax! + epsilon;
+  const lowOob  = !pending && hasConData && low  < activeConMin! - epsilon;
+  const highOob = !pending && hasConData && high > activeConMax! + epsilon;
 
   const AMBER_COLOR = 'var(--color-amber)';
   const AMBER_GLOW  = 'oklch(0.750 0.185 60 / 0.28)';
@@ -403,8 +415,8 @@ function RangeSlider({ name, min, max, low, high, onDrag, onCommit, constrainedM
   } as CSSProperties;
 
   const handleClipToReality = () => {
-    if (constrainedMin !== undefined && constrainedMax !== undefined) {
-      onDrag(name, constrainedMin, constrainedMax);
+    if (activeConMin !== undefined && activeConMax !== undefined) {
+      onDrag(name, activeConMin, activeConMax);
       onCommit(name);
     }
   };

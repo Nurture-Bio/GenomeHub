@@ -297,9 +297,17 @@ router.post('/:id/query', asyncWrap(async (req, res) => {
       tag: '[QUERY_FAILED]',
       fileId: file.id,
       error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
       timestamp: new Date().toISOString(),
     }));
-    res.status(500).json({ error: 'Query failed' });
+    // If headers already sent (binary streaming started), we cannot switch
+    // to a JSON error response — just destroy the socket so the client
+    // sees a clean connection reset instead of a corrupt partial stream.
+    if (res.headersSent) {
+      res.destroy();
+    } else {
+      res.status(500).json({ error: 'Query failed' });
+    }
   }
 }));
 

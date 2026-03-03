@@ -407,7 +407,7 @@ export function useParquetPreview(fileId: string) {
           setTotalRows(result.filteredCount);
           setCacheGen(g => g + 1);
         })
-        .catch(() => {}); // non-fatal — preflight data is already visible
+        .catch((err) => { console.warn('[useParquetPreview] initial query failed:', err); });
 
       return () => { cancelled = true; };
     }
@@ -467,7 +467,7 @@ export function useParquetPreview(fileId: string) {
               setTotalRows(result.filteredCount);
               setCacheGen(g => g + 1);
             })
-            .catch(() => {}); // non-fatal
+            .catch((err) => { console.warn('[useParquetPreview] initial query failed:', err); });
 
         } else if (data.status === 'converting') {
           pollTimer = setTimeout(poll, 2000);
@@ -612,10 +612,10 @@ export function useParquetPreview(fileId: string) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         return { filteredCount: filteredCountRef.current };
       }
-      setIsQuerying(false);
       throw err;
+    } finally {
+      setIsQuerying(false);
     }
-    setIsQuerying(false);
   }, [fileId]);
 
   return {
