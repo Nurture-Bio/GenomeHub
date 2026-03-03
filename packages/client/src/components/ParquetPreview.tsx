@@ -147,7 +147,12 @@ const DistributionPlot = memo(function DistributionPlot({ staticBins, dynamicBin
   );
 
   const binW = 100 / n;
-  const hasDynamic = dynamicBins && dynamicBins.some(v => v > 0);
+
+  // Genesis render: dynamic bars always exist in the DOM so CSS can
+  // transition from the first frame.  Before any filter is applied,
+  // they perfectly overlay the static shape.
+  const activeBins = dynamicBins || staticBins;
+  const activeMax  = dynamicBins ? dynamicMax : staticMax;
 
   // Ghost mask — ref-driven so drag updates bypass React reconciliation.
   // The clipPath rect is updated imperatively via useEffect.
@@ -187,40 +192,38 @@ const DistributionPlot = memo(function DistributionPlot({ staticBins, dynamicBin
     >
       <defs>
         <clipPath id={clipId}>
-          <rect ref={clipRectRef} x={lowPct} y="0" width={Math.max(0, highPct - lowPct)} height={height} />
+          <rect ref={clipRectRef} x={lowPct} y="0" width={Math.max(0, highPct - lowPct)} height={height}
+            style={{ transition: 'x 150ms ease-out, width 150ms ease-out' }} />
         </clipPath>
       </defs>
 
-      {/* Static layer — ghost shape, always visible at low opacity */}
-      <g opacity={0.08}>{staticRects}</g>
+      {/* Static layer — absolute reference shape, never clipped */}
+      <g opacity={0.12}>{staticRects}</g>
 
-      {/* Static layer — inside drag handles, brighter */}
-      <g clipPath={`url(#${clipId})`} opacity={0.12}>{staticRects}</g>
-
-      {/* Dynamic layer — bars morph via CSS transition on height/y */}
-      {hasDynamic && (
-        <g style={{
-          opacity: pending ? 0.5 : 1,
-          transition: 'opacity 200ms',
-          animation: pending ? 'distPlotBreath 1.5s ease-in-out infinite' : 'none',
-        }}>
-          {dynamicBins!.map((v, i) => {
-            const barH = (v / dynamicMax) * height;
-            return (
-              <rect key={i}
-                x={i * binW}
-                width={binW}
-                fill="var(--color-cyan)" opacity={0.45}
-                style={{
-                  y: height - barH,
-                  height: barH,
-                  transition: 'y 300ms ease-out, height 300ms ease-out',
-                }}
-              />
-            );
-          })}
-        </g>
-      )}
+      {/* Dynamic layer — always mounted so CSS can transition from the
+           first frame.  Before any filter, overlays the static shape exactly.
+           When the first query responds, bars morph smoothly. */}
+      <g clipPath={`url(#${clipId})`} style={{
+        opacity: pending ? 0.5 : 1,
+        transition: 'opacity 200ms',
+        animation: pending ? 'distPlotBreath 1.5s ease-in-out infinite' : 'none',
+      }}>
+        {activeBins.map((v, i) => {
+          const barH = (v / activeMax) * height;
+          return (
+            <rect key={i}
+              x={i * binW}
+              width={binW}
+              fill="var(--color-cyan)" opacity={0.45}
+              style={{
+                y: height - barH,
+                height: barH,
+                transition: 'y 300ms ease-out, height 300ms ease-out',
+              }}
+            />
+          );
+        })}
+      </g>
     </svg>
   );
 });
@@ -349,13 +352,14 @@ function RangeSlider({ name, min, max, low, high, onDrag, onCommit, constrainedM
   const isFloat = !Number.isInteger(min) || !Number.isInteger(max);
   const step    = isFloat ? range / 200 : Math.max(1, Math.round(range / 200));
 
-  const hasCon   = !isDragging && constrainedMin !== undefined && constrainedMax !== undefined;
-  const conLoPct = hasCon ? Math.max(0,   ((constrainedMin! - min) / range) * 100) : 0;
-  const conHiPct = hasCon ? Math.min(100, ((constrainedMax! - min) / range) * 100) : 0;
+  const hasConData = constrainedMin !== undefined && constrainedMax !== undefined;
+  const showConMarks = !isDragging && hasConData;
+  const conLoPct = showConMarks ? Math.max(0,   ((constrainedMin! - min) / range) * 100) : 0;
+  const conHiPct = showConMarks ? Math.min(100, ((constrainedMax! - min) / range) * 100) : 0;
 
   const epsilon = (max - min) * 0.001;
-  const lowOob  = !pending && !isDragging && hasCon && low  < constrainedMin! - epsilon;
-  const highOob = !pending && !isDragging && hasCon && high > constrainedMax! + epsilon;
+  const lowOob  = !pending && hasConData && low  < constrainedMin! - epsilon;
+  const highOob = !pending && hasConData && high > constrainedMax! + epsilon;
 
   const AMBER_COLOR = 'var(--color-amber)';
   const AMBER_GLOW  = 'oklch(0.750 0.185 60 / 0.28)';
@@ -406,7 +410,7 @@ function RangeSlider({ name, min, max, low, high, onDrag, onCommit, constrainedM
         <div className="relative" style={{ height: PLOT_H, marginBottom: 1 }}>
           <DistributionPlot
             staticBins={staticHistogram}
-            dynamicBins={hasCon ? dynamicHistogram : undefined}
+            dynamicBins={hasConData ? dynamicHistogram : undefined}
             height={PLOT_H}
             lowPct={lowPct}
             highPct={highPct}
@@ -434,7 +438,7 @@ function RangeSlider({ name, min, max, low, high, onDrag, onCommit, constrainedM
         <div className="absolute top-1/2 -translate-y-1/2 rounded-full"
           style={{
             left: `${lowPct}%`, width: `${highPct - lowPct}%`, height: 2,
-            background: 'var(--color-cyan)', opacity: full ? 0.10 : hasCon ? 0.40 : 1,
+            background: 'var(--color-cyan)', opacity: full ? 0.10 : showConMarks ? 0.40 : 1,
           }} />
         <input
           type="range"
