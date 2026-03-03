@@ -968,6 +968,11 @@
   to   { opacity: 1; }
 }
 
+@keyframes distPlotBreath {
+  0%, 100% { opacity: 0.5; }
+  50%      { opacity: 0.25; }
+}
+
 .skeleton {
   border-radius: var(--radius-sm);
   background: linear-gradient(

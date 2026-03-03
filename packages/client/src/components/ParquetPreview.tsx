@@ -128,90 +128,52 @@ const PARQUET_STEPS = [
 
 // ── DistributionPlot ──────────────────────────────────────────────────────────
 
-function DistributionPlot({ staticBins, dynamicBins, height }: {
+const DistributionPlot = memo(function DistributionPlot({ staticBins, dynamicBins, height, lowPct, highPct, pending }: {
   staticBins:   number[];
   dynamicBins?: number[];
   height:       number;
+  lowPct:       number;
+  highPct:      number;
+  pending?:     boolean;
 }) {
+  const n = staticBins.length;
+  if (n === 0) return null;
+
   // Independent density normalization — each layer fills its own peak to full height.
-  // Ghost shows the unfiltered shape; cyan shows the filtered shape at local scale.
   const staticMax  = useMemo(() => Math.max(...staticBins, 1),  [staticBins]);
   const dynamicMax = useMemo(
     () => dynamicBins ? Math.max(...dynamicBins, 1) : 1,
     [dynamicBins],
   );
 
-  // Monotone cubic interpolation — generates a smooth SVG path through bin-center points
-  const buildPath = useCallback((bins: number[], ceiling: number) => {
-    const n = bins.length;
-    if (n === 0) return '';
-
-    // Points: x spans 0..100, y spans 0..height (0 at top)
-    const pts = bins.map((v, i) => ({
-      x: ((i + 0.5) / n) * 100,
-      y: height - (v / ceiling) * height,
-    }));
-
-    // Monotone tangents (Fritsch-Carlson)
-    const dx: number[] = [];
-    const dy: number[] = [];
-    const m: number[] = [];
-    for (let i = 0; i < n - 1; i++) {
-      dx.push(pts[i + 1].x - pts[i].x);
-      dy.push(pts[i + 1].y - pts[i].y);
-      m.push(dy[i] / dx[i]);
-    }
-
-    const tangents = new Array<number>(n);
-    tangents[0] = m[0] ?? 0;
-    tangents[n - 1] = m[n - 2] ?? 0;
-    for (let i = 1; i < n - 1; i++) {
-      if (m[i - 1] * m[i] <= 0) {
-        tangents[i] = 0;
-      } else {
-        tangents[i] = (m[i - 1] + m[i]) / 2;
-      }
-    }
-
-    // Clamp tangents for monotonicity
-    for (let i = 0; i < n - 1; i++) {
-      if (Math.abs(m[i]) < 1e-10) {
-        tangents[i] = 0;
-        tangents[i + 1] = 0;
-      } else {
-        const a = tangents[i] / m[i];
-        const b = tangents[i + 1] / m[i];
-        const s = a * a + b * b;
-        if (s > 9) {
-          const t = 3 / Math.sqrt(s);
-          tangents[i] = t * a * m[i];
-          tangents[i + 1] = t * b * m[i];
-        }
-      }
-    }
-
-    // Build cubic Bezier path
-    let d = `M${pts[0].x.toFixed(2)},${pts[0].y.toFixed(2)}`;
-    for (let i = 0; i < n - 1; i++) {
-      const seg = dx[i] / 3;
-      const cp1x = pts[i].x + seg;
-      const cp1y = pts[i].y + tangents[i] * seg;
-      const cp2x = pts[i + 1].x - seg;
-      const cp2y = pts[i + 1].y - tangents[i + 1] * seg;
-      d += `C${cp1x.toFixed(2)},${cp1y.toFixed(2)},${cp2x.toFixed(2)},${cp2y.toFixed(2)},${pts[i + 1].x.toFixed(2)},${pts[i + 1].y.toFixed(2)}`;
-    }
-
-    // Close: line to bottom-right, bottom-left, close
-    d += `L100,${height}L0,${height}Z`;
-    return d;
-  }, [height]);
-
+  const binW = 100 / n;
   const hasDynamic = dynamicBins && dynamicBins.some(v => v > 0);
 
-  const staticPath  = useMemo(() => buildPath(staticBins, staticMax),   [staticBins, staticMax, buildPath]);
-  const dynamicPath = useMemo(
-    () => hasDynamic ? buildPath(dynamicBins!, dynamicMax) : '',
-    [hasDynamic, dynamicBins, dynamicMax, buildPath],
+  // Ghost mask — ref-driven so drag updates bypass React reconciliation.
+  // The clipPath rect is updated imperatively via useEffect.
+  const clipId = useRef(`ghost-mask-${Math.random().toString(36).slice(2, 8)}`).current;
+  const clipRectRef = useRef<SVGRectElement>(null);
+
+  useEffect(() => {
+    if (clipRectRef.current) {
+      clipRectRef.current.setAttribute('x', String(lowPct));
+      clipRectRef.current.setAttribute('width', String(Math.max(0, highPct - lowPct)));
+    }
+  }, [lowPct, highPct]);
+
+  // Memoize static rects — bin data only changes when server responds, not during drag
+  const staticRects = useMemo(() =>
+    staticBins.map((v, i) => {
+      const barH = (v / staticMax) * height;
+      return (
+        <rect key={i}
+          x={i * binW} y={height - barH}
+          width={binW} height={barH}
+          fill="var(--color-cyan)"
+        />
+      );
+    }),
+    [staticBins, staticMax, height, binW],
   );
 
   return (
@@ -223,13 +185,45 @@ function DistributionPlot({ staticBins, dynamicBins, height }: {
         pointerEvents: 'none',
       }}
     >
-      <path d={staticPath}  fill="var(--color-cyan)" opacity={0.10} />
-      {dynamicPath && (
-        <path d={dynamicPath} fill="var(--color-cyan)" opacity={0.40} />
+      <defs>
+        <clipPath id={clipId}>
+          <rect ref={clipRectRef} x={lowPct} y="0" width={Math.max(0, highPct - lowPct)} height={height} />
+        </clipPath>
+      </defs>
+
+      {/* Static layer — ghost shape, always visible at low opacity */}
+      <g opacity={0.08}>{staticRects}</g>
+
+      {/* Static layer — inside drag handles, brighter */}
+      <g clipPath={`url(#${clipId})`} opacity={0.12}>{staticRects}</g>
+
+      {/* Dynamic layer — bars morph via CSS transition on height/y */}
+      {hasDynamic && (
+        <g style={{
+          opacity: pending ? 0.5 : 1,
+          transition: 'opacity 200ms',
+          animation: pending ? 'distPlotBreath 1.5s ease-in-out infinite' : 'none',
+        }}>
+          {dynamicBins!.map((v, i) => {
+            const barH = (v / dynamicMax) * height;
+            return (
+              <rect key={i}
+                x={i * binW}
+                width={binW}
+                fill="var(--color-cyan)" opacity={0.45}
+                style={{
+                  y: height - barH,
+                  height: barH,
+                  transition: 'y 300ms ease-out, height 300ms ease-out',
+                }}
+              />
+            );
+          })}
+        </g>
       )}
     </svg>
   );
-}
+});
 
 // ── EditableNumber ────────────────────────────────────────────────────────────
 
@@ -312,17 +306,41 @@ function EditableNumber({ value, min, max, isFloat, color, onCommit, align = 'le
   );
 }
 
+// ── Void Detector ─────────────────────────────────────────────────────────────
+// If the drag delta swept only through histogram bins with 0 counts,
+// the query result is identical — skip the network request.
+
+function hasDataInDelta(
+  oldVal: number, newVal: number,
+  min: number, max: number,
+  histogram: number[],
+): boolean {
+  const n = histogram.length;
+  const range = max - min || 1;
+  const toBin = (v: number) => Math.max(0, Math.min(n - 1, Math.floor(((v - min) / range) * (n - 1))));
+  const a = toBin(Math.min(oldVal, newVal));
+  const b = toBin(Math.max(oldVal, newVal));
+  for (let i = a; i <= b; i++) {
+    if (histogram[i] > 0) return true;
+  }
+  return false;
+}
+
 // ── RangeSlider ───────────────────────────────────────────────────────────────
 
-function RangeSlider({ name, min, max, low, high, onRangeChange, constrainedMin, constrainedMax, pending, staticHistogram, dynamicHistogram }: {
+function RangeSlider({ name, min, max, low, high, onDrag, onCommit, constrainedMin, constrainedMax, pending, staticHistogram, dynamicHistogram }: {
   name: string; min: number; max: number; low: number; high: number;
-  onRangeChange:    (name: string, lo: number, hi: number) => void;
+  onDrag:           (name: string, lo: number, hi: number) => void;
+  onCommit:         (name: string) => void;
   constrainedMin?:  number;
   constrainedMax?:  number;
   pending?:         boolean;
   staticHistogram?: number[];
   dynamicHistogram?: number[];
 }) {
+
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef<{ lo: number; hi: number } | null>(null);
 
   const range   = max - min || 1;
   const lowPct  = ((low  - min) / range) * 100;
@@ -331,13 +349,13 @@ function RangeSlider({ name, min, max, low, high, onRangeChange, constrainedMin,
   const isFloat = !Number.isInteger(min) || !Number.isInteger(max);
   const step    = isFloat ? range / 200 : Math.max(1, Math.round(range / 200));
 
-  const hasCon   = constrainedMin !== undefined && constrainedMax !== undefined;
+  const hasCon   = !isDragging && constrainedMin !== undefined && constrainedMax !== undefined;
   const conLoPct = hasCon ? Math.max(0,   ((constrainedMin! - min) / range) * 100) : 0;
   const conHiPct = hasCon ? Math.min(100, ((constrainedMax! - min) / range) * 100) : 0;
 
   const epsilon = (max - min) * 0.001;
-  const lowOob  = !pending && hasCon && low  < constrainedMin! - epsilon;
-  const highOob = !pending && hasCon && high > constrainedMax! + epsilon;
+  const lowOob  = !pending && !isDragging && hasCon && low  < constrainedMin! - epsilon;
+  const highOob = !pending && !isDragging && hasCon && high > constrainedMax! + epsilon;
 
   const AMBER_COLOR = 'var(--color-amber)';
   const AMBER_GLOW  = 'oklch(0.750 0.185 60 / 0.28)';
@@ -356,7 +374,28 @@ function RangeSlider({ name, min, max, low, high, onRangeChange, constrainedMin,
   } as CSSProperties;
 
   const handleClipToReality = () => {
-    if (hasCon) onRangeChange(name, constrainedMin!, constrainedMax!);
+    if (constrainedMin !== undefined && constrainedMax !== undefined) {
+      onDrag(name, constrainedMin, constrainedMax);
+      onCommit(name);
+    }
+  };
+
+  const handleDragStart = () => {
+    setIsDragging(true);
+    dragStartRef.current = { lo: low, hi: high };
+  };
+  const handleDragEnd = () => {
+    setIsDragging(false);
+    // Void detector: if the drag delta swept only through empty bins, skip the query
+    const start = dragStartRef.current;
+    if (start && staticHistogram && staticHistogram.length > 0) {
+      const loChanged = low !== start.lo;
+      const hiChanged = high !== start.hi;
+      const loDelta = loChanged && hasDataInDelta(start.lo, low, min, max, staticHistogram);
+      const hiDelta = hiChanged && hasDataInDelta(start.hi, high, min, max, staticHistogram);
+      if ((loChanged || hiChanged) && !loDelta && !hiDelta) return; // dragged through void
+    }
+    onCommit(name);
   };
 
   const PLOT_H = 20;
@@ -369,13 +408,16 @@ function RangeSlider({ name, min, max, low, high, onRangeChange, constrainedMin,
             staticBins={staticHistogram}
             dynamicBins={hasCon ? dynamicHistogram : undefined}
             height={PLOT_H}
+            lowPct={lowPct}
+            highPct={highPct}
+            pending={pending}
           />
         </div>
       )}
       <div className="relative" style={{ height: 20 }}>
         <div className="absolute top-1/2 -translate-y-1/2 rounded-full w-full"
           style={{ height: 2, background: 'var(--color-cyan)', opacity: 0.10 }} />
-        {hasCon && (
+        {!isDragging && constrainedMin !== undefined && constrainedMax !== undefined && (
           <div
             className="absolute top-1/2 -translate-y-1/2 rounded-full"
             title="Double-click to clip handles to this range"
@@ -399,26 +441,30 @@ function RangeSlider({ name, min, max, low, high, onRangeChange, constrainedMin,
           className="range-thumb range-low absolute inset-0 w-full appearance-none bg-transparent cursor-pointer"
           min={min} max={max} step={step} value={low}
           style={lowThumbStyle}
-          onChange={e => onRangeChange(name, Math.min(Number(e.target.value), high), high)}
+          onPointerDown={handleDragStart}
+          onPointerUp={handleDragEnd}
+          onChange={e => onDrag(name, Math.min(Number(e.target.value), high), high)}
         />
         <input
           type="range"
           className="range-thumb range-high absolute inset-0 w-full appearance-none bg-transparent cursor-pointer"
           min={min} max={max} step={step} value={high}
           style={highThumbStyle}
-          onChange={e => onRangeChange(name, low, Math.max(Number(e.target.value), low))}
+          onPointerDown={handleDragStart}
+          onPointerUp={handleDragEnd}
+          onChange={e => onDrag(name, low, Math.max(Number(e.target.value), low))}
         />
       </div>
       <div className="flex justify-between font-mono mt-0.5" style={{ fontSize: 'var(--font-size-xs)' }}>
         <EditableNumber
           value={low} min={min} max={high} isFloat={isFloat}
           color={lowOob ? 'var(--color-amber)' : full ? 'var(--color-fg-3)' : 'var(--color-fg-2)'}
-          onCommit={v => onRangeChange(name, v, high)}
+          onCommit={v => { onDrag(name, v, high); onCommit(name); }}
         />
         <EditableNumber
           value={high} min={low} max={max} isFloat={isFloat}
           color={highOob ? 'var(--color-amber)' : full ? 'var(--color-fg-3)' : 'var(--color-fg-2)'}
-          onCommit={v => onRangeChange(name, low, v)}
+          onCommit={v => { onDrag(name, low, v); onCommit(name); }}
           align="right"
         />
       </div>
@@ -538,8 +584,6 @@ function partitionColumns(
   columns: ColumnInfo[],
   columnStats: Record<string, ColumnStats>,
   columnCardinality: Record<string, ColumnCardinality>,
-  constrainedStats: Record<string, ColumnStats>,
-  hasAnyFilter: boolean,
 ): {
   constants: { col: ColumnInfo; value: string }[];
   variables: ColumnInfo[];
@@ -551,7 +595,10 @@ function partitionColumns(
 
   for (const c of columns) {
     const isNum = isNumericType(c.type);
-    const stats = hasAnyFilter ? constrainedStats[c.name] : columnStats[c.name];
+    // Partition using GLOBAL stats only — never constrainedStats.
+    // A column that becomes single-valued under a filter must keep its slider
+    // so the user can adjust or remove the filter.
+    const stats = columnStats[c.name];
     const card = columnCardinality[c.name];
 
     if (isNum && stats && stats.min === stats.max) {
@@ -578,7 +625,7 @@ function partitionColumns(
 const ControlCenter = memo(function ControlCenter({
   columns, columnStats, columnCardinality,
   rangeState, selected, textFilters,
-  onRangeChange, onToggleSelect, onClearSelect, onTextChange,
+  onRangeDrag, onRangeCommit, onToggleSelect, onClearSelect, onTextChange,
   hasAnyFilter,
   constrainedStats, noResults, pendingConstraints,
   staticHistograms, constrainedHistograms,
@@ -590,7 +637,8 @@ const ControlCenter = memo(function ControlCenter({
   rangeState:          Record<string, [number, number]>;
   selected:            Record<string, Set<string>>;
   textFilters:         Record<string, string>;
-  onRangeChange:       (name: string, lo: number, hi: number) => void;
+  onRangeDrag:         (name: string, lo: number, hi: number) => void;
+  onRangeCommit:       (name: string) => void;
   onToggleSelect:      (name: string, v: string) => void;
   onClearSelect:       (name: string) => void;
   onTextChange:        (name: string, v: string) => void;
@@ -655,8 +703,13 @@ const ControlCenter = memo(function ControlCenter({
           </span>
         </div>
 
-        {isNum && stats ? (
-          stats.min === stats.max ? (
+        {isNum ? (
+          !stats ? (
+            /* Schema says numeric but stats haven't hydrated — skeleton track */
+            <div style={{ height: 20, position: 'relative' }}>
+              <div className="skeleton rounded-full" style={{ height: 2, width: '100%', position: 'absolute', top: '50%', transform: 'translateY(-50%)' }} />
+            </div>
+          ) : stats.min === stats.max ? (
             <span className="font-mono" style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-fg-3)', fontStyle: 'italic' }}>
               {Number.isInteger(stats.min) ? stats.min.toLocaleString() : stats.min.toFixed(2)} (constant)
             </span>
@@ -669,7 +722,8 @@ const ControlCenter = memo(function ControlCenter({
               constrainedMin={hasAnyFilter ? constrainedStats[c.name]?.min : undefined}
               constrainedMax={hasAnyFilter ? constrainedStats[c.name]?.max : undefined}
               pending={pendingConstraints}
-              onRangeChange={onRangeChange}
+              onDrag={onRangeDrag}
+              onCommit={onRangeCommit}
               staticHistogram={staticHistograms[c.name]}
               dynamicHistogram={hasAnyFilter ? constrainedHistograms[c.name] : undefined}
             />
@@ -1179,10 +1233,24 @@ export default function ParquetPreview({ fileId, onProgress }: {
 
   // ── Filter handlers ──────────────────────────────────────────────────────────
 
-  const handleRangeChange = useCallback((name: string, lo: number, hi: number) => {
-    setRangeOverrides(prev => ({ ...prev, [name]: [lo, hi] }));
+  // rAF throttle: batch all onChange events within one animation frame into
+  // a single setState. Prevents N re-renders per frame when dragging fast.
+  const rafRef = useRef<number | null>(null);
+  const pendingDrag = useRef<{ name: string; lo: number; hi: number } | null>(null);
+  const handleRangeDrag = useCallback((name: string, lo: number, hi: number) => {
+    pendingDrag.current = { name, lo, hi };
+    if (rafRef.current === null) {
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        const p = pendingDrag.current;
+        if (p) setRangeOverrides(prev => ({ ...prev, [p.name]: [p.lo, p.hi] }));
+      });
+    }
+  }, []);
+
+  const handleRangeCommit = useCallback((_name: string) => {
     if (debRef.current) clearTimeout(debRef.current);
-    debRef.current = setTimeout(() => triggerRef.current(), 120);
+    triggerRef.current();
   }, []);
 
   const handleTextChange = useCallback((name: string, value: string) => {
@@ -1254,8 +1322,8 @@ export default function ParquetPreview({ fileId, onProgress }: {
   // Low-cardinality categoricals (≤5 distinct) appear in the ControlCenter as chips
   // but never in the table — only tableEligible columns populate the data drawer.
   const { constants, variables, tableEligible } = useMemo(
-    () => partitionColumns(columns, columnStats, columnCardinality, constrainedStats, hasAnyFilter),
-    [columns, columnStats, columnCardinality, constrainedStats, hasAnyFilter],
+    () => partitionColumns(columns, columnStats, columnCardinality),
+    [columns, columnStats, columnCardinality],
   );
 
   // activeColumns: table-eligible columns that are toggled visible.
@@ -1419,7 +1487,8 @@ export default function ParquetPreview({ fileId, onProgress }: {
                 rangeState={rangeState}
                 selected={selected}
                 textFilters={textFilters}
-                onRangeChange={handleRangeChange}
+                onRangeDrag={handleRangeDrag}
+                onRangeCommit={handleRangeCommit}
                 onToggleSelect={handleToggleSelect}
                 onClearSelect={handleClearSelect}
                 onTextChange={handleTextChange}

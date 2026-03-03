@@ -38,7 +38,7 @@ import type { FilterSpec, SortSpec, DataProfile, DataProfileStats } from '@genom
 import { AppDataSource } from '../app_data.js';
 import { GenomicFile } from '../entities/index.js';
 import { asyncWrap } from '../lib/async_wrap.js';
-import { duckdbSrc } from '../lib/storage.js';
+import { resolveLocalParquet } from '../lib/parquet_cache.js';
 import { getConnection } from '../lib/duckdb.js';
 import {
   expandSchema,
@@ -199,8 +199,10 @@ router.post('/:id/query', asyncWrap(async (req, res) => {
 
   // ── Build queries ──────────────────────────────────────────────────────────
 
+  // Resolve to local disk (cached download from S3 on first access)
+  const localPath = await resolveLocalParquet(pqKey);
   const conn = await getConnection();
-  const safeSrc = duckdbSrc(pqKey).replace(/'/g, "''");
+  const safeSrc = localPath.replace(/'/g, "''");
   const readParquet = `read_parquet('${safeSrc}')`;
 
   try {

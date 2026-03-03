@@ -33,7 +33,8 @@ import type {
   JsonValue, JsonObject,
 } from '@genome-hub/shared';
 import { AppDataSource } from '../app_data.js';
-import { duckdbSrc, duckdbSetup } from './storage.js';
+import { duckdbSetup } from './storage.js';
+import { resolveLocalParquet } from './parquet_cache.js';
 
 // ── Public API ──────────────────────────────────────────────────────────────
 
@@ -211,9 +212,10 @@ export async function openDuckDbSession(parquetS3Key: string): Promise<{
   close: () => Promise<void>;
 }> {
   const { getConnection } = await import('./duckdb.js');
+  // Resolve to local disk (cached download from S3 on first access)
+  const localPath = await resolveLocalParquet(parquetS3Key);
   const conn = await getConnection();
-  const src = duckdbSrc(parquetS3Key);
-  const safeSrc = src.replace(/'/g, "''");
+  const safeSrc = localPath.replace(/'/g, "''");
 
   const query = async (sql: string): Promise<any[]> => {
     const result = await conn.runAndReadAll(sql);
