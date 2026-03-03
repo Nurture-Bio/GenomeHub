@@ -535,6 +535,7 @@ function RangeSlider({ name, min, max, low, high, onDrag, onCommit, constrainedM
     const onUp = () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
       try { capturedTarget.releasePointerCapture(capturedPointerId); } catch {}
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
@@ -559,6 +560,7 @@ function RangeSlider({ name, min, max, low, high, onDrag, onCommit, constrainedM
     document.body.style.userSelect = 'none';
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
   }, [name, min, max, range, onDrag, onCommit, staticHistogram, syncTrack]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -676,6 +678,7 @@ function RangeSlider({ name, min, max, low, high, onDrag, onCommit, constrainedM
           style={{ zIndex: 3 } as CSSProperties}
           onPointerDown={handleDragStart}
           onPointerUp={handleDragEnd}
+          onPointerCancel={handleDragEnd}
           onChange={e => {
             const v = Math.min(Number(e.target.value), highRef.current);
             lowRef.current = v;
@@ -691,6 +694,7 @@ function RangeSlider({ name, min, max, low, high, onDrag, onCommit, constrainedM
           style={{ zIndex: 4 } as CSSProperties}
           onPointerDown={handleDragStart}
           onPointerUp={handleDragEnd}
+          onPointerCancel={handleDragEnd}
           onChange={e => {
             const v = Math.max(Number(e.target.value), lowRef.current);
             highRef.current = v;
