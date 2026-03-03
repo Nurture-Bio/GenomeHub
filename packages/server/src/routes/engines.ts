@@ -32,10 +32,11 @@ function parseResultMeta(
 ): { filename: string; contentType: string } {
   const ct = headers.get('content-type') ?? 'application/octet-stream';
   const extMap: Record<string, string> = {
-    'application/json':          'json',
-    'text/plain':                'txt',
-    'text/csv':                  'csv',
-    'text/tab-separated-values': 'tsv',
+    'application/json':                'json',
+    'text/plain':                      'txt',
+    'text/csv':                        'csv',
+    'text/tab-separated-values':       'tsv',
+    'application/vnd.apache.parquet':  'parquet',
   };
   const ext = extMap[ct.split(';')[0].trim()] ?? 'bin';
   return { filename: `${methodId}_result.${ext}`, contentType: ct };

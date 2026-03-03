@@ -171,6 +171,40 @@ router.get('/:id/parquet-url', asyncWrap(async (req, res) => {
   const file = await repo.findOneBy({ id: req.params.id });
   if (!file) { res.status(404).json({ error: 'not found' }); return; }
 
+  // ── Fast path: file is already Parquet — serve s3Key directly ──
+  if (detectFormat(file.filename) === 'parquet') {
+    let dataProfile = file.dataProfile;
+    if (!dataProfile) {
+      try {
+        dataProfile = await extractBaseProfile(file.s3Key);
+        repo.update(file.id, { dataProfile }).catch(() => {});
+      } catch (err) {
+        console.error(JSON.stringify({
+          tag: '[BASE_PROFILE_FAILED]', fileId: file.id,
+          s3Key: file.s3Key,
+          error: err instanceof Error ? err.message : String(err),
+          timestamp: new Date().toISOString(),
+        }));
+      }
+    }
+    if (isLocal) {
+      res.json({ status: 'ready', url: `/api/storage/${file.s3Key}`, dataProfile: dataProfile ?? null });
+    } else if (CF_DOMAIN && CF_KEY_PAIR_ID) {
+      const privateKey = await getCfPrivateKey();
+      const url = getCloudFrontSignedUrl({
+        url: `https://${CF_DOMAIN}/parquet/${file.s3Key}`,
+        keyPairId: CF_KEY_PAIR_ID,
+        privateKey,
+        dateLessThan: new Date(Date.now() + 3600 * 1000).toISOString(),
+      });
+      res.json({ status: 'ready', url, dataProfile: dataProfile ?? null });
+    } else {
+      const url = await presignDownloadUrl(file.s3Key, 'preview.parquet');
+      res.json({ status: 'ready', url, dataProfile: dataProfile ?? null });
+    }
+    return;
+  }
+
   if (!isConvertible(file.filename)) {
     res.json({ status: 'unavailable', reason: 'format not supported for dataset preview' });
     return;
@@ -278,6 +312,16 @@ router.get('/:id/parquet-url', asyncWrap(async (req, res) => {
   }
 }));
 
+// ─── Helpers ────────────────────────────────────────────────
+
+/** Resolve the S3 key that points to the Parquet data for a file.
+ *  Native parquet files use s3Key directly; converted files use parquetS3Key. */
+function resolveParquetKey(file: GenomicFile): string | null {
+  if (detectFormat(file.filename) === 'parquet') return file.s3Key;
+  if (file.parquetS3Key && (file.parquetStatus === 'ready' || !file.parquetStatus)) return file.parquetS3Key;
+  return null;
+}
+
 // ─── Data profile (demand-driven lazy hydration) ────────────
 
 router.get('/:id/data-profile', asyncWrap(async (req, res) => {
@@ -285,7 +329,8 @@ router.get('/:id/data-profile', asyncWrap(async (req, res) => {
   const file = await repo.findOneBy({ id: req.params.id });
   if (!file) { res.status(404).json({ error: 'not found' }); return; }
 
-  if (!file.parquetS3Key || file.parquetStatus !== 'ready') {
+  const pqKey = resolveParquetKey(file);
+  if (!pqKey) {
     res.status(409).json({ error: 'parquet not ready' });
     return;
   }
@@ -306,12 +351,12 @@ router.get('/:id/data-profile', asyncWrap(async (req, res) => {
   }
 
   // Slow path: kick off hydration as fire-and-forget, return 202
-  hydrateAttributes(file.parquetS3Key, file.id, profile, missing)
+  hydrateAttributes(pqKey, file.id, profile, missing)
     .catch(err => {
       console.error(JSON.stringify({
         tag: '[DATA_PROFILE_HYDRATE_FAILED]',
         fileId: file.id,
-        parquetS3Key: file.parquetS3Key,
+        parquetS3Key: pqKey,
         requestedKeys: missing,
         error: err instanceof Error ? err.message : String(err),
         timestamp: new Date().toISOString(),
@@ -328,7 +373,8 @@ router.post('/:id/reprofile', asyncWrap(async (req, res) => {
   const file = await repo.findOneBy({ id: req.params.id });
   if (!file) { res.status(404).json({ error: 'not found' }); return; }
 
-  if (!file.parquetS3Key || file.parquetStatus !== 'ready') {
+  const pqKey = resolveParquetKey(file);
+  if (!pqKey) {
     res.status(409).json({ error: 'parquet not ready' });
     return;
   }
@@ -338,7 +384,7 @@ router.post('/:id/reprofile', asyncWrap(async (req, res) => {
 
   // Re-extract base profile with DESCRIBE (logical types)
   try {
-    const baseProfile = await extractBaseProfile(file.parquetS3Key);
+    const baseProfile = await extractBaseProfile(pqKey);
     await repo.update(file.id, { dataProfile: baseProfile });
     res.json({ ok: true, profile: baseProfile });
   } catch (err) {
