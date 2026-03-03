@@ -5,8 +5,8 @@
  * Data layer: rows come from fetchWindow() → server query → Map cache.
  */
 
-import { useRef, useMemo, useState, useCallback, useEffect, memo, Profiler } from 'react';
-import type { CSSProperties, RefObject, ProfilerOnRenderCallback } from 'react';
+import { useRef, useMemo, useState, useCallback, useEffect, memo } from 'react';
+import type { CSSProperties, RefObject } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   useReactTable,
@@ -24,18 +24,9 @@ import { apiFetch } from '../lib/api';
 import { useAppStore } from '../stores/useAppStore';
 import type { ColumnInfo, ColumnStats, ColumnCardinality, FilterSpec, FilterOp, SortSpec, PipelineStatus } from '../hooks/useParquetPreview';
 
-// ── TEMPORARY: Render profiler ──────────────────────────────────────────────
-const onRender: ProfilerOnRenderCallback = (id, phase, actualMs, baseMs, startTime, commitTime) => {
-  if (import.meta.env.DEV) {
-    console.log(`[RENDER] ${id}`, { phase, actualMs: actualMs.toFixed(1), baseMs: baseMs.toFixed(1), startTime: startTime.toFixed(0), commitTime: commitTime.toFixed(0) });
-  }
-};
-
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const ROW_H       = 28;
-const PANEL_H     = 560;
-const SIDEBAR_W   = 216;
 const PX_PER_CHAR   = 7.5;
 const CELL_PAD_X    = 6;       // padding: '_ 6px' on header/data cells
 const CHEVRON_W     = 8;       // SortChevron svg width
@@ -240,6 +231,87 @@ function DistributionPlot({ staticBins, dynamicBins, height }: {
   );
 }
 
+// ── EditableNumber ────────────────────────────────────────────────────────────
+
+function EditableNumber({ value, min, max, isFloat, color, onCommit, align = 'left' }: {
+  value: number; min: number; max: number; isFloat: boolean;
+  color: string; onCommit: (v: number) => void; align?: 'left' | 'right';
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const display = isFloat ? value.toFixed(2) : value.toLocaleString();
+
+  const commit = () => {
+    const raw = draft.replace(/,/g, '').trim();
+    const parsed = Number(raw);
+    if (!isNaN(parsed) && raw !== '') {
+      const clamped = Math.min(max, Math.max(min, parsed));
+      onCommit(clamped);
+    }
+    setEditing(false);
+  };
+
+  // Keep commas live as the user types
+  const handleChange = (raw: string) => {
+    const stripped = raw.replace(/,/g, '');
+    if (stripped === '' || stripped === '-' || stripped === '.') { setDraft(stripped); return; }
+    const parsed = Number(stripped);
+    if (!isNaN(parsed)) {
+      setDraft(isFloat ? stripped : parsed.toLocaleString());
+    }
+  };
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        type="text"
+        inputMode="decimal"
+        value={draft}
+        onChange={e => handleChange(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => {
+          if (e.key === 'Enter') commit();
+          if (e.key === 'Escape') setEditing(false);
+        }}
+        className="font-mono bg-transparent border-none outline-none"
+        style={{
+          fontSize: 'inherit',
+          color: 'var(--color-cyan)',
+          width: `${Math.max(display.length, 4) + 1}ch`,
+          textAlign: align,
+          padding: 0,
+          margin: 0,
+          borderBottom: '1px solid var(--color-cyan)',
+        }}
+        autoFocus
+      />
+    );
+  }
+
+  return (
+    <span
+      onClick={() => {
+        setDraft(display);
+        setEditing(true);
+      }}
+      className="cursor-text"
+      style={{
+        color,
+        borderBottom: '1px dashed transparent',
+        transition: 'border-color var(--t-fast)',
+      }}
+      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--color-fg-3)'; }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = 'transparent'; }}
+      title="Click to edit"
+    >
+      {display}
+    </span>
+  );
+}
+
 // ── RangeSlider ───────────────────────────────────────────────────────────────
 
 function RangeSlider({ name, min, max, low, high, onRangeChange, constrainedMin, constrainedMax, pending, staticHistogram, dynamicHistogram }: {
@@ -338,12 +410,17 @@ function RangeSlider({ name, min, max, low, high, onRangeChange, constrainedMin,
         />
       </div>
       <div className="flex justify-between font-mono mt-0.5" style={{ fontSize: 'var(--font-size-xs)' }}>
-        <span style={{ color: lowOob  ? 'var(--color-amber)' : full ? 'var(--color-fg-3)' : 'var(--color-fg-2)' }}>
-          {isFloat ? low.toFixed(2) : low.toLocaleString()}
-        </span>
-        <span style={{ color: highOob ? 'var(--color-amber)' : full ? 'var(--color-fg-3)' : 'var(--color-fg-2)' }}>
-          {isFloat ? high.toFixed(2) : high.toLocaleString()}
-        </span>
+        <EditableNumber
+          value={low} min={min} max={high} isFloat={isFloat}
+          color={lowOob ? 'var(--color-amber)' : full ? 'var(--color-fg-3)' : 'var(--color-fg-2)'}
+          onCommit={v => onRangeChange(name, v, high)}
+        />
+        <EditableNumber
+          value={high} min={low} max={max} isFloat={isFloat}
+          color={highOob ? 'var(--color-amber)' : full ? 'var(--color-fg-3)' : 'var(--color-fg-2)'}
+          onCommit={v => onRangeChange(name, low, v)}
+          align="right"
+        />
       </div>
     </div>
   );
@@ -364,8 +441,10 @@ function MultiSelect({ values, selected, onToggle, onClear }: {
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
         <button
-          className="w-full flex items-center justify-between gap-1.5 rounded-sm border border-line px-2 py-1 cursor-pointer bg-transparent hover:bg-raised transition-colors"
+          className="w-full flex items-center justify-between gap-1.5 rounded-sm border border-line px-2 py-1 cursor-pointer bg-transparent transition-colors"
           style={{ fontSize: 'var(--font-size-xs)' }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-base)'; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
         >
           <span className="truncate" style={{ color: count > 0 ? 'var(--color-fg)' : 'var(--color-fg-3)' }}>
             {count > 0 ? `${count} of ${values.length}` : 'All'}
@@ -384,13 +463,15 @@ function MultiSelect({ values, selected, onToggle, onClear }: {
       <Popover.Portal>
         <Popover.Content
           sideOffset={4} align="start"
-          className="bg-base border border-line shadow-lg rounded-md z-popover animate-fade-in"
-          style={{ minWidth: 190, maxHeight: 260, overflowY: 'auto' }}
+          className="border border-line shadow-lg rounded-md z-popover animate-fade-in"
+          style={{ minWidth: 'var(--radix-popover-trigger-width)', maxHeight: 260, overflowY: 'auto', background: 'var(--color-void)' }}
         >
           {count > 0 && (
             <button
-              className="block w-full text-left px-2 py-1.5 font-mono cursor-pointer bg-transparent border-none hover:bg-raised"
+              className="block w-full text-left px-2 py-1.5 font-mono cursor-pointer bg-transparent border-none"
               style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-fg-3)', borderBottom: '1px solid var(--color-line)' }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-base)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
               onClick={() => { onClear(); setOpen(false); }}
             >
               Clear selection
@@ -398,8 +479,10 @@ function MultiSelect({ values, selected, onToggle, onClear }: {
           )}
           {values.map(v => (
             <label key={v}
-              className="flex items-center gap-2 px-2 py-1 cursor-pointer hover:bg-raised"
-              style={{ fontSize: 'var(--font-size-xs)' }}>
+              className="flex items-center gap-2 px-2 py-1 cursor-pointer"
+              style={{ fontSize: 'var(--font-size-xs)' }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-base)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
               <input type="checkbox"
                 checked={selected.has(v)}
                 onChange={() => onToggle(v)}
@@ -449,15 +532,57 @@ function InlineSelect({ values, selected, onToggle }: {
   );
 }
 
-// ── FilterSidebar ─────────────────────────────────────────────────────────────
+// ── Column Partitioning — Constants vs Variables ─────────────────────────────
 
-const FilterSidebar = memo(function FilterSidebar({
+function partitionColumns(
+  columns: ColumnInfo[],
+  columnStats: Record<string, ColumnStats>,
+  columnCardinality: Record<string, ColumnCardinality>,
+  constrainedStats: Record<string, ColumnStats>,
+  hasAnyFilter: boolean,
+): {
+  constants: { col: ColumnInfo; value: string }[];
+  variables: ColumnInfo[];
+  tableEligible: ColumnInfo[];
+} {
+  const constants: { col: ColumnInfo; value: string }[] = [];
+  const variables: ColumnInfo[] = [];
+  const tableEligible: ColumnInfo[] = [];
+
+  for (const c of columns) {
+    const isNum = isNumericType(c.type);
+    const stats = hasAnyFilter ? constrainedStats[c.name] : columnStats[c.name];
+    const card = columnCardinality[c.name];
+
+    if (isNum && stats && stats.min === stats.max) {
+      const v = Number.isInteger(stats.min) ? stats.min.toLocaleString() : stats.min.toFixed(2);
+      constants.push({ col: c, value: v });
+    } else if (card && card.distinct === 1 && card.values.length === 1) {
+      constants.push({ col: c, value: card.values[0] });
+    } else {
+      variables.push(c);
+      // Low-cardinality categoricals (≤6 distinct) are chip-only — never in the table.
+      // Six chips fit across the 280px grid columns. Numeric columns and
+      // high-cardinality categoricals are table-eligible.
+      const isLowCard = !isNum && card && card.distinct >= 1 && card.distinct <= 6;
+      if (!isLowCard) {
+        tableEligible.push(c);
+      }
+    }
+  }
+  return { constants, variables, tableEligible };
+}
+
+// ── ControlCenter (was FilterSidebar) ─────────────────────────────────────────
+
+const ControlCenter = memo(function ControlCenter({
   columns, columnStats, columnCardinality,
   rangeState, selected, textFilters,
   onRangeChange, onToggleSelect, onClearSelect, onTextChange,
   hasAnyFilter,
   constrainedStats, noResults, pendingConstraints,
   staticHistograms, constrainedHistograms,
+  visibleColumns, onToggleVisible,
 }: {
   columns:             ColumnInfo[];
   columnStats:         Record<string, ColumnStats>;
@@ -475,92 +600,168 @@ const FilterSidebar = memo(function FilterSidebar({
   pendingConstraints:  boolean;
   staticHistograms:    Record<string, number[]>;
   constrainedHistograms: Record<string, number[]>;
+  visibleColumns:      Set<string>;
+  onToggleVisible:     (name: string) => void;
 }) {
+  // Partition into low-cardinality chips, numerics, and text columns
+  const lowCard: { col: ColumnInfo; card: ColumnCardinality; sel: Set<string> }[] = [];
+  const numerics: ColumnInfo[] = [];
+  const texts: ColumnInfo[] = [];
+
+  for (const c of columns) {
+    const isNum = isNumericType(c.type);
+    const card = columnCardinality[c.name];
+    const hasCard = card && card.distinct >= 1 && card.distinct <= DROPDOWN_MAX;
+    if (!isNum && hasCard && card.values.length > 1 && card.values.length <= 6) {
+      lowCard.push({ col: c, card, sel: selected[c.name] ?? new Set<string>() });
+    } else if (isNum) {
+      numerics.push(c);
+    } else {
+      texts.push(c);
+    }
+  }
+
+  const renderColumnCard = (c: ColumnInfo) => {
+    const isNum  = isNumericType(c.type);
+    const stats  = columnStats[c.name];
+    const card   = columnCardinality[c.name];
+    const sel    = selected[c.name] ?? new Set<string>();
+    const hasCard = card && card.distinct >= 1 && card.distinct <= DROPDOWN_MAX;
+    const active = isNum
+      ? !!(rangeState[c.name] && stats && (rangeState[c.name][0] > stats.min || rangeState[c.name][1] < stats.max))
+      : hasCard
+        ? sel.size > 0
+        : !!textFilters[c.name]?.trim();
+
+    return (
+      <div key={c.name}>
+        <div className="flex items-baseline gap-1.5 mb-1">
+          <span
+            onClick={(e) => { e.stopPropagation(); onToggleVisible(c.name); }}
+            className="font-semibold cursor-pointer select-none"
+            title={visibleColumns.has(c.name) ? 'Hide in table' : 'Show in table'}
+            style={{
+              fontSize: 'var(--font-size-xs)',
+              color: active ? 'var(--color-cyan)' : visibleColumns.has(c.name) ? 'var(--color-fg-2)' : 'var(--color-fg-3)',
+              borderBottom: visibleColumns.has(c.name) ? '1px solid var(--color-cyan)' : '1px dashed var(--color-fg-3)',
+              opacity: visibleColumns.has(c.name) ? 1 : 0.5,
+              transition: 'color var(--t-fast), opacity var(--t-fast), border-color var(--t-fast)',
+            }}
+          >
+            {c.name}
+          </span>
+          <span className="font-mono shrink-0 ml-auto" style={{ fontSize: 'calc(var(--font-size-xs) - 1px)', opacity: 0.25 }}>
+            {c.type}
+          </span>
+        </div>
+
+        {isNum && stats ? (
+          stats.min === stats.max ? (
+            <span className="font-mono" style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-fg-3)', fontStyle: 'italic' }}>
+              {Number.isInteger(stats.min) ? stats.min.toLocaleString() : stats.min.toFixed(2)} (constant)
+            </span>
+          ) : (
+            <RangeSlider
+              name={c.name}
+              min={stats.min} max={stats.max}
+              low={rangeState[c.name]?.[0]  ?? stats.min}
+              high={rangeState[c.name]?.[1] ?? stats.max}
+              constrainedMin={hasAnyFilter ? constrainedStats[c.name]?.min : undefined}
+              constrainedMax={hasAnyFilter ? constrainedStats[c.name]?.max : undefined}
+              pending={pendingConstraints}
+              onRangeChange={onRangeChange}
+              staticHistogram={staticHistograms[c.name]}
+              dynamicHistogram={hasAnyFilter ? constrainedHistograms[c.name] : undefined}
+            />
+          )
+        ) : hasCard ? (
+          card.values.length === 1 ? (
+            <span className="font-mono" style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-fg-3)', fontStyle: 'italic' }}>
+              {card.values[0]} (constant)
+            </span>
+          ) : card.values.length <= 6 ? (
+            <InlineSelect
+              values={card.values}
+              selected={sel}
+              onToggle={v => onToggleSelect(c.name, v)}
+            />
+          ) : (
+            <MultiSelect
+              values={card.values}
+              selected={sel}
+              onToggle={v => onToggleSelect(c.name, v)}
+              onClear={() => onClearSelect(c.name)}
+            />
+          )
+        ) : !isNum ? (
+          <input
+            className="w-full bg-transparent border border-line rounded-sm text-fg-2 font-mono placeholder:text-fg-3 focus:outline-none"
+            style={{
+              fontSize: 'var(--font-size-xs)', padding: '3px 6px',
+              borderColor: textFilters[c.name]?.trim() ? 'var(--color-cyan)' : undefined,
+              transition: 'border-color var(--t-fast)',
+            }}
+            placeholder="Search…"
+            value={textFilters[c.name] ?? ''}
+            onChange={e => onTextChange(c.name, e.target.value)}
+            spellCheck={false}
+          />
+        ) : null}
+      </div>
+    );
+  };
+
   return (
-    <div className="flex-1 overflow-y-auto">
-      <div className="flex flex-col gap-4 p-3"
-        style={{ opacity: noResults ? 0.35 : 1, transition: 'opacity var(--t-fast)' }}>
-        {columns.map(c => {
-          const isNum  = isNumericType(c.type);
-          const stats  = columnStats[c.name];
-          const card   = columnCardinality[c.name];
-          const sel    = selected[c.name] ?? new Set<string>();
-          const hasCard = card && card.distinct >= 1 && card.distinct <= DROPDOWN_MAX;
-          const active = isNum
-            ? !!(rangeState[c.name] && stats && (rangeState[c.name][0] > stats.min || rangeState[c.name][1] < stats.max))
-            : hasCard
-              ? sel.size > 0
-              : !!textFilters[c.name]?.trim();
-
-          return (
-            <div key={c.name}>
-              <div className="flex items-baseline gap-1.5 mb-1">
-                <span className="font-semibold" style={{
-                  fontSize: 'var(--font-size-xs)',
-                  color: active ? 'var(--color-cyan)' : 'var(--color-fg-2)',
-                }}>
-                  {c.name}
-                </span>
-                <span className="font-mono shrink-0" style={{ fontSize: 'calc(var(--font-size-xs) - 1px)', opacity: 0.35 }}>
-                  {c.type}
-                </span>
-              </div>
-
-              {isNum && stats ? (
-                stats.min === stats.max ? (
-                  <span className="font-mono" style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-fg-3)', fontStyle: 'italic' }}>
-                    {Number.isInteger(stats.min) ? stats.min.toLocaleString() : stats.min.toFixed(2)} (constant)
-                  </span>
-                ) : (
-                  <RangeSlider
-                    name={c.name}
-                    min={stats.min} max={stats.max}
-                    low={rangeState[c.name]?.[0]  ?? stats.min}
-                    high={rangeState[c.name]?.[1] ?? stats.max}
-                    constrainedMin={hasAnyFilter ? constrainedStats[c.name]?.min : undefined}
-                    constrainedMax={hasAnyFilter ? constrainedStats[c.name]?.max : undefined}
-                    pending={pendingConstraints}
-                    onRangeChange={onRangeChange}
-                    staticHistogram={staticHistograms[c.name]}
-                    dynamicHistogram={hasAnyFilter ? constrainedHistograms[c.name] : undefined}
-                  />
-                )
-              ) : hasCard ? (
-                card.values.length === 1 ? (
-                  <span className="font-mono" style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-fg-3)', fontStyle: 'italic' }}>
-                    {card.values[0]} (constant)
-                  </span>
-                ) : card.values.length <= 5 ? (
-                  <InlineSelect
-                    values={card.values}
-                    selected={sel}
-                    onToggle={v => onToggleSelect(c.name, v)}
-                  />
-                ) : (
-                  <MultiSelect
-                    values={card.values}
-                    selected={sel}
-                    onToggle={v => onToggleSelect(c.name, v)}
-                    onClear={() => onClearSelect(c.name)}
-                  />
-                )
-              ) : !isNum ? (
-                <input
-                  className="w-full bg-transparent border border-line rounded-sm text-fg-2 font-mono placeholder:text-fg-3 focus:outline-none"
-                  style={{
-                    fontSize: 'var(--font-size-xs)', padding: '3px 6px',
-                    borderColor: textFilters[c.name]?.trim() ? 'var(--color-cyan)' : undefined,
-                    transition: 'border-color var(--t-fast)',
-                  }}
-                  placeholder="Search…"
-                  value={textFilters[c.name] ?? ''}
-                  onChange={e => onTextChange(c.name, e.target.value)}
-                  spellCheck={false}
-                />
-              ) : null}
+    <div style={{ opacity: noResults ? 0.35 : 1, transition: 'opacity var(--t-fast)' }}>
+      {/* Low-cardinality chip groups — togglable filters at the top */}
+      {lowCard.length > 0 && (
+        <div className="flex flex-wrap gap-x-5 gap-y-2 px-4 pt-4 pb-2">
+          {lowCard.map(({ col, card, sel }) => (
+            <div key={col.name} className="flex items-center gap-1.5">
+              <span className="font-semibold shrink-0" style={{
+                fontSize: 'var(--font-size-xs)',
+                color: sel.size > 0 ? 'var(--color-cyan)' : 'var(--color-fg-3)',
+              }}>
+                {col.name}
+              </span>
+              {card.values.map(v => {
+                const on = sel.has(v);
+                return (
+                  <button key={v}
+                    onClick={() => onToggleSelect(col.name, v)}
+                    className="font-mono cursor-pointer border rounded-sm px-1.5 py-0.5 transition-colors"
+                    style={{
+                      fontSize: 'var(--font-size-xs)',
+                      background:  on ? 'var(--color-cyan)' : 'transparent',
+                      color:       on ? 'var(--color-void)' : 'var(--color-fg-2)',
+                      borderColor: on ? 'var(--color-cyan)' : 'var(--color-line)',
+                      fontWeight:  on ? 600 : 400,
+                    }}
+                  >
+                    {v}
+                  </button>
+                );
+              })}
             </div>
-          );
-        })}
+          ))}
+        </div>
+      )}
+
+      {/* Two-column layout: numerics left, text right */}
+      <div className="grid gap-4 p-4"
+        style={{ gridTemplateColumns: (numerics.length > 0 && texts.length > 0) ? '1fr 1fr' : '1fr' }}>
+        {numerics.length > 0 && (
+          <div className="grid gap-4 content-start"
+            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+            {numerics.map(renderColumnCard)}
+          </div>
+        )}
+        {texts.length > 0 && (
+          <div className="grid gap-4 content-start"
+            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+            {texts.map(renderColumnCard)}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -603,7 +804,7 @@ const VirtualRows = memo(function VirtualRows({
 
   useEffect(() => {
     if (start < 0) return;
-    if (pipelineStatus !== 'ready') return;
+    if (pipelineStatus !== 'ready' && pipelineStatus !== 'ready_background_work') return;
 
     // Collect window starts that need fetching
     const windowStarts: number[] = [];
@@ -642,8 +843,8 @@ const VirtualRows = memo(function VirtualRows({
 
   return (
     <>
-      <div style={{ height: virtualizer.getTotalSize(), width: totalWidth }} />
-      <div style={{ position: 'relative', width: totalWidth, marginTop: -virtualizer.getTotalSize() }}>
+      <div style={{ height: virtualizer.getTotalSize(), minWidth: '100%', width: totalWidth }} />
+      <div style={{ position: 'relative', minWidth: '100%', width: totalWidth, marginTop: -virtualizer.getTotalSize() }}>
         {items.map(vRow => {
           const rowLoaded = hasRow(vRow.index);
 
@@ -652,7 +853,7 @@ const VirtualRows = memo(function VirtualRows({
               style={{
                 position: 'absolute', top: 0, left: 0, width: '100%', height: ROW_H,
                 transform: `translateY(${Math.round(vRow.start)}px)`,
-                background: vRow.index % 2 === 1 ? 'var(--color-row-stripe)' : 'var(--color-void)',
+                background: 'var(--color-void)',
               }}
             >
               {columns.map(c => {
@@ -729,17 +930,6 @@ export default function ParquetPreview({ fileId, onProgress }: {
     baseProfile,
   );
 
-  console.log('[PP:render]', {
-    pipelineStatus: pipeline.status,
-    activeStep: pipeline.activeStep,
-    colCount: columns.length,
-    totalRows,
-    hasStats: !!profile?.columnStats,
-    hasCardinality: !!profile?.cardinality,
-    statsKeys: profile?.columnStats ? Object.keys(profile.columnStats).length : 0,
-    histograms: profile?.histograms ? Object.keys(profile.histograms) : profile?.histograms,
-  });
-
   // Derive stats and cardinality from server profile, handling null (negative cache)
   const columnStats: Record<string, ColumnStats> = useMemo(() => {
     const raw = profile?.columnStats;
@@ -806,26 +996,6 @@ export default function ParquetPreview({ fileId, onProgress }: {
   //   4 = Ready           → table body: real data
   const stage = pipeline.activeStep;
 
-  // ── TEMPORARY: Stage transition profiler ──────────────────────────────────
-  const prevStageRef = useRef(stage);
-  const renderCountRef = useRef(0);
-  renderCountRef.current++;
-  if (stage !== prevStageRef.current) {
-    console.log(`[STAGE] ${prevStageRef.current} → ${stage}`, {
-      t: performance.now().toFixed(1) + 'ms',
-      render: renderCountRef.current,
-      pipelineStatus: pipeline.status,
-      cols: columns.length,
-      filteredCount,
-    });
-    prevStageRef.current = stage;
-  }
-  useEffect(() => {
-    console.log(`[STAGE:COMMIT] stage=${stage} render=#${renderCountRef.current}`,
-      performance.now().toFixed(1) + 'ms');
-  });
-  // ── end profiler ──────────────────────────────────────────────────────────
-
   // ── Broadcast pipeline state to parent via onProgress ──────────────────────
   const isError = pipeline.status === 'error' || pipeline.status === 'failed' || pipeline.status === 'unavailable';
   const displayError = isError ? pipeline.error : undefined;
@@ -887,6 +1057,31 @@ export default function ParquetPreview({ fileId, onProgress }: {
   const [sorting,            setSorting]             = useState<SortingState>([]);
   const [constrainedStats,   setConstrainedStats]   = useState<Record<string, ColumnStats>>({});
   const [pendingConstraints, setPendingConstraints] = useState(false);
+
+  // ── Drawer & column visibility state ────────────────────────────────────────
+  const [isTableOpen, setIsTableOpen] = useState(false);
+
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(() =>
+    new Set(columns.map(c => c.name))
+  );
+
+  // Seed visibleColumns when columns first arrive
+  const seededRef = useRef(false);
+  if (columns.length > 0 && !seededRef.current && visibleColumns.size === 0) {
+    seededRef.current = true;
+    setVisibleColumns(new Set(columns.map(c => c.name)));
+  }
+
+  // activeColumns is defined after partitionColumns — see Derived state section.
+
+  const handleToggleVisible = useCallback((name: string) => {
+    setVisibleColumns(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }, []);
 
   // ── TanStack Table (header sort state only) ────────────────────────────────
 
@@ -1048,30 +1243,53 @@ export default function ParquetPreview({ fileId, onProgress }: {
 
   // ── Derived state ──────────────────────────────────────────────────────────
 
-  // Filter out low-cardinality columns from the table (sidebar only)
-  const tableColumns = useMemo(() => columns.filter(c => {
-    const card = columnCardinality[c.name];
-    return !card || card.distinct > 5;
-  }), [columns, columnCardinality]);
+  const hasAnyFilter = Object.entries(rangeState).some(([name, [lo, hi]]) => {
+    const s = columnStats[name];
+    return s && (lo > s.min || hi < s.max);
+  }) || Object.keys(selected).some(k => selected[k].size > 0)
+     || Object.values(textFilters).some(v => v.trim());
+  const noResults  = hasAnyFilter && filteredCount === 0;
+
+  // Partition columns into constants (single-value), variables (filterable), and tableEligible.
+  // Low-cardinality categoricals (≤5 distinct) appear in the ControlCenter as chips
+  // but never in the table — only tableEligible columns populate the data drawer.
+  const { constants, variables, tableEligible } = useMemo(
+    () => partitionColumns(columns, columnStats, columnCardinality, constrainedStats, hasAnyFilter),
+    [columns, columnStats, columnCardinality, constrainedStats, hasAnyFilter],
+  );
+
+  // activeColumns: table-eligible columns that are toggled visible.
+  // Constants live in the Metadata Crown badges. Low-cardinality categoricals
+  // live in the ControlCenter as InlineSelect chips. Neither appears in the table.
+  const activeColumns = useMemo(() =>
+    tableEligible.filter(c => visibleColumns.has(c.name)),
+    [tableEligible, visibleColumns],
+  );
+
+  const activeTotalWidth = activeColumns.reduce(
+    (s, c) => s + (colWidths[c.name] ?? colWFromName(c.name, c.type, charLengths?.[c.name]?.max)),
+    0,
+  );
 
   // Frozen snapshot for the skeleton grid — captured once at stage 1, never changes.
-  // Prevents skeleton re-renders (animation restarts) as data arrives during stages 1-3.
   const skelRef = useRef<{ cols: ColumnInfo[], widths: Record<string, number> } | null>(null);
-  if (tableColumns.length > 0 && !skelRef.current) {
+  if (activeColumns.length > 0 && !skelRef.current) {
     skelRef.current = {
-      cols: tableColumns,
-      widths: Object.fromEntries(tableColumns.map(c => [c.name, colWidths[c.name] ?? colWFromName(c.name, c.type)])),
+      cols: activeColumns,
+      widths: Object.fromEntries(activeColumns.map(c => [c.name, colWidths[c.name] ?? colWFromName(c.name, c.type)])),
     };
   }
 
-  // Memoized skeleton JSX — React skips diffing this subtree entirely across stages 1-3.
+  // Memoized skeleton JSX
   const skelData = skelRef.current;
+  const SKEL_ROWS = 15;
   const skeletonGrid = useMemo(() => {
     if (!skelData) return null;
+    const skelTotalWidth = skelData.cols.reduce((s, c) => s + (skelData.widths[c.name] ?? colWFromName(c.name, c.type)), 0);
     return (
-      <div className="flex flex-col">
-        {Array.from({ length: Math.ceil(PANEL_H / ROW_H) }, (_, i) => (
-          <div key={i} className="flex" style={{ height: ROW_H, background: i % 2 === 1 ? 'var(--color-row-stripe)' : undefined }}>
+      <div className="flex flex-col" style={{ width: skelTotalWidth }}>
+        {Array.from({ length: SKEL_ROWS }, (_, i) => (
+          <div key={i} className="flex" style={{ height: ROW_H }}>
             {skelData.cols.map(c => {
               const isNum = isNumericType(c.type);
               return (
@@ -1094,8 +1312,7 @@ export default function ParquetPreview({ fileId, onProgress }: {
     );
   }, [skelData]);
 
-  // Memoize the entire skeleton overlay — React won't touch this DOM subtree
-  // unless stage changes. Prevents Chrome repaints from sibling updates.
+  // Memoize the entire skeleton overlay
   const skelVisible = stage >= 1 && stage < 4;
   const skeletonOverlay = useMemo(() => (
     <div style={{
@@ -1108,88 +1325,241 @@ export default function ParquetPreview({ fileId, onProgress }: {
     </div>
   ), [skelVisible, skeletonGrid]);
 
-  const totalWidth   = tableColumns.reduce((s, c) => s + (colWidths[c.name] ?? colWFromName(c.name, c.type)), 0);
-  const hasAnyFilter = Object.entries(rangeState).some(([name, [lo, hi]]) => {
-    const s = columnStats[name];
-    return s && (lo > s.min || hi < s.max);
-  }) || Object.keys(selected).some(k => selected[k].size > 0)
-     || Object.values(textFilters).some(v => v.trim());
-  const noResults  = hasAnyFilter && filteredCount === 0;
-
   // ── Loading / error states ─────────────────────────────────────────────────
 
   if (pipeline.status === 'unavailable' || pipeline.status === 'failed') return null;
 
   if (isError) return null;
 
+  // ── Render ─────────────────────────────────────────────────────────────────
+
+  const isReady = pipeline.status === 'ready' || pipeline.status === 'ready_background_work';
+
   return (
-    <div className="flex flex-col" style={{
-      background: 'var(--color-void)', height: PANEL_H,
+    <div className="flex flex-col flex-1 overflow-hidden" style={{
+      background: 'var(--color-void)', minHeight: 600,
     }}>
 
-      {/* Pinned header row — sidebar header + table header share one flex row.
-           align-items: stretch (default) forces identical cross-axis height.
-           Rendered identically in loading and ready states — zero layout shift. */}
-      <div className="flex shrink-0">
-
-        {/* Sidebar header — fixed width, never scrolls, hidden on mobile */}
-        <div className="hidden md:flex items-center justify-between shrink-0 border-r border-line"
-          style={{
-            width: SIDEBAR_W,
-            padding: '3px 12px',
-            background: 'var(--color-raised)',
-            borderBottom: '2px solid var(--color-line)',
+      {/* ── Row count heading ────────────────────────────────────────────────── */}
+      {totalRows > 0 && (
+        <div className="shrink-0 flex items-baseline gap-2 px-4 pt-3 pb-1 font-mono" style={{
+          fontSize: 'var(--font-size-body)',
+        }}>
+          <span className="tabular-nums font-semibold" style={{
+            color: hasAnyFilter ? 'var(--color-cyan)' : 'var(--color-fg-2)',
+            transition: 'color var(--t-fast)',
           }}>
-          <div className="flex items-center gap-1.5">
-            <span className="font-semibold" style={{
-              fontSize: 'var(--font-size-xs)', color: 'var(--color-fg-2)',
-              textTransform: 'uppercase', letterSpacing: '0.06em',
-            }}>
-              Filters
-            </span>
-            {totalRows > 0 && (
-              <span className="font-mono tabular-nums"
-                style={{
-                  fontSize: 'calc(var(--font-size-xs) - 1px)',
-                  color: hasAnyFilter
-                    ? (noResults ? 'oklch(0.650 0.180 30)' : 'var(--color-cyan)')
-                    : 'var(--color-fg-3)',
-                  opacity: pendingConstraints ? 0.5 : 1,
-                  transition: 'color var(--t-fast), opacity var(--t-fast)',
-                }}>
-                {hasAnyFilter
-                  ? `${filteredCount.toLocaleString()}/${totalRows.toLocaleString()}`
-                  : totalRows.toLocaleString()
-                }
-              </span>
-            )}
-          </div>
-          {/* Always rendered — visibility: hidden preserves spatial volume for zero CLS */}
+            {filteredCount.toLocaleString()}
+          </span>
+          <span style={{ color: 'var(--color-fg-3)', transition: 'opacity var(--t-fast)' }}>
+            of {totalRows.toLocaleString()} rows
+          </span>
+          <span style={{
+            color: 'var(--color-cyan)',
+            opacity: hasAnyFilter ? 1 : 0,
+            transition: 'opacity var(--t-fast)',
+          }}>
+            match
+          </span>
           <button onClick={handleClearAll}
-            className="cursor-pointer bg-transparent border-none transition-colors hover:text-fg"
+            className="cursor-pointer select-none font-mono rounded"
             style={{
               fontSize: 'var(--font-size-xs)',
-              color: 'var(--color-fg-3)',
-              visibility: hasAnyFilter ? 'visible' : 'hidden',
-            }}>
-            Clear all
+              fontWeight: 600,
+              padding: '2px 10px',
+              color: 'oklch(0.750 0.180 30)',
+              border: '1px solid oklch(0.750 0.180 30 / 0.4)',
+              background: 'transparent',
+              opacity: hasAnyFilter ? 1 : 0,
+              pointerEvents: hasAnyFilter ? 'auto' : 'none',
+              transition: 'opacity var(--t-fast), background 200ms, border-color 200ms',
+              alignSelf: 'center',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = 'oklch(0.650 0.180 30 / 0.14)';
+              e.currentTarget.style.borderColor = 'oklch(0.750 0.180 30 / 0.7)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.borderColor = 'oklch(0.750 0.180 30 / 0.4)';
+            }}
+          >
+            Reset
           </button>
         </div>
+      )}
 
-        {/* Table header — gated on columns.length (data), not pipeline status */}
-        <Profiler id="header" onRender={onRender}>
-        <div ref={headerRef} className="flex-1 min-w-0 overflow-hidden font-mono"
-          style={columns.length === 0
-            ? { background: 'var(--color-raised)', borderBottom: '2px solid var(--color-line)' }
+      {/* ── Control Center (filter grid + badges) ──────────────────────────── */}
+      <div className="flex-1 overflow-y-auto">
+        {columns.length > 0 ? (
+
+            <>
+              {/* Metadata Crown — invariant column badges */}
+              {constants.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 px-4 pt-3">
+                  {constants.map(({ col, value }) => (
+                    <span key={col.name}
+                      className="font-mono"
+                      style={{
+                        fontSize: 'var(--font-size-xs)',
+                        color: 'var(--color-fg-3)',
+                      }}>
+                      {col.name}{' '}
+                      <span style={{ color: 'var(--color-cyan)', fontWeight: 600 }}>{value}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Variable columns — filter grid */}
+              <ControlCenter
+                columns={variables}
+                columnStats={columnStats}
+                columnCardinality={columnCardinality}
+                rangeState={rangeState}
+                selected={selected}
+                textFilters={textFilters}
+                onRangeChange={handleRangeChange}
+                onToggleSelect={handleToggleSelect}
+                onClearSelect={handleClearSelect}
+                onTextChange={handleTextChange}
+                hasAnyFilter={hasAnyFilter}
+                constrainedStats={constrainedStats}
+                noResults={noResults}
+                pendingConstraints={pendingConstraints}
+                staticHistograms={staticHistograms}
+                constrainedHistograms={constrainedHistograms}
+                visibleColumns={visibleColumns}
+                onToggleVisible={handleToggleVisible}
+              />
+            </>
+
+        ) : (
+          /* Skeleton control center */
+          <div className="grid gap-4 p-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+            {Array.from({ length: 6 }, (_, i) => (
+              <div key={i}>
+                <div className="skeleton rounded" style={{ height: 10, width: `${50 + (i * 13) % 30}%`, marginBottom: 8 }} />
+                <div className="skeleton rounded" style={{ height: 22, width: '100%' }} />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Show Data — the god bar ──────────────────────────────────────── */}
+      <div
+        className="shrink-0 cursor-pointer select-none"
+        style={{
+          background: isTableOpen
+            ? 'color-mix(in srgb, var(--color-cyan) 12%, var(--color-cyan-wash))'
+            : 'var(--color-cyan-wash)',
+          borderTop: '1px solid var(--color-cyan-dim)',
+          borderBottom: '1px solid var(--color-cyan-dim)',
+          color: 'var(--color-cyan)',
+          transition: 'background 200ms',
+        }}
+        onMouseEnter={e => {
+          e.currentTarget.style.background = 'color-mix(in srgb, var(--color-cyan) 12%, var(--color-cyan-wash))';
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.background = isTableOpen
+            ? 'color-mix(in srgb, var(--color-cyan) 12%, var(--color-cyan-wash))'
+            : 'var(--color-cyan-wash)';
+        }}
+        onClick={() => setIsTableOpen(o => !o)}
+      >
+        <div className="flex items-center gap-4 px-5" style={{ height: 48 }}>
+          <div className="flex items-center gap-3">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+              style={{
+                transition: 'transform 300ms ease-out',
+                transform: isTableOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+              }}>
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+            <span className="font-mono font-bold whitespace-nowrap" style={{
+              fontSize: 'var(--font-size-lg)',
+              letterSpacing: '0.02em',
+            }}>
+              {isTableOpen ? 'Hide Data' : 'Show Data'}
+            </span>
+          </div>
+          <div className="flex-1" />
+          {totalRows > 0 && (
+            <span className="font-mono" style={{ fontSize: 'var(--font-size-body)' }}>
+              <span className="tabular-nums font-semibold" style={{
+                color: hasAnyFilter ? 'var(--color-cyan)' : 'oklch(0.750 0.180 195 / 0.6)',
+              }}>
+                {filteredCount.toLocaleString()}
+              </span>
+              <span style={{ color: 'oklch(0.750 0.180 195 / 0.4)' }}>
+                {' '}of {totalRows.toLocaleString()} rows
+              </span>
+            </span>
+          )}
+          <div className="flex-1" />
+
+          {/* Column projection — quiet toggles, right side */}
+          {tableEligible.length > 0 && (
+            <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+            {[
+              { label: 'Numeric', subset: tableEligible.filter(c => isNumericType(c.type)) },
+              { label: 'Text', subset: tableEligible.filter(c => !isNumericType(c.type)) },
+            ].map(({ label, subset }) => {
+              if (subset.length === 0) return null;
+              const allOn = subset.every(c => visibleColumns.has(c.name));
+              return (
+                <button key={label}
+                  className="cursor-pointer border-none bg-transparent select-none font-mono"
+                  style={{
+                    fontSize: 'var(--font-size-body)',
+                    color: allOn ? 'var(--color-cyan)' : 'var(--color-amber-dim)',
+                    borderBottom: allOn ? '1px solid var(--color-cyan)' : '1px solid var(--color-amber-dim)',
+                    padding: '0 2px 1px',
+                    transition: 'color var(--t-fast), border-color var(--t-fast)',
+                  }}
+                  onClick={() => {
+                    setVisibleColumns(prev => {
+                      const next = new Set(prev);
+                      if (allOn) {
+                        subset.forEach(c => next.delete(c.name));
+                      } else {
+                        subset.forEach(c => next.add(c.name));
+                      }
+                      return next;
+                    });
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Table Drawer ───────────────────────────────────────────────────── */}
+      <div className="overflow-hidden flex flex-col shrink-0"
+        style={{
+          height: isTableOpen ? '60vh' : '0px',
+          transition: 'height 300ms ease-out',
+        }}>
+        {/* Table header */}
+
+        <div ref={headerRef} className="shrink-0 overflow-hidden font-mono"
+          style={activeColumns.length === 0
+            ? { background: 'var(--color-void)', borderBottom: '2px solid var(--color-line)' }
             : undefined}>
-          {columns.length > 0 && (() => {
+          {activeColumns.length > 0 && (() => {
             const headerGroup = table.getHeaderGroups()[0];
-            const tableColumnSet = new Set(tableColumns.map(c => c.name));
+            const activeColumnSet = new Set(activeColumns.map(c => c.name));
             const columnMap = new Map(columns.map(c => [c.name, c]));
             return (
-              <div className="flex" style={{ width: totalWidth }}>
+              <div className="flex" style={{ minWidth: '100%', width: activeTotalWidth, borderBottom: '2px solid var(--color-line)' }}>
                 {headerGroup.headers.map(header => {
-                  if (!tableColumnSet.has(header.id)) return null;
+                  if (!activeColumnSet.has(header.id)) return null;
                   const c = columnMap.get(header.id)!;
                   const w = colWidths[c.name] ?? colW(c.type);
                   const sorted = header.column.getIsSorted();
@@ -1201,7 +1571,7 @@ export default function ParquetPreview({ fileId, onProgress }: {
                       className="text-left font-semibold text-fg-2 select-none relative group cursor-pointer"
                       style={{
                         width: w, minWidth: 50, flexShrink: 0, padding: '3px 6px',
-                        background: 'var(--color-raised)',
+                        background: 'var(--color-void)',
                         borderBottom: `2px solid ${sorted ? 'var(--color-cyan)' : 'var(--color-line)'}`,
                         fontSize: 'var(--font-size-xs)',
                       }}
@@ -1226,62 +1596,9 @@ export default function ParquetPreview({ fileId, onProgress }: {
             );
           })()}
         </div>
-        </Profiler>
-      </div>
 
-      {/* Body row */}
-      <div className="flex flex-1 overflow-hidden">
 
-        {/* Sidebar body — ALWAYS the same container div for layout stability.
-             Content fades in when data arrives; no DOM structure change between states. */}
-        <Profiler id="sidebar" onRender={onRender}>
-        <div className="hidden md:flex flex-col shrink-0 border-r border-line" style={{ width: SIDEBAR_W, background: 'var(--color-void)' }}>
-          {columns.length > 0 ? (
-            <>
-              <FilterSidebar
-                columns={columns}
-                columnStats={columnStats}
-                columnCardinality={columnCardinality}
-                rangeState={rangeState}
-                selected={selected}
-                textFilters={textFilters}
-                onRangeChange={handleRangeChange}
-                onToggleSelect={handleToggleSelect}
-                onClearSelect={handleClearSelect}
-                onTextChange={handleTextChange}
-                hasAnyFilter={hasAnyFilter}
-                constrainedStats={constrainedStats}
-                noResults={noResults}
-                pendingConstraints={pendingConstraints}
-                staticHistograms={staticHistograms}
-                constrainedHistograms={constrainedHistograms}
-              />
-              <button
-                onClick={handleReprofile}
-                disabled={reprofiling}
-                className="cursor-pointer bg-transparent border-t border-line text-fg-3 hover:text-cyan transition-colors shrink-0"
-                style={{ fontSize: 'var(--font-size-xs)', padding: '6px 12px', textAlign: 'left' }}
-              >
-                {reprofiling ? 'Profiling…' : 'Profile my data'}
-              </button>
-            </>
-          ) : (
-            /* Skeleton sidebar — matches ready layout structure for zero CLS */
-            <div className="flex-1 overflow-hidden p-3 flex flex-col gap-4">
-              {Array.from({ length: 6 }, (_, i) => (
-                <div key={i}>
-                  <div className="skeleton rounded" style={{ height: 10, width: `${50 + (i * 13) % 30}%`, marginBottom: 8 }} />
-                  <div className="skeleton rounded" style={{ height: 22, width: '100%' }} />
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        </Profiler>
-
-        {/* Table body — ALWAYS the same scroll container. Loading states are overlays,
-             not different DOM branches. Eliminates layout shift on state transitions. */}
-        <Profiler id="tableBody" onRender={onRender}>
+        {/* Table body — scrollRef always mounted for stable virtualizer measurement */}
         <div
           ref={scrollRef}
           className="flex-1 min-w-0 overflow-auto"
@@ -1291,27 +1608,25 @@ export default function ParquetPreview({ fileId, onProgress }: {
               headerRef.current.scrollLeft = scrollRef.current.scrollLeft;
           }}
         >
-          {/* Skeleton grid — fully memoized (overlay + content).
-               React skips this entire subtree unless stage crosses the 1/4 boundary. */}
           {skeletonOverlay}
 
-          {(pipeline.status === 'ready' || pipeline.status === 'ready_background_work') && filteredCount > 0 && (
+          {isReady && filteredCount > 0 && isTableOpen && (
             <VirtualRows
               scrollRef={scrollRef}
               rowCount={filteredCount}
               fetchRange={fetchRange}
               getCell={getCell}
               hasRow={hasRow}
-              columns={tableColumns}
+              columns={activeColumns}
               columnStats={columnStats}
               colWidths={colWidths}
-              totalWidth={totalWidth}
+              totalWidth={activeTotalWidth}
               pipelineStatus={pipeline.status}
               cacheGen={cacheGen}
             />
           )}
 
-          {(pipeline.status === 'ready' || pipeline.status === 'ready_background_work') && filteredCount === 0 && (
+          {isReady && filteredCount === 0 && (
             <div className="flex flex-col items-center justify-center gap-3" style={{ height: '100%', minHeight: 200 }}>
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"
                 style={{ opacity: 0.3, color: 'var(--color-fg-3)' }}>
@@ -1327,10 +1642,10 @@ export default function ParquetPreview({ fileId, onProgress }: {
               >
                 Clear all filters
               </button>
-              </div>
-            )}
-          </div>
-        </Profiler>
+            </div>
+          )}
+        </div>
+
       </div>
     </div>
   );

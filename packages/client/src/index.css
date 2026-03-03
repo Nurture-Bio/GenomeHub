@@ -414,17 +414,6 @@
   .range-low:active, .range-low:focus { z-index: 5; }
   .range-high:active, .range-high:focus { z-index: 5; }
 
-  /* ── DataTable resize handle active ────────────────── */
-  .dt-resize-active {
-    background: var(--color-cyan) !important;
-    opacity: 1 !important;
-    box-shadow: var(--glow-cyan-sm);
-  }
-
-  /* ── Heatmap cell transition ───────────────────────── */
-  .dt-heat {
-    transition: background var(--t-fast) var(--ease-out);
-  }
 
   /* ── Stepper SVG classes ─────────────────────────── */
   .stepper-ping {

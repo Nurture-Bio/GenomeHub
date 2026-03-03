@@ -8,8 +8,7 @@ import AuthProvider from './providers/AuthProvider';
 import './index.css';
 import App from './App';
 
-// DuckDB WASM boot removed — Parquet queries now run server-side.
-// Legacy JSON preview (useJsonDuckDb) boots WASM lazily on demand.
+// DuckDB WASM removed — all Parquet queries run server-side via Arrow IPC.
 
 // ── TEMPORARY: Font rendering debugger ───────────────────────────────────────
 if (import.meta.env.DEV) {

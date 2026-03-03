@@ -189,7 +189,11 @@ function parseGodTable(godTable: ArrowTable): {
 function parseHistTable(histTable: ArrowTable): number[] {
   const cntVec = histTable.getChild('cnt');
   if (!cntVec) return new Array(64).fill(0);
-  return Array.from(cntVec.toArray());
+  const bins = new Array<number>(cntVec.length);
+  for (let i = 0; i < cntVec.length; i++) {
+    bins[i] = Number(cntVec.get(i) ?? 0);
+  }
+  return bins;
 }
 
 // ── Streaming frame decoder ──────────────────────────────
