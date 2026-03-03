@@ -126,17 +126,31 @@ const PARQUET_STEPS = [
 ] as const;
 
 
+// ── useRetainedState — bridges network gaps with a single law ─────────────────
+// Value is remembered across renders. Cleared when clearCondition fires.
+// Bridges the gap when value is temporarily undefined during a query.
+
+function useRetainedState<T>(value: T | undefined, clearCondition: boolean): T | undefined {
+  const ref = useRef<T | undefined>(undefined);
+  if (clearCondition) {
+    ref.current = undefined;
+  } else if (value !== undefined) {
+    ref.current = value;
+  }
+  return value ?? ref.current;
+}
+
 // ── DistributionPlot ──────────────────────────────────────────────────────────
+// Ghost mask clip is driven purely by inherited CSS vars (--lo, --hi) from the
+// parent track container — zero JS overhead, zero imperative handles.
 
-/** Imperative handle for driving the ghost mask clip without re-rendering. */
-interface DistPlotHandle { setClip(lowPct: number, highPct: number): void; }
-
-const DistributionPlot = memo(function DistributionPlot({ staticBins, dynamicBins, height, pending, handleRef }: {
+const DistributionPlot = memo(function DistributionPlot({
+  staticBins, dynamicBins, height, pending,
+}: {
   staticBins:   number[];
   dynamicBins?: number[];
   height:       number;
   pending?:     boolean;
-  handleRef?:   React.MutableRefObject<DistPlotHandle | null>;
 }) {
   const n = staticBins.length;
   if (n === 0) return null;
@@ -146,37 +160,17 @@ const DistributionPlot = memo(function DistributionPlot({ staticBins, dynamicBin
 
   const binW = 100 / n;
 
-  // Retain last known dynamic bins across network gaps — prevents the
-  // "flare" where bars snap back to the static shape while a query is in flight.
-  const lastDynamicRef = useRef<number[] | null>(null);
-  if (dynamicBins && dynamicBins.length > 0) {
-    lastDynamicRef.current = dynamicBins;
-  }
-  const activeBins = (dynamicBins && dynamicBins.length > 0)
-    ? dynamicBins
-    : (lastDynamicRef.current || staticBins);
+  // Bridge network gaps: retain last dynamic bins during queries, clear on reset.
+  const activeDynamicBins = useRetainedState(
+    dynamicBins && dynamicBins.length > 0 ? dynamicBins : undefined,
+    !dynamicBins && !pending,
+  );
+  const activeBins = activeDynamicBins || staticBins;
   const activeMax = activeBins === staticBins
     ? staticMax
     : Math.max(...activeBins, 1);
 
-  // Ghost mask — ref-driven so drag updates bypass React reconciliation.
-  // lowPct/highPct are pushed in via setClip() — never as props.
   const clipId = useRef(`ghost-mask-${Math.random().toString(36).slice(2, 8)}`).current;
-  const clipRectRef = useRef<SVGRectElement>(null);
-
-  // Expose imperative setClip to parent — drives clip at 60fps without re-render
-  useEffect(() => {
-    if (handleRef) {
-      handleRef.current = {
-        setClip(lowPct: number, highPct: number) {
-          if (clipRectRef.current) {
-            clipRectRef.current.setAttribute('x', String(lowPct));
-            clipRectRef.current.setAttribute('width', String(Math.max(0, highPct - lowPct)));
-          }
-        },
-      };
-    }
-  }, [handleRef]);
 
   // Memoize static rects — bin data only changes when server responds, not during drag
   const staticRects = useMemo(() =>
@@ -224,8 +218,11 @@ const DistributionPlot = memo(function DistributionPlot({ staticBins, dynamicBin
     >
       <defs>
         <clipPath id={clipId}>
-          <rect ref={clipRectRef} y="0" width="100" height={height}
-            style={{ transition: 'x 150ms ease-out, width 150ms ease-out' }} />
+          {/* Pure CSS-driven clip — inherits --lo / --hi from parent container */}
+          <rect y="0" height={height} style={{
+            x: 'calc(var(--lo) * 1%)',
+            width: 'max(0px, calc((var(--hi) - var(--lo)) * 1%))',
+          } as React.CSSProperties} />
         </clipPath>
       </defs>
 
@@ -246,13 +243,12 @@ const DistributionPlot = memo(function DistributionPlot({ staticBins, dynamicBin
   );
 },
 // Custom comparator: only re-render when bin data or pending changes.
-// Clip position is driven imperatively via handleRef.setClip — never triggers re-render.
+// Clip position is driven by inherited CSS vars — never triggers re-render.
 (prev, next) =>
   prev.staticBins === next.staticBins &&
   prev.dynamicBins === next.dynamicBins &&
   prev.height === next.height &&
-  prev.pending === next.pending &&
-  prev.handleRef === next.handleRef,
+  prev.pending === next.pending,
 );
 
 // ── EditableNumber ────────────────────────────────────────────────────────────
@@ -358,6 +354,12 @@ function hasDataInDelta(
 
 // ── RangeSlider ───────────────────────────────────────────────────────────────
 
+// Stable color constants — module-level so useCallback deps never churn
+const AMBER_COLOR = 'var(--color-amber)';
+const AMBER_GLOW  = 'oklch(0.750 0.185 60 / 0.28)';
+const CYAN_COLOR  = 'var(--color-cyan)';
+const CYAN_GLOW   = 'oklch(0.750 0.180 195 / 0.25)';
+
 function RangeSlider({ name, min, max, low, high, onDrag, onCommit, constrainedMin, constrainedMax, pending, staticHistogram, dynamicHistogram }: {
   name: string; min: number; max: number; low: number; high: number;
   onDrag:           (name: string, lo: number, hi: number) => void;
@@ -370,49 +372,95 @@ function RangeSlider({ name, min, max, low, high, onDrag, onCommit, constrainedM
 }) {
 
   const [isDragging, setIsDragging] = useState(false);
+  const [isPanning, setIsPanning] = useState(false);
   const dragStartRef = useRef<{ lo: number; hi: number } | null>(null);
-  const distPlotRef = useRef<DistPlotHandle | null>(null);
+  const trackRef = useRef<HTMLDivElement>(null);   // outer gauge — CSS var host
+  const sliderRef = useRef<HTMLDivElement>(null);  // inner track — pixel measurements
+  const panStartRef = useRef<{ x: number; lo: number; hi: number; trackW: number } | null>(null);
+  const lowInputRef = useRef<HTMLInputElement>(null);
+  const highInputRef = useRef<HTMLInputElement>(null);
 
-  // Retain last known constrained bounds across network gaps — prevents
-  // Amber OOB indicators from flickering off while a query is in flight.
-  const lastConMinRef = useRef<number | undefined>(undefined);
-  const lastConMaxRef = useRef<number | undefined>(undefined);
-  if (constrainedMin !== undefined) lastConMinRef.current = constrainedMin;
-  if (constrainedMax !== undefined) lastConMaxRef.current = constrainedMax;
-  const activeConMin = constrainedMin ?? lastConMinRef.current;
-  const activeConMax = constrainedMax ?? lastConMaxRef.current;
+  // Stable refs — global listeners and syncTrack always see latest values
+  const lowRef = useRef(low);
+  const highRef = useRef(high);
+  lowRef.current = low;
+  highRef.current = high;
 
   const range   = max - min || 1;
-  const lowPct  = ((low  - min) / range) * 100;
-  const highPct = ((high - min) / range) * 100;
   const full    = low <= min && high >= max;
+
+  // Bridge network gaps: retain constrained bounds during queries, clear on reset.
+  const activeConMin = useRetainedState(constrainedMin, full);
+  const activeConMax = useRetainedState(constrainedMax, full);
   const isFloat = !Number.isInteger(min) || !Number.isInteger(max);
-  const step    = isFloat ? range / 200 : Math.max(1, Math.round(range / 200));
+  const step    = isFloat ? 'any' as const : 1;
 
   const hasConData = activeConMin !== undefined && activeConMax !== undefined;
-  const showConMarks = !isDragging && hasConData;
-  const conLoPct = showConMarks ? Math.max(0,   ((activeConMin! - min) / range) * 100) : 0;
-  const conHiPct = showConMarks ? Math.min(100, ((activeConMax! - min) / range) * 100) : 0;
+  const conLoPct = hasConData ? Math.max(0,   ((activeConMin! - min) / range) * 100) : 0;
+  const conHiPct = hasConData ? Math.min(100, ((activeConMax! - min) / range) * 100) : 100;
 
-  const epsilon = (max - min) * 0.001;
+  // OOB = thumb is visibly past the constrained data boundary.  Epsilon is
+  // a visual tolerance (0.1% of range) that absorbs the accumulated float
+  // drift across the DuckDB → Arrow IPC → JS pipeline.  If the thumb is
+  // within a fraction the eye cannot perceive, honor the scientist's intent.
+  const epsilon = range * 0.001;
   const lowOob  = !pending && hasConData && low  < activeConMin! - epsilon;
   const highOob = !pending && hasConData && high > activeConMax! + epsilon;
 
-  const AMBER_COLOR = 'var(--color-amber)';
-  const AMBER_GLOW  = 'oklch(0.750 0.185 60 / 0.28)';
-  const CYAN_GLOW   = 'oklch(0.750 0.180 195 / 0.25)';
+  // ── Imperative engine — drives all track + thumb visuals at 60fps ──────────
+  // React only sees the final values on pointerUp.  Between pointer events
+  // every pixel is moved by CSS-variable writes on the container DOM node.
 
-  const lowThumbStyle  = {
-    '--range-thumb-color': lowOob  ? AMBER_COLOR : 'var(--color-cyan)',
-    '--range-thumb-glow':  lowOob  ? AMBER_GLOW  : CYAN_GLOW,
-    zIndex: 3, opacity: lowOob  ? 0.80 : 1,
-  } as CSSProperties;
+  const syncTrack = useCallback((loVal: number, hiVal: number) => {
+    const el = trackRef.current;
+    if (!el) return;
+    const loPct = ((loVal - min) / range) * 100;
+    const hiPct = ((hiVal - min) / range) * 100;
+    el.style.setProperty('--lo', String(loPct));
+    el.style.setProperty('--hi', String(hiPct));
 
-  const highThumbStyle = {
-    '--range-thumb-color': highOob ? AMBER_COLOR : 'var(--color-cyan)',
-    '--range-thumb-glow':  highOob ? AMBER_GLOW  : CYAN_GLOW,
-    zIndex: 4, opacity: highOob ? 0.80 : 1,
-  } as CSSProperties;
+    // OOB detection — drives amber void + thumb color
+    const pendingNow = !!pending;
+    const oobLo = !pendingNow && hasConData && loVal < activeConMin! - epsilon;
+    const oobHi = !pendingNow && hasConData && hiVal > activeConMax! + epsilon;
+    el.style.setProperty('--oob-lo', oobLo ? '0.5' : '0');
+    el.style.setProperty('--oob-hi', oobHi ? '0.5' : '0');
+
+    // Thumb colors — direct DOM writes bypass React reconciliation
+    const loIn = lowInputRef.current;
+    const hiIn = highInputRef.current;
+    if (loIn) {
+      loIn.style.setProperty('--range-thumb-color', oobLo ? AMBER_COLOR : CYAN_COLOR);
+      loIn.style.setProperty('--range-thumb-glow',  oobLo ? AMBER_GLOW  : CYAN_GLOW);
+      loIn.style.opacity = String(oobLo ? 0.90 : 1);
+    }
+    if (hiIn) {
+      hiIn.style.setProperty('--range-thumb-color', oobHi ? AMBER_COLOR : CYAN_COLOR);
+      hiIn.style.setProperty('--range-thumb-glow',  oobHi ? AMBER_GLOW  : CYAN_GLOW);
+      hiIn.style.opacity = String(oobHi ? 0.90 : 1);
+    }
+
+    // Force uncontrolled inputs to match (panning, clip-to-reality, reset).
+    // Numeric comparison avoids float-string fuzz (e.g. "15" vs "15.000000000001").
+    if (loIn && Math.abs(Number(loIn.value) - loVal) > 1e-7) loIn.value = String(loVal);
+    if (hiIn && Math.abs(Number(hiIn.value) - hiVal) > 1e-7) hiIn.value = String(hiVal);
+  }, [min, range, pending, hasConData, activeConMin, activeConMax, epsilon]);
+
+  // Sync CSS vars + uncontrolled inputs from React props.
+  // Only fires when user is NOT interacting (initial mount, reset, commit response).
+  useEffect(() => {
+    if (!isDragging && !isPanning) syncTrack(low, high);
+  }, [low, high, isDragging, isPanning, syncTrack]);
+
+  // Sync constrained bounds as CSS vars (changes on server response only)
+  useEffect(() => {
+    const el = trackRef.current;
+    if (!el) return;
+    el.style.setProperty('--c-lo', String(conLoPct));
+    el.style.setProperty('--c-hi', String(conHiPct));
+  }, [conLoPct, conHiPct]);
+
+  // ── Handlers ───────────────────────────────────────────────────────────────
 
   const handleClipToReality = () => {
     if (activeConMin !== undefined && activeConMax !== undefined) {
@@ -423,81 +471,232 @@ function RangeSlider({ name, min, max, low, high, onDrag, onCommit, constrainedM
 
   const handleDragStart = () => {
     setIsDragging(true);
-    dragStartRef.current = { lo: low, hi: high };
+    dragStartRef.current = { lo: lowRef.current, hi: highRef.current };
   };
+
   const handleDragEnd = () => {
+    // Read the absolute DOM truth — onChange may lag behind the final pixel
+    const actualLo = lowInputRef.current ? Number(lowInputRef.current.value) : lowRef.current;
+    const actualHi = highInputRef.current ? Number(highInputRef.current.value) : highRef.current;
+
+    // Hard sync — refs, CSS vars, and inputs all agree before anything else
+    lowRef.current = actualLo;
+    highRef.current = actualHi;
+    syncTrack(actualLo, actualHi);
+
     setIsDragging(false);
     // Void detector: if the drag delta swept only through empty bins, skip the query
     const start = dragStartRef.current;
     if (start && staticHistogram && staticHistogram.length > 0) {
-      const loChanged = low !== start.lo;
-      const hiChanged = high !== start.hi;
-      const loDelta = loChanged && hasDataInDelta(start.lo, low, min, max, staticHistogram);
-      const hiDelta = hiChanged && hasDataInDelta(start.hi, high, min, max, staticHistogram);
+      const loChanged = actualLo !== start.lo;
+      const hiChanged = actualHi !== start.hi;
+      const loDelta = loChanged && hasDataInDelta(start.lo, actualLo, min, max, staticHistogram);
+      const hiDelta = hiChanged && hasDataInDelta(start.hi, actualHi, min, max, staticHistogram);
       if ((loChanged || hiChanged) && !loDelta && !hiDelta) return; // dragged through void
     }
+    onDrag(name, actualLo, actualHi);
     onCommit(name);
   };
 
-  // Drive the ghost mask clip imperatively — no re-render of DistributionPlot
-  useEffect(() => {
-    distPlotRef.current?.setClip(lowPct, highPct);
-  }, [lowPct, highPct]);
+  // ── Track Panning — grab between thumbs to slide the whole window ──────────
 
-  const PLOT_H = 20;
+  const handlePanStart = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const track = sliderRef.current;
+    if (!track) return;
+    const trackW = track.getBoundingClientRect().width;
+    const lo = lowRef.current;
+    const hi = highRef.current;
+    panStartRef.current = { x: e.clientX, lo, hi, trackW };
+    dragStartRef.current = { lo, hi };
+    setIsDragging(true);
+    setIsPanning(true);
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    const capturedTarget = e.target as HTMLElement;
+    const capturedPointerId = e.pointerId;
+
+    const onMove = (ev: PointerEvent) => {
+      const s = panStartRef.current;
+      if (!s) return;
+      const deltaPx = ev.clientX - s.x;
+      const deltaVal = (deltaPx / s.trackW) * range;
+      const span = s.hi - s.lo;
+      let newLo = s.lo + deltaVal;
+      let newHi = s.hi + deltaVal;
+      if (newLo < min) { newLo = min; newHi = min + span; }
+      else if (newHi > max) { newHi = max; newLo = max - span; }
+      lowRef.current = newLo;
+      highRef.current = newHi;
+      syncTrack(newLo, newHi);
+      onDrag(name, newLo, newHi);
+    };
+
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      try { capturedTarget.releasePointerCapture(capturedPointerId); } catch {}
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      panStartRef.current = null;
+      setIsPanning(false);
+      setIsDragging(false);
+      const curLo = lowRef.current;
+      const curHi = highRef.current;
+      const start = dragStartRef.current;
+      if (start && staticHistogram && staticHistogram.length > 0) {
+        const loChanged = curLo !== start.lo;
+        const hiChanged = curHi !== start.hi;
+        const loDelta = loChanged && hasDataInDelta(start.lo, curLo, min, max, staticHistogram);
+        const hiDelta = hiChanged && hasDataInDelta(start.hi, curHi, min, max, staticHistogram);
+        if ((loChanged || hiChanged) && !loDelta && !hiDelta) return;
+      }
+      onDrag(name, curLo, curHi);
+      onCommit(name);
+    };
+
+    document.body.style.cursor = 'grabbing';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }, [name, min, max, range, onDrag, onCommit, staticHistogram, syncTrack]);
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+
+  const PLOT_H = 56;
+
+  // Initial CSS-var seeds — syncTrack overwrites immediately via useEffect,
+  // but the inline values prevent a single frame of wrong positioning.
+  const lowPct  = ((low  - min) / range) * 100;
+  const highPct = ((high - min) / range) * 100;
+  const trackVars = {
+    '--lo': String(lowPct),
+    '--hi': String(highPct),
+    '--c-lo': String(conLoPct),
+    '--c-hi': String(conHiPct),
+    '--oob-lo': lowOob  ? '0.5' : '0',
+    '--oob-hi': highOob ? '0.5' : '0',
+  } as CSSProperties;
 
   return (
-    <div>
+    <div ref={trackRef} style={{
+      background: 'oklch(0.13 0.01 240 / 0.5)',
+      borderRadius: 6,
+      padding: '6px 8px 4px',
+      ...trackVars,
+    }}>
       {staticHistogram && staticHistogram.length > 0 && (
-        <div className="relative" style={{ height: PLOT_H, marginBottom: 1 }}>
+        <div className="relative" style={{ height: PLOT_H, marginBottom: 2 }}>
           <DistributionPlot
             staticBins={staticHistogram}
             dynamicBins={hasConData ? dynamicHistogram : undefined}
             height={PLOT_H}
             pending={pending}
-            handleRef={distPlotRef}
           />
         </div>
       )}
-      <div className="relative" style={{ height: 20 }}>
+      <div ref={sliderRef} className="relative" style={{ height: 20 }}>
+        {/* Ghost base — full width reference line */}
         <div className="absolute top-1/2 -translate-y-1/2 rounded-full w-full"
-          style={{ height: 2, background: 'var(--color-cyan)', opacity: 0.10 }} />
-        {!isDragging && constrainedMin !== undefined && constrainedMax !== undefined && (
+          style={{ height: 2, background: CYAN_COLOR, opacity: 0.10 }} />
+
+        {/* Left amber void — thumb → density boundary (CSS-driven) */}
+        <div className="absolute top-1/2 -translate-y-1/2 rounded-full" style={{
+          left: 'calc(var(--lo) * 1%)',
+          width: 'max(0%, calc((var(--c-lo) - var(--lo)) * 1%))',
+          height: 3,
+          background: AMBER_COLOR,
+          opacity: 'var(--oob-lo)',
+          boxShadow: `0 0 6px ${AMBER_GLOW}`,
+          transition: 'opacity var(--t-fast)',
+        } as CSSProperties} />
+
+        {/* Right amber void — density boundary → thumb (CSS-driven) */}
+        <div className="absolute top-1/2 -translate-y-1/2 rounded-full" style={{
+          left: 'calc(var(--c-hi) * 1%)',
+          width: 'max(0%, calc((var(--hi) - var(--c-hi)) * 1%))',
+          height: 3,
+          background: AMBER_COLOR,
+          opacity: 'var(--oob-hi)',
+          boxShadow: `0 0 6px ${AMBER_GLOW}`,
+          transition: 'opacity var(--t-fast)',
+        } as CSSProperties} />
+
+        {/* Constrained data extent — double-click to clip */}
+        {hasConData && (
           <div
             className="absolute top-1/2 -translate-y-1/2 rounded-full"
             title="Double-click to clip handles to this range"
             onDoubleClick={handleClipToReality}
             style={{
-              left: `${conLoPct}%`, width: `${conHiPct - conLoPct}%`, height: 4,
-              background: 'var(--color-cyan)',
-              opacity: pending ? 0.15 : 0.40,
+              left: 'calc(var(--c-lo) * 1%)',
+              width: 'calc(max(0, var(--c-hi) - var(--c-lo)) * 1%)',
+              height: 4,
+              background: CYAN_COLOR,
+              opacity: isDragging ? 0 : pending ? 0.15 : 0.40,
               cursor: 'pointer',
-              transition: 'left 150ms ease, width 150ms ease, opacity var(--t-fast)',
-            }}
+              transition: 'opacity var(--t-fast)',
+            } as CSSProperties}
           />
         )}
+
+        {/* Cyan truth track — only where data exists between thumbs */}
         <div className="absolute top-1/2 -translate-y-1/2 rounded-full"
           style={{
-            left: `${lowPct}%`, width: `${highPct - lowPct}%`, height: 2,
-            background: 'var(--color-cyan)', opacity: full ? 0.10 : showConMarks ? 0.40 : 1,
-          }} />
+            left:  hasConData
+              ? 'max(calc(var(--lo) * 1%), calc(var(--c-lo) * 1%))'
+              : 'calc(var(--lo) * 1%)',
+            right: hasConData
+              ? 'max(calc((100 - var(--hi)) * 1%), calc((100 - var(--c-hi)) * 1%))'
+              : 'calc((100 - var(--hi)) * 1%)',
+            height: 2,
+            background: CYAN_COLOR,
+            opacity: full ? 0.10 : isDragging ? 1 : hasConData ? 0.40 : 1,
+          } as CSSProperties} />
+
+        {/* Pannable window — grab between thumbs to slide the whole range */}
+        {!full && (
+          <div
+            style={{
+              position: 'absolute', top: 0,
+              left: 'calc(var(--lo) * 1%)',
+              width: 'calc(max(0, var(--hi) - var(--lo)) * 1%)',
+              height: '100%', zIndex: 2,
+              cursor: isPanning ? 'grabbing' : 'grab',
+            } as CSSProperties}
+            onPointerDown={handlePanStart}
+          />
+        )}
+
         <input
+          ref={lowInputRef}
           type="range"
           className="range-thumb range-low absolute inset-0 w-full appearance-none bg-transparent cursor-pointer"
-          min={min} max={max} step={step} value={low}
-          style={lowThumbStyle}
+          min={min} max={max} step={step} defaultValue={low}
+          style={{ zIndex: 3 } as CSSProperties}
           onPointerDown={handleDragStart}
           onPointerUp={handleDragEnd}
-          onChange={e => onDrag(name, Math.min(Number(e.target.value), high), high)}
+          onChange={e => {
+            const v = Math.min(Number(e.target.value), highRef.current);
+            lowRef.current = v;
+            syncTrack(v, highRef.current);
+            onDrag(name, v, highRef.current);
+          }}
         />
         <input
+          ref={highInputRef}
           type="range"
           className="range-thumb range-high absolute inset-0 w-full appearance-none bg-transparent cursor-pointer"
-          min={min} max={max} step={step} value={high}
-          style={highThumbStyle}
+          min={min} max={max} step={step} defaultValue={high}
+          style={{ zIndex: 4 } as CSSProperties}
           onPointerDown={handleDragStart}
           onPointerUp={handleDragEnd}
-          onChange={e => onDrag(name, low, Math.max(Number(e.target.value), low))}
+          onChange={e => {
+            const v = Math.max(Number(e.target.value), lowRef.current);
+            highRef.current = v;
+            syncTrack(lowRef.current, v);
+            onDrag(name, lowRef.current, v);
+          }}
         />
       </div>
       <div className="flex justify-between font-mono mt-0.5" style={{ fontSize: 'var(--font-size-xs)' }}>

@@ -12,9 +12,9 @@ The Master held up a pane of glass. "When you look through glass, you do not see
 
 "Then how do we make the glass invisible?"
 
-"By respecting four physical laws that govern the space between the Hand and the Water."
+"By respecting the physical laws that govern the space between the Hand and the Water."
 
-This document describes those four laws as they are implemented in `ParquetPreview.tsx` and the server-side query pipeline.
+This document describes those laws as they are implemented in `ParquetPreview.tsx` and the server-side query pipeline.
 
 ---
 
@@ -35,31 +35,63 @@ $$
 
 To drive UI friction to $0$, we must drive State Coupling to $0$.
 
-**Local Optimism & The Immunity Shield:** The slider's visual position is bound *only* to local React state during a drag. To prevent a delayed server response from violently snapping the slider out of the user's hand, we enforce an Immunity Shield:
+**The CSS Variable Engine:** The slider's visual position is not bound to React state at all. Six CSS custom properties on a single container DOM node are the *sole* source of positional truth during a drag:
+
+| Variable | Governs |
+|---|---|
+| `--lo` | Low thumb position (0–100%) |
+| `--hi` | High thumb position (0–100%) |
+| `--c-lo` | Constrained data minimum (server truth) |
+| `--c-hi` | Constrained data maximum (server truth) |
+| `--oob-lo` | Left amber void opacity (0 or 0.5) |
+| `--oob-hi` | Right amber void opacity (0 or 0.5) |
+
+Every track segment, every void glow, every ghost mask clip rect is expressed as pure `calc()` on these six variables. When the Hand moves, `syncTrack()` writes six `style.setProperty()` calls on one DOM node. The GPU paints the delta. React's reconciler never wakes.
 
 ```typescript
-// Inside RangeSlider.tsx
-useEffect(() => {
-  // The Immunity Shield: Ignore server truth while the Hand is moving.
-  if (isDragging) return;
-  setLocalRange(constrainedStats);
-}, [constrainedStats, isDragging]);
+const syncTrack = useCallback((loVal: number, hiVal: number) => {
+  const el = trackRef.current;
+  if (!el) return;
+  const loPct = ((loVal - min) / range) * 100;
+  const hiPct = ((hiVal - min) / range) * 100;
+  el.style.setProperty('--lo', String(loPct));
+  el.style.setProperty('--hi', String(hiPct));
+
+  // OOB detection — drives amber void + thumb color
+  const oobLo = !pending && hasConData && loVal < activeConMin! - epsilon;
+  const oobHi = !pending && hasConData && hiVal > activeConMax! + epsilon;
+  el.style.setProperty('--oob-lo', oobLo ? '0.5' : '0');
+  el.style.setProperty('--oob-hi', oobHi ? '0.5' : '0');
+
+  // Thumb colors — direct DOM writes, bypass reconciliation
+  // Input values — force uncontrolled inputs to match during panning
+  // DistributionPlot clip — inherits --lo/--hi via CSS, zero JS needed
+}, [...]);
 ```
 
-**The Coalescing Buffer:** We only dispatch the network request when the stone drops (`onChangeCommitted`), wrapped in a debounce to protect against hardware micro-bounces.
+**The Immunity Shield:** The sync effect that writes CSS vars from React props guards itself against the drag:
+
+```typescript
+useEffect(() => {
+  if (!isDragging && !isPanning) syncTrack(low, high);
+}, [low, high, isDragging, isPanning, syncTrack]);
+```
+
+While the Hand moves, props are ignored. When the Hand releases, the effect fires once and reconciles.
 
 **The Void Detector:** Why query the server if the user drags through empty space? We use the `staticHistogram` to mathematically prove the absence of data:
 
 ```typescript
-function hasDataInDelta(oldVal: number, newVal: number, min: number, max: number, histogram: number[]): boolean {
-  const getIdx = (val: number) => Math.max(0, Math.min(63, Math.floor(((val - min) / (max - min)) * 64)));
-  const idx1 = getIdx(oldVal), idx2 = getIdx(newVal);
-  const [start, end] = [Math.min(idx1, idx2), Math.max(idx1, idx2)];
-
-  // If the sum of bins in the delta is 0, the query is identical. Drop it.
-  return histogram.slice(start, end + 1).some(count => count > 0);
+function hasDataInDelta(oldVal, newVal, min, max, histogram): boolean {
+  const toBin = (v) => Math.max(0, Math.min(n - 1, Math.floor(((v - min) / range) * (n - 1))));
+  for (let i = toBin(Math.min(oldVal, newVal)); i <= toBin(Math.max(oldVal, newVal)); i++) {
+    if (histogram[i] > 0) return true;
+  }
+  return false;
 }
 ```
+
+**The Data Pipeline:** While CSS vars handle the visual, `onDrag()` simultaneously feeds the parent's rAF-throttled pipeline. The parent batches state updates at 60fps, triggering queries that update dynamic histograms and constrained bounds. The two pipelines—visual and data—run in parallel, perfectly decoupled.
 
 ---
 
@@ -81,64 +113,26 @@ $$
 \text{Visual State}(t) = \begin{cases} \text{Static Masked} & t < t_{\text{hydrate}} \\ \text{Dynamic Morph} & t = t_{\text{hydrate}} \end{cases}
 $$
 
-**The Static Layer (The Ghost):** Renders all 64 bins of the `staticHistogram` at low opacity (`0.12`). It is **never clipped**. It is the absolute reference frame.
+**The Static Layer (The Ghost):** Renders all bins of the `staticHistogram` at low opacity (`0.12`). It is **never clipped**. It is the absolute reference frame.
 
 **The Dynamic Layer (The Truth):** Renders `activeBins`. It is **always mounted** (the Genesis Render) and **always clipped** to the Ghost Mask. If it were unclipped, the pre-filtered Genesis shape would flare brightly outside the handles while waiting for the network.
 
+**The Pure CSS Ghost Mask:** The clip `<rect>` inherits its position from CSS custom properties set on the parent gauge container. No imperative handle. No `setClip()`. No ref. The GPU reads the variables, computes the clip, and paints—entirely below the JavaScript thread:
+
 ```tsx
-// DistributionPlot receives NO position props — only data and pending state.
-// The clip is driven imperatively via handleRef.setClip().
-
-interface DistPlotHandle { setClip(lowPct: number, highPct: number): void; }
-
-const DistributionPlot = memo(function DistributionPlot({ staticBins, dynamicBins, height, pending, handleRef }) {
-  const clipRectRef = useRef<SVGRectElement>(null);
-
-  // Expose imperative clip control — parent drives at 60fps, zero re-renders
-  useEffect(() => {
-    if (handleRef) {
-      handleRef.current = {
-        setClip(lowPct, highPct) {
-          clipRectRef.current?.setAttribute('x', String(lowPct));
-          clipRectRef.current?.setAttribute('width', String(Math.max(0, highPct - lowPct)));
-        },
-      };
-    }
-  }, [handleRef]);
-
-  const staticRects  = useMemo(() => /* 64 rects from staticBins */, [staticBins]);
-  const dynamicRects = useMemo(() => /* 64 rects from activeBins */, [activeBins]);
-
-  return (
-    <svg>
-      <defs>
-        <clipPath id={clipId}>
-          <rect ref={clipRectRef} y="0" width="100" height={height}
-                style={{ transition: 'x 150ms ease-out, width 150ms ease-out' }} />
-        </clipPath>
-      </defs>
-
-      {/* Static Ghost: Unclipped, absolute truth */}
-      <g opacity={0.12}>{staticRects}</g>
-
-      {/* Dynamic Truth: Clipped, breathing, morphing */}
-      <g clipPath={`url(#${clipId})`} style={{ opacity: pending ? 0.5 : 1 }}>
-        {dynamicRects}
-      </g>
-    </svg>
-  );
-},
-// Custom comparator: clip position changes NEVER trigger re-render
-(prev, next) =>
-  prev.staticBins === next.staticBins &&
-  prev.dynamicBins === next.dynamicBins &&
-  prev.height === next.height &&
-  prev.pending === next.pending &&
-  prev.handleRef === next.handleRef,
-);
+<defs>
+  <clipPath id={clipId}>
+    <rect y="0" height={height} style={{
+      x: 'calc(var(--lo) * 1%)',
+      width: 'max(0px, calc((var(--hi) - var(--lo)) * 1%))',
+    }} />
+  </clipPath>
+</defs>
 ```
 
-**The Imperative Bridge:** The parent `RangeSlider` holds a `distPlotRef` and calls `setClip()` in a `useEffect` keyed to `[lowPct, highPct]`. This is a pure DOM mutation — `setAttribute` on the SVG `<rect>` — that never enters React's reconciliation cycle. During a drag, React re-renders the slider inputs (2 lightweight `<input type="range">` elements), but the 128 SVG rects stand perfectly still.
+The SVG `viewBox` is `0 0 100 ${height}`, so `1%` maps to exactly one unit. `--lo` and `--hi` are 0–100 values. The math is absolute.
+
+`DistributionPlot` receives no position props, no handleRef, no imperative bridge. Its custom memo comparator only watches `staticBins`, `dynamicBins`, `height`, and `pending`. During a drag, it performs **zero re-renders**. The 128 SVG rects stand perfectly still while the GPU slides the clip mask beneath them.
 
 ---
 
@@ -169,7 +163,7 @@ $$
 }
 ```
 
-**The Liquid Morph:** Because the dynamic layer is constructed of 64 stable `<rect>` elements (not a single `<path>`), we can apply pure CSS geometry transitions. When the new distribution arrives, the bars fluidly equalize:
+**The Liquid Morph:** Because the dynamic layer is constructed of stable `<rect>` elements (not a single `<path>`), we apply pure CSS geometry transitions. When the new distribution arrives, the bars fluidly equalize:
 
 ```tsx
 <rect
@@ -179,25 +173,168 @@ $$
 />
 ```
 
+**The Transition Discipline:** Only `opacity`, `y`, and `height` may carry CSS transitions. Positional properties bound to the Hand—`left`, `width`, `x`—must have **0ms transition**. The Hand must never feel rubber-banded to the glass.
+
 ### The Performance Contract
 
-During a drag, the render cost must be $O(1)$, not $O(N_{\text{bins}})$:
+During a drag, the render cost is $O(0)$—literally zero React reconciliation:
 
 ```
 User drags thumb
-  → rAF-throttled setState (1 per frame)
-  → RangeSlider re-renders (2 lightweight <input> elements)
-  → useEffect calls distPlotRef.current.setClip(lowPct, highPct)
-  → setAttribute('x', ...) on a single SVG <rect>
-  → DistributionPlot does NOT re-render (custom memo comparator blocks it)
-  → 128 SVG rects (64 static + 64 dynamic) stay frozen in the DOM
+  → native <input> onChange fires (uncontrolled — browser owns the thumb)
+  → syncTrack() writes 6 CSS variables on one DOM node
+  → syncTrack() writes 4 style properties on two <input> elements (thumb color)
+  → onDrag() feeds the parent's rAF-throttled pipeline (data queries flow)
+  → CSS calc() on track segments repaints via GPU
+  → CSS calc() on SVG <clipPath> <rect> repaints via GPU
+  → DistributionPlot does NOT re-render (memo comparator blocks it)
+  → 128 SVG rects (64 static + 64 dynamic) stand frozen in the DOM
+  → React reconciler: silent
 ```
 
-This is not an optimization. This is the *only correct architecture*. Reconciling 128 virtual DOM nodes at 60 FPS is a tax that compounds across every slider on screen. The imperative bridge eliminates that tax entirely.
+This is not an optimization. This is the *only correct architecture*. Reconciling 128 virtual DOM nodes at 60 FPS is a tax that compounds across every slider on screen. The CSS Variable Engine eliminates that tax entirely.
 
 ---
 
-## IV. The Ocean and the Porch
+## IV. The Kinetic Gauge
+
+*On Amplitude, Panning, and the Amber Resonance*
+
+### The Koan
+
+The novice squinted at the sparkline. "Master, the histogram is too short. I cannot see the shape of the data changing."
+
+The Master handed the novice a magnifying lens. "You built a gauge, but you gave it the depth of a scratch. A scientist needs an *instrument*—something with wells deep enough to see the water move."
+
+### The Physics
+
+Three upgrades transform the sparkline into a kinetic instrument.
+
+**The Deep Well:** The histogram rises from 20px to 56px (`PLOT_H = 56`). The entire gauge—histogram, track, number readouts—sits inside a segregated container with a sunken background (`oklch(0.13 0.01 240 / 0.5)`), `border-radius: 6px`, and internal padding. This gives the gauge a "physical instrument" feel, visually distinct from the column label above it.
+
+**The Shifting Window:** A pannable track element sits between the two thumbs at `z-index: 2` (below thumb inputs at 3/4). It catches pointer events that pass through the `pointer-events: none` range inputs but miss the thumbs. On `pointerDown`, it captures the pointer and attaches global `pointermove`/`pointerup` listeners. The window slides as a rigid body—both handles move together, maintaining width, clamped so the window stays within `[min, max]`. The pan handler writes directly to `syncTrack()`, which drives CSS variables and feeds `onDrag()` simultaneously.
+
+**The Amber Resonance:** When a thumb exceeds the constrained data range, an amber void track glows on the number line between the thumb and the density boundary:
+
+```tsx
+{/* Left amber void — thumb → density boundary (CSS-driven) */}
+<div style={{
+  left: 'calc(var(--lo) * 1%)',
+  width: 'max(0%, calc((var(--c-lo) - var(--lo)) * 1%))',
+  opacity: 'var(--oob-lo)',
+  boxShadow: '0 0 6px oklch(0.750 0.185 60 / 0.28)',
+}} />
+```
+
+When `--lo >= --c-lo`, the `max(0%, ...)` collapses the width to zero. The amber vanishes. No React conditional. No `{lowOob && ...}`. The CSS math *is* the condition.
+
+### The Unified Language of the Number Line
+
+The number line speaks exactly three colors:
+
+| Segment | Color | CSS Expression | Meaning |
+|---|---|---|---|
+| Ghost base | Cyan, 10% | Full width, static | The scale itself |
+| Truth track | Cyan, 40% | `left: max(--lo, --c-lo)`, `right: max(100-hi, 100-c-hi)` | Where data *exists* between the thumbs |
+| Void track | Amber, 50% | `left: --lo`, `width: --c-lo - --lo` | Where the thumb has reached beyond the water |
+
+Cyan means *data*. Amber means *void*. They never overlap. They never fight. The CSS variables are the single, immutable physical law that governs both.
+
+---
+
+## V. The Unshackling
+
+*On Uncontrolled Inputs and the Handshake Protocol*
+
+### The Koan
+
+The novice released the thumbscrew and watched the ghost snap to a different position. "Master! The hand let go, but the glass disagrees with where I left it!"
+
+The Master traced the signal path. "You chained the input to React with `value={low}`. React believes it owns the thumb. The browser believes it owns the thumb. Two kings in one castle. When you release, they fight, and the glass cracks."
+
+### The Physics
+
+HTML `<input type="range">` elements have two modes:
+
+$$
+\text{Controlled:} \quad \texttt{value=\{low\}} \implies \text{React owns the DOM node}
+$$
+$$
+\text{Uncontrolled:} \quad \texttt{defaultValue=\{low\}} \implies \text{Browser owns the DOM node}
+$$
+
+In controlled mode, every React re-render resets the input's `.value` to the prop. During a drag, if the parent re-renders (from `onDrag` feeding the rAF pipeline), the browser's native thumb position fights React's prop. The inputs judder. The CSS variables (written by `syncTrack`) show one position; React's prop forces another. Two truths, one screen.
+
+The solution: **unshackle the inputs**. `defaultValue` seeds the initial position. After that, the browser owns the DOM `.value`. React never touches it again unless we explicitly force it via `syncTrack()`.
+
+```tsx
+<input type="range"
+  ref={lowInputRef}
+  defaultValue={low}      // seed, not a leash
+  onChange={e => {
+    const v = Math.min(Number(e.target.value), highRef.current);
+    lowRef.current = v;
+    syncTrack(v, highRef.current);   // CSS vars follow the thumb
+    onDrag(name, v, highRef.current); // data pipeline follows the thumb
+  }}
+/>
+```
+
+### The Handshake Protocol
+
+When the Hand releases the glass, the DOM, the CSS, and React must agree on a single coordinate. This is non-trivial because the browser's `onChange` event may lag behind `pointerUp` by one event-loop tick during fast motions. `lowRef.current` may be stale by one pixel.
+
+The law: **on drop, the DOM is the source of truth.** Read the physical input's `.value` directly:
+
+```typescript
+const handleDragEnd = () => {
+  // The absolute DOM truth — onChange may lag behind the final pixel
+  const actualLo = lowInputRef.current ? Number(lowInputRef.current.value) : lowRef.current;
+  const actualHi = highInputRef.current ? Number(highInputRef.current.value) : highRef.current;
+
+  // Hard sync — refs, CSS vars, and inputs all agree before anything else
+  lowRef.current = actualLo;
+  highRef.current = actualHi;
+  syncTrack(actualLo, actualHi);
+
+  setIsDragging(false);
+  // ... void detection with actualLo/actualHi ...
+  onDrag(name, actualLo, actualHi);
+  onCommit(name);
+};
+```
+
+### The Float Fuzz Guard
+
+`syncTrack` forces uncontrolled inputs to match during panning, clip-to-reality, and reset. But `String(15.000000000001)` and `"15"` are different strings for the same visual position. Naive string comparison causes infinite-loop flickering.
+
+The guard uses numeric comparison with a tolerance below the eye's threshold:
+
+```typescript
+if (loIn && Math.abs(Number(loIn.value) - loVal) > 1e-7) loIn.value = String(loVal);
+if (hiIn && Math.abs(Number(hiIn.value) - hiVal) > 1e-7) hiIn.value = String(hiVal);
+```
+
+### The Quantization Theorem
+
+For floating-point columns, `step="any"` allows infinite precision. The browser maps the thumb to the exact pixel coordinate. For integer columns, `step=1` is mathematically perfect. The old `range / 200` step forced a 0.5% iron grid—the user could never position the thumb at the exact edge of the data, resulting in tiny unclosable amber void tracks.
+
+$$
+\text{Step} = \begin{cases} \texttt{"any"} & \text{if float} \\ 1 & \text{if integer} \end{cases}
+$$
+
+### The OOB Epsilon
+
+The epsilon for OOB detection is a *visual tolerance*, not a mathematical one. The DuckDB → Arrow IPC → JavaScript pipeline accumulates floating-point drift. If the thumb is within 0.1% of the constrained boundary, the scientist is *at* the edge. Honor their intent:
+
+```typescript
+const epsilon = range * 0.001;
+const lowOob  = !pending && hasConData && low < activeConMin! - epsilon;
+```
+
+---
+
+## VI. The Ocean and the Porch
 
 *On Fetching and the Ephemeral Cache*
 
