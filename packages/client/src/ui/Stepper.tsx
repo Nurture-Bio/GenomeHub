@@ -58,6 +58,7 @@ export default function Stepper({
   detail,
   stepHealth,
   opacity,
+  busy,
 }: {
   steps: readonly StepperStep[];
   active: number;
@@ -65,6 +66,8 @@ export default function Stepper({
   detail?: ReactNode;
   stepHealth?: Record<string, StepHealth>;
   opacity?: number;
+  /** When true on the final step, suppresses the flourish and pulses instead. */
+  busy?: boolean;
 }) {
   const n = steps.length;
 
@@ -90,7 +93,8 @@ export default function Stepper({
 
   // ── All rendering uses visualActive ────────────────
   const active = visualActive;
-  const isFinal = active === n - 1;
+  // Final step loses its flourish when busy — it pulses like an in-progress step
+  const isFinal = active === n - 1 && !busy;
   const activeStep = steps[active];
   const activeKey = activeStep?.key;
   const activeError = activeStep?.error;

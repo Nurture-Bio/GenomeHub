@@ -174,7 +174,7 @@ Before querying: map slider values to histogram bins, check if any bin has count
 Wait for user to stop typing. One query, not one per keystroke.
 
 **29. Range Drag = No Commit Until pointerUp**
-While dragging: `onDrag` fires (visual update only). Only `onCommit` on `pointerUp` fires `applyFilters`. Dragging from 0 to 100 = 1 query, not 100.
+While dragging: `onDrag` fires (visual update only). Only `onCommit` on `pointerUp` fires `applyFilters`. Dragging from 0 to 100 = 1 query, not 100. This two-event split also solves the behind-by-one stale closure (see #44) — the rAF commits state in one render, `pointerUp` queries in a later render, so `triggerFilters` always sees the committed range.
 
 **30. First Ready Doesn't Wipe** (catch-up effect)
 When pipeline first reaches 'ready', don't wipe the pre-flight data (JSON rows). Let it stay visible while the Arrow query fires in background. No skeleton flicker on first load.
@@ -229,6 +229,9 @@ Applied to `.vault-door`, `.glass-canopy`, `.sidebar-surface`. Tells the browser
 - `.vault-door:hover { will-change: transform }` — pre-promotes to GPU layer before click
 - `.river-fill { will-change: clip-path }` — always promoted since it animates continuously
 Not applied globally — each `will-change` costs VRAM. Only where animations actually fire.
+
+**44. Ref-Sync for Batched State** (`ParquetPreview.tsx: selectedRef, rangeRef, textRef`)
+React batches `setState` — calling `setSelected(next)` then `triggerRef.current()` in the same handler means `triggerFilters` reads the *previous* `selected` from its closure. The query fires with yesterday's filters. Fix: maintain a `useRef` mirror for each filter state. Sync the ref *inside* the functional updater (which executes synchronously before `startTransition`). `triggerFilters` reads `.current` — always the present, never the past. Range sliders solved this earlier by splitting drag (rAF state update) from commit (`pointerUp` query) — two separate events, two separate renders, so state is committed by the time the query fires. Categorical chips and text filters don't have that two-event luxury, so they need the ref-sync.
 
 ---
 

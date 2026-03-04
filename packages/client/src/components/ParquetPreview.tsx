@@ -1576,7 +1576,7 @@ export default function ParquetPreview({
   fileId: string;
   filename?: string;
   onExport?: () => void;
-  onProgress?: (config: { steps: StepperStep[]; active: number } | null) => void;
+  onProgress?: (config: { steps: StepperStep[]; active: number; busy?: boolean } | null) => void;
 }) {
   const {
     pipeline,
@@ -1588,6 +1588,7 @@ export default function ParquetPreview({
     hasRow,
     fetchRange,
     applyFilters,
+    isQuerying,
     cacheGen,
   } = useParquetPreview(fileId);
 
@@ -1685,8 +1686,8 @@ export default function ParquetPreview({
       onProgress?.(null);
       return;
     }
-    onProgress?.({ steps: currentSteps, active: currentActive });
-  }, [currentActive, isError, displayError]);
+    onProgress?.({ steps: currentSteps, active: currentActive, busy: isQuerying });
+  }, [currentActive, isError, displayError, isQuerying]);
 
   // Cleanup: clear stepper when unmounting
   useEffect(() => {
@@ -1731,6 +1732,18 @@ export default function ParquetPreview({
   const [selected, setSelected] = useState<Record<string, Set<string>>>({});
   const [textFilters, setTextFilters] = useState<Record<string, string>>({});
   const [sorting, setSorting] = useState<SortingState>([]);
+
+  // ── Synchronous refs — the query reads these, not the batched state ─────────
+  // React batches setState: calling setSelected + triggerRef.current() in the
+  // same handler means triggerFilters would read the OLD selected from its
+  // closure. These refs are synced inside the updater function (synchronous)
+  // so triggerFilters always sees the present, never the past.
+  const selectedRef = useRef(selected);
+  const rangeRef = useRef(rangeState);
+  const textRef = useRef(textFilters);
+  selectedRef.current = selected;
+  rangeRef.current = rangeState;
+  textRef.current = textFilters;
   const [constrainedStats, setConstrainedStats] = useState<Record<string, ColumnStats>>({});
   const [pendingConstraints, setPendingConstraints] = useState(false);
 
@@ -1816,22 +1829,20 @@ export default function ParquetPreview({
 
     const filters: FilterSpec[] = [];
 
-    // Range filters
-    for (const [name, [lo, hi]] of Object.entries(rangeState)) {
+    // Read from refs — not closures — so we see the present, never the past
+    for (const [name, [lo, hi]] of Object.entries(rangeRef.current)) {
       const stats = columnStats[name];
       if (!stats) continue;
       if (lo <= stats.min && hi >= stats.max) continue;
       filters.push({ column: name, op: { type: 'between', low: lo, high: hi } });
     }
 
-    // Multi-select filters
-    for (const [name, set] of Object.entries(selected)) {
+    for (const [name, set] of Object.entries(selectedRef.current)) {
       if (set.size === 0) continue;
       filters.push({ column: name, op: { type: 'in', values: [...set] } });
     }
 
-    // Text filters
-    for (const [name, text] of Object.entries(textFilters)) {
+    for (const [name, text] of Object.entries(textRef.current)) {
       if (!text.trim()) continue;
       filters.push({ column: name, op: { type: 'ilike', pattern: text.trim() } });
     }
@@ -1852,7 +1863,7 @@ export default function ParquetPreview({
         console.error('Filter query error:', err);
         setPendingConstraints(false);
       });
-  }, [pipeline.status, rangeState, selected, textFilters, sortSpecs, columnStats, applyFilters]);
+  }, [pipeline.status, sortSpecs, columnStats, applyFilters]);
 
   // Keep ref synced so debounced callbacks always call the latest version
   triggerRef.current = triggerFilters;
@@ -1902,13 +1913,18 @@ export default function ParquetPreview({
   }, [startTransition]);
 
   const handleTextChange = useCallback((name: string, value: string) => {
-    setTextFilters((prev) => ({ ...prev, [name]: value }));
+    setTextFilters((prev) => {
+      const next = { ...prev, [name]: value };
+      textRef.current = next;
+      return next;
+    });
     if (debRef.current) clearTimeout(debRef.current);
     debRef.current = setTimeout(() => triggerRef.current(), 300);
   }, []);
 
   const handleToggleSelect = useCallback((name: string, value: string) => {
-    // Paint the chip immediately
+    // Paint the chip immediately — sync ref inside updater so the query
+    // reads the present value, not the previous render's closure
     setSelected((prev) => {
       const set = new Set(prev[name] ?? []);
       if (set.has(value)) set.delete(value);
@@ -1916,9 +1932,12 @@ export default function ParquetPreview({
       if (set.size === 0) {
         const next = { ...prev };
         delete next[name];
+        selectedRef.current = next;
         return next;
       }
-      return { ...prev, [name]: set };
+      const next = { ...prev, [name]: set };
+      selectedRef.current = next;
+      return next;
     });
     // Defer the heavy tree reconciliation
     startTransition(() => {
@@ -1930,6 +1949,7 @@ export default function ParquetPreview({
     setSelected((prev) => {
       const next = { ...prev };
       delete next[name];
+      selectedRef.current = next;
       return next;
     });
     startTransition(() => {
@@ -1941,6 +1961,8 @@ export default function ParquetPreview({
     setRangeOverrides({});
     setSelected({});
     setTextFilters({});
+    selectedRef.current = {};
+    textRef.current = {};
     setConstrainedStats({});
     setConstrainedHistograms({});
     setPendingConstraints(false);
@@ -2122,7 +2144,7 @@ export default function ParquetPreview({
 
           {/* Center: The Watchman */}
           <div className="justify-self-center">
-            <Stepper steps={currentSteps} active={currentActive} />
+            <Stepper steps={currentSteps} active={currentActive} busy={isQuerying} />
           </div>
 
           {/* Right: The Actuators */}

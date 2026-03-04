@@ -421,6 +421,7 @@
   .range-thumb::-webkit-slider-thumb:hover {
     transform: scale(1.2);
     box-shadow: 0 0 0 3px var(--range-thumb-glow, oklch(0.75 0.18 195 / 0.25));
+    will-change: transform;
   }
   .range-thumb::-moz-range-thumb {
     width: 14px;
@@ -439,6 +440,7 @@
   .range-thumb::-moz-range-thumb:hover {
     transform: scale(1.2);
     box-shadow: 0 0 0 3px var(--range-thumb-glow, oklch(0.75 0.18 195 / 0.25));
+    will-change: transform;
   }
   .range-thumb::-webkit-slider-runnable-track {
     background: transparent;
