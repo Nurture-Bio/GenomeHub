@@ -1537,10 +1537,11 @@ export default function ParquetPreview({ fileId, onProgress }: {
   const handleResizeStart = useCallback((name: string, startX: number, startW: number) => {
     resizingRef.current = { name, startX, startW };
     const onMove = (e: MouseEvent) => {
-      if (!resizingRef.current) return;
+      const r = resizingRef.current;
+      if (!r) return;
       setColWidthOverrides(prev => ({
         ...prev,
-        [resizingRef.current!.name]: Math.max(50, resizingRef.current!.startW + e.clientX - resizingRef.current!.startX),
+        [r.name]: Math.max(50, r.startW + e.clientX - r.startX),
       }));
     };
     const onUp = () => {
