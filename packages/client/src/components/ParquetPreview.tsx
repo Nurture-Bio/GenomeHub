@@ -1155,7 +1155,6 @@ const VirtualRows = memo(function VirtualRows({
               style={{
                 position: 'absolute', top: 0, left: 0, width: '100%', height: ROW_H,
                 transform: `translateY(${Math.round(vRow.start)}px)`,
-                background: 'var(--color-void)',
               }}
             >
               {columns.map(c => {
@@ -1285,7 +1284,7 @@ export default function ParquetPreview({ fileId, onProgress }: {
   }, [fileId, setFileProfile]);
 
   const scrollRef   = useRef<HTMLDivElement>(null);
-  const headerRef   = useRef<HTMLDivElement>(null);
+
   const debRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resizingRef = useRef<{ name: string; startX: number; startW: number } | null>(null);
 
@@ -1858,17 +1857,29 @@ export default function ParquetPreview({ fileId, onProgress }: {
       </div>
 
       {/* ── Table Drawer ───────────────────────────────────────────────────── */}
-      <div className="overflow-hidden flex flex-col shrink-0"
+      <div
+        ref={scrollRef}
+        className="parquet-scroll overflow-auto flex flex-col shrink-0"
         style={{
           height: isTableOpen ? '60vh' : '0px',
           transition: 'height 300ms ease-out',
+          scrollbarWidth: 'auto',
+          scrollbarColor: 'var(--color-cyan-dim) var(--color-cyan-wash)',
         }}>
-        {/* Table header */}
+        <style>{`
+          .parquet-scroll::-webkit-scrollbar { height: 24px; width: 12px; }
+          .parquet-scroll::-webkit-scrollbar-track { background: var(--color-cyan-wash); }
+          .parquet-scroll::-webkit-scrollbar-thumb { background: var(--color-cyan-dim); border-radius: 12px; }
+          .parquet-scroll:hover::-webkit-scrollbar-thumb { background: var(--color-cyan); }
+        `}</style>
+        {/* Table header — sticky within unified scroll container */}
 
-        <div ref={headerRef} className="shrink-0 overflow-hidden font-mono"
-          style={activeColumns.length === 0
-            ? { background: 'var(--color-void)', borderBottom: '2px solid var(--color-line)' }
-            : undefined}>
+        <div className="shrink-0 font-mono"
+          style={{
+            position: 'sticky', top: 0, zIndex: 10,
+            background: 'var(--color-void)',
+            ...(activeColumns.length === 0 ? { borderBottom: '2px solid var(--color-line)' } : {}),
+          }}>
           {activeColumns.length > 0 && (() => {
             const headerGroup = table.getHeaderGroups()[0];
             const activeColumnSet = new Set(activeColumns.map(c => c.name));
@@ -1915,15 +1926,10 @@ export default function ParquetPreview({ fileId, onProgress }: {
         </div>
 
 
-        {/* Table body — scrollRef always mounted for stable virtualizer measurement */}
+        {/* Table body */}
         <div
-          ref={scrollRef}
-          className="flex-1 min-w-0 overflow-auto"
-          style={{ position: 'relative', background: 'var(--color-void)' }}
-          onScroll={() => {
-            if (headerRef.current && scrollRef.current)
-              headerRef.current.scrollLeft = scrollRef.current.scrollLeft;
-          }}
+          className="flex-1 min-w-0"
+          style={{ position: 'relative' }}
         >
           {skeletonOverlay}
 
