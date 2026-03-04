@@ -40,8 +40,8 @@ export interface ColumnCardinality {
 export type PipelineStatus =
   | 'idle'
   | 'loading'
-  | 'ready_background_work'  // data visible, server still hydrating profile
-  | 'ready'                  // fully operational
+  | 'ready_background_work' // data visible, server still hydrating profile
+  | 'ready' // fully operational
   | 'unavailable'
   | 'failed'
   | 'error';
@@ -63,9 +63,7 @@ export type PipelineSignal =
 function pipelineReducer(state: PipelineState, signal: PipelineSignal): PipelineState {
   switch (signal.type) {
     case 'START_POLL':
-      return state.status === 'idle'
-        ? { activeStep: 0, status: 'loading', error: null }
-        : state;
+      return state.status === 'idle' ? { activeStep: 0, status: 'loading', error: null } : state;
 
     case 'PREFLIGHT_DATA_READY':
       return { activeStep: 4, status: 'ready_background_work', error: null };
@@ -88,14 +86,26 @@ function pipelineReducer(state: PipelineState, signal: PipelineSignal): Pipeline
 // ── Numeric type detection ────────────────────────────────
 
 const NUMERIC_TYPES = new Set([
-  'TINYINT', 'SMALLINT', 'INTEGER', 'BIGINT', 'HUGEINT',
-  'UTINYINT', 'USMALLINT', 'UINTEGER', 'UBIGINT',
-  'FLOAT', 'DOUBLE', 'DECIMAL',
+  'TINYINT',
+  'SMALLINT',
+  'INTEGER',
+  'BIGINT',
+  'HUGEINT',
+  'UTINYINT',
+  'USMALLINT',
+  'UINTEGER',
+  'UBIGINT',
+  'FLOAT',
+  'DOUBLE',
+  'DECIMAL',
 ]);
 
 export function isNumericType(type: string | null | undefined): boolean {
   if (!type) return false;
-  const base = type.replace(/\(.+\)/, '').trim().toUpperCase();
+  const base = type
+    .replace(/\(.+\)/, '')
+    .trim()
+    .toUpperCase();
   return NUMERIC_TYPES.has(base);
 }
 
@@ -108,7 +118,8 @@ function parseStructFields(structType: string): { name: string; type: string }[]
   const inner = structType.match(/^STRUCT\((.+)\)$/s)?.[1];
   if (!inner) return [];
   const fields: { name: string; type: string }[] = [];
-  let depth = 0, start = 0;
+  let depth = 0,
+    start = 0;
   for (let i = 0; i < inner.length; i++) {
     if (inner[i] === '(') depth++;
     else if (inner[i] === ')') depth--;
@@ -155,7 +166,10 @@ interface ServerQueryResult {
 
 /** Callbacks fired as each Arrow frame arrives over the wire. */
 interface StreamCallbacks {
-  onGod?: (god: { filteredCount: number; constrainedStats: Record<string, { min: number; max: number }> }) => void;
+  onGod?: (god: {
+    filteredCount: number;
+    constrainedStats: Record<string, { min: number; max: number }>;
+  }) => void;
   onViewport?: (table: ArrowTable) => void;
 }
 
@@ -175,8 +189,8 @@ function parseGodTable(godTable: ArrowTable): {
       const minVal = godTable.getChild(field.name)?.get(0);
       const maxFieldName = field.name.replace(/_min"?$/, '_max"');
       const altMaxName = field.name.replace(/_min$/, '_max');
-      const maxVal = godTable.getChild(maxFieldName)?.get(0)
-                  ?? godTable.getChild(altMaxName)?.get(0);
+      const maxVal =
+        godTable.getChild(maxFieldName)?.get(0) ?? godTable.getChild(altMaxName)?.get(0);
       if (minVal != null && maxVal != null) {
         constrainedStats[colName] = { min: Number(minVal), max: Number(maxVal) };
       }
@@ -319,6 +333,11 @@ async function serverQuery(
   return { viewportTable, filteredCount, constrainedStats, dynamicHistograms };
 }
 
+// ── Constants ────────────────────────────────────────────
+
+/** Rows per fetch window — shared between applyFilters and VirtualRows */
+export const WINDOW_SIZE = 200;
+
 // ── Hook ─────────────────────────────────────────────────
 
 export function useParquetPreview(fileId: string) {
@@ -328,7 +347,7 @@ export function useParquetPreview(fileId: string) {
   const cachedEntry = getValidFileProfile(fileId);
   const cachedProfile = cachedEntry?.dataProfile ?? null;
   const cachedCols = cachedProfile?.schema?.length
-    ? expandColumns(cachedProfile.schema.map(c => ({ name: c.name, type: c.type || 'VARCHAR' })))
+    ? expandColumns(cachedProfile.schema.map((c) => ({ name: c.name, type: c.type || 'VARCHAR' })))
     : null;
 
   // ── Pipeline reducer ──
@@ -338,17 +357,17 @@ export function useParquetPreview(fileId: string) {
   const [pipeline, dispatch] = useReducer(pipelineReducer, initialPipeline);
 
   // Data state
-  const [columns,       setColumns]       = useState<ColumnInfo[]>(cachedCols ?? []);
-  const [totalRows,     setTotalRows]     = useState(cachedProfile?.rowCount ?? 0);
+  const [columns, setColumns] = useState<ColumnInfo[]>(cachedCols ?? []);
+  const [totalRows, setTotalRows] = useState(cachedProfile?.rowCount ?? 0);
   const filteredCountRef = useRef(cachedProfile?.rowCount ?? 0);
   const [filteredCount, _setFilteredCount] = useState(cachedProfile?.rowCount ?? 0);
   const setFilteredCount = useCallback((v: number) => {
     filteredCountRef.current = v;
     _setFilteredCount(v);
   }, []);
-  const [baseProfile,   setBaseProfile]   = useState<DataProfile | null>(cachedProfile);
-  const [isQuerying,    setIsQuerying]    = useState(false);
-  const [cacheGen,      setCacheGen]      = useState(0);
+  const [baseProfile, setBaseProfile] = useState<DataProfile | null>(cachedProfile);
+  const [isQuerying, setIsQuerying] = useState(false);
+  const [cacheGen, setCacheGen] = useState(0);
 
   // Arrow table cache: window offset → raw Arrow Table (zero-copy from IPC)
   const arrowCache = useRef<Map<number, ArrowTable>>(new Map());
@@ -383,7 +402,7 @@ export function useParquetPreview(fileId: string) {
     function hydrateProfile(profile: DataProfile) {
       setBaseProfile(profile);
       if (profile.schema?.length) {
-        const cols = expandColumns(profile.schema.map(c => ({ name: c.name, type: c.type })));
+        const cols = expandColumns(profile.schema.map((c) => ({ name: c.name, type: c.type })));
         setColumns(cols);
         setTotalRows(profile.rowCount);
         setFilteredCount(profile.rowCount);
@@ -397,19 +416,23 @@ export function useParquetPreview(fileId: string) {
       dispatch({ type: 'SERVER_READY' });
 
       // Fire an initial query — Arrow table replaces JSON fallback
-      serverQuery(fileId, [], [], 0, 100)
-        .then(result => {
+      serverQuery(fileId, [], [], 0, WINDOW_SIZE)
+        .then((result) => {
           if (cancelled) return;
           arrowCache.current.clear();
           fallbackRows.current.clear();
           if (result.viewportTable) arrowCache.current.set(0, result.viewportTable);
           setFilteredCount(result.filteredCount);
           setTotalRows(result.filteredCount);
-          setCacheGen(g => g + 1);
+          setCacheGen((g) => g + 1);
         })
-        .catch((err) => { console.warn('[useParquetPreview] initial query failed:', err); });
+        .catch((err) => {
+          console.warn('[useParquetPreview] initial query failed:', err);
+        });
 
-      return () => { cancelled = true; };
+      return () => {
+        cancelled = true;
+      };
     }
 
     // ── Slow path: poll for parquet readiness ──
@@ -457,18 +480,19 @@ export function useParquetPreview(fileId: string) {
           dispatch({ type: 'SERVER_READY' });
 
           // Fire initial query — Arrow table replaces JSON fallback
-          serverQuery(fileId, [], [], 0, 100)
-            .then(result => {
+          serverQuery(fileId, [], [], 0, WINDOW_SIZE)
+            .then((result) => {
               if (cancelled) return;
               arrowCache.current.clear();
               fallbackRows.current.clear();
               if (result.viewportTable) arrowCache.current.set(0, result.viewportTable);
               setFilteredCount(result.filteredCount);
               setTotalRows(result.filteredCount);
-              setCacheGen(g => g + 1);
+              setCacheGen((g) => g + 1);
             })
-            .catch((err) => { console.warn('[useParquetPreview] initial query failed:', err); });
-
+            .catch((err) => {
+              console.warn('[useParquetPreview] initial query failed:', err);
+            });
         } else if (data.status === 'converting') {
           pollTimer = setTimeout(poll, 2000);
         } else if (data.status === 'failed') {
@@ -478,7 +502,10 @@ export function useParquetPreview(fileId: string) {
         }
       } catch (err) {
         if (!cancelled) {
-          dispatch({ type: 'FATAL_ERROR', payload: err instanceof Error ? err.message : String(err) });
+          dispatch({
+            type: 'FATAL_ERROR',
+            payload: err instanceof Error ? err.message : String(err),
+          });
         }
       }
     }
@@ -520,103 +547,102 @@ export function useParquetPreview(fileId: string) {
 
   const MAX_CACHED_TABLES = 10;
 
-  const fetchRange = useCallback(async (
-    offset: number,
-    limit: number,
-    signal?: AbortSignal,
-  ): Promise<void> => {
-    if (!serverReadyRef.current) return;
+  const fetchRange = useCallback(
+    async (offset: number, limit: number, signal?: AbortSignal): Promise<void> => {
+      if (!serverReadyRef.current) return;
 
-    // Skip if this window is already cached
-    if (arrowCache.current.has(offset)) return;
+      // Skip if this window is already cached
+      if (arrowCache.current.has(offset)) return;
 
-    try {
-      const result = await serverQuery(
-        fileId,
-        filtersRef.current,
-        sortRef.current,
-        offset,
-        limit,
-        signal,
-      );
+      try {
+        const result = await serverQuery(
+          fileId,
+          filtersRef.current,
+          sortRef.current,
+          offset,
+          limit,
+          signal,
+        );
 
-      if (result.viewportTable) {
-        arrowCache.current.set(offset, result.viewportTable);
+        if (result.viewportTable) {
+          arrowCache.current.set(offset, result.viewportTable);
 
-        // Evict tables far from viewport — keep closest MAX_CACHED_TABLES
-        if (arrowCache.current.size > MAX_CACHED_TABLES) {
-          const sorted = [...arrowCache.current.keys()]
-            .sort((a, b) => Math.abs(a - offset) - Math.abs(b - offset));
-          for (let i = MAX_CACHED_TABLES; i < sorted.length; i++) {
-            arrowCache.current.delete(sorted[i]);
+          // Evict tables far from viewport — keep closest MAX_CACHED_TABLES
+          if (arrowCache.current.size > MAX_CACHED_TABLES) {
+            const sorted = [...arrowCache.current.keys()].sort(
+              (a, b) => Math.abs(a - offset) - Math.abs(b - offset),
+            );
+            for (let i = MAX_CACHED_TABLES; i < sorted.length; i++) {
+              arrowCache.current.delete(sorted[i]);
+            }
           }
-        }
 
-        setCacheGen(g => g + 1);
+          setCacheGen((g) => g + 1);
+        }
+      } catch {
+        // Fetch failed — ignore (abort or network error)
       }
-    } catch {
-      // Fetch failed — ignore (abort or network error)
-    }
-  }, [fileId]);
+    },
+    [fileId],
+  );
 
   // ── Apply filters ───────────────────────────────────────
 
-  const applyFilters = useCallback(async (
-    filters: FilterSpec[],
-    sort: SortSpec[],
-    _globalStats?: Record<string, ColumnStats>,
-  ): Promise<{
-    filteredCount: number;
-    constrainedStats?: Record<string, ColumnStats>;
-    constrainedHistograms?: Record<string, number[]>;
-  }> => {
-    if (!serverReadyRef.current) return { filteredCount: 0 };
+  const applyFilters = useCallback(
+    async (
+      filters: FilterSpec[],
+      sort: SortSpec[],
+      _globalStats?: Record<string, ColumnStats>,
+    ): Promise<{
+      filteredCount: number;
+      constrainedStats?: Record<string, ColumnStats>;
+      constrainedHistograms?: Record<string, number[]>;
+    }> => {
+      if (!serverReadyRef.current) return { filteredCount: 0 };
 
-    // Cancel any in-flight request
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
+      // Cancel any in-flight request
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
 
-    setIsQuerying(true);
-    try {
-      filtersRef.current = filters;
-      sortRef.current = sort;
-      arrowCache.current.clear();
-      fallbackRows.current.clear();
-      setCacheGen(g => g + 1);
+      setIsQuerying(true);
+      try {
+        filtersRef.current = filters;
+        sortRef.current = sort;
+        arrowCache.current.clear();
+        fallbackRows.current.clear();
+        setCacheGen((g) => g + 1);
 
-      const result = await serverQuery(fileId, filters, sort, 0, 100, controller.signal, {
-        // God Query lands first — update count before rows arrive
-        onGod: ({ filteredCount: fc }) => setFilteredCount(fc),
-        // Viewport lands second — store raw Arrow table, no materialization
-        onViewport: (table) => {
-          arrowCache.current.set(0, table);
-          setCacheGen(g => g + 1);
-        },
-      });
+        const result = await serverQuery(fileId, filters, sort, 0, WINDOW_SIZE, controller.signal, {
+          // God Query lands first — update count before rows arrive
+          onGod: ({ filteredCount: fc }) => setFilteredCount(fc),
+          // Viewport lands second — store raw Arrow table, no materialization
+          onViewport: (table) => {
+            arrowCache.current.set(0, table);
+            setCacheGen((g) => g + 1);
+          },
+        });
 
-      // Map server constrainedStats → ColumnStats
-      const constrainedStats: Record<string, ColumnStats> | undefined =
-        Object.keys(result.constrainedStats).length > 0
-          ? result.constrainedStats
-          : undefined;
+        // Map server constrainedStats → ColumnStats
+        const constrainedStats: Record<string, ColumnStats> | undefined =
+          Object.keys(result.constrainedStats).length > 0 ? result.constrainedStats : undefined;
 
-      const constrainedHistograms: Record<string, number[]> | undefined =
-        Object.keys(result.dynamicHistograms).length > 0
-          ? result.dynamicHistograms
-          : undefined;
+        const constrainedHistograms: Record<string, number[]> | undefined =
+          Object.keys(result.dynamicHistograms).length > 0 ? result.dynamicHistograms : undefined;
 
-      return { filteredCount: result.filteredCount, constrainedStats, constrainedHistograms };
-    } catch (err) {
-      // Aborted requests are not errors — return last known count
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        return { filteredCount: filteredCountRef.current };
+        return { filteredCount: result.filteredCount, constrainedStats, constrainedHistograms };
+      } catch (err) {
+        // Aborted requests are not errors — return last known count
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          return { filteredCount: filteredCountRef.current };
+        }
+        throw err;
+      } finally {
+        setIsQuerying(false);
       }
-      throw err;
-    } finally {
-      setIsQuerying(false);
-    }
-  }, [fileId]);
+    },
+    [fileId],
+  );
 
   return {
     pipeline,
@@ -649,8 +675,8 @@ export function prefetchParquetUrl(fileId: string): void {
   _prefetching.add(fileId);
 
   apiFetch(`/api/files/${fileId}/parquet-url`)
-    .then(res => res.json())
-    .then(data => {
+    .then((res) => res.json())
+    .then((data) => {
       if (data.status !== 'ready') return;
 
       const serverProfile = data.dataProfile ?? null;

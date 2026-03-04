@@ -17,7 +17,7 @@ import {
 import * as Popover from '@radix-ui/react-popover';
 import { Text, Stepper } from '../ui';
 import type { StepperStep } from '../ui';
-import { useParquetPreview, isNumericType, DROPDOWN_MAX } from '../hooks/useParquetPreview';
+import { useParquetPreview, isNumericType, DROPDOWN_MAX, WINDOW_SIZE } from '../hooks/useParquetPreview';
 import { useDataProfile } from '../hooks/useDataProfile';
 import { useDerivedState } from '../hooks/useDerivedState';
 import { apiFetch } from '../lib/api';
@@ -41,7 +41,6 @@ const HEADER_GAP = 8; // gap-1 between ColName and chevron
 const COL_CHROME = CELL_PAD_X * 2 + CHEVRON_W + HEADER_GAP;
 const MIN_COL_W = 50;
 const MAX_COL_W = 300;
-const WINDOW_SIZE = 200; // rows per fetch window
 
 // ── Telemetry Conduit ────────────────────────────────────────────────────────
 
