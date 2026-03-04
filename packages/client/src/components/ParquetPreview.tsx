@@ -15,7 +15,7 @@ import {
   type ColumnDef,
 } from '@tanstack/react-table';
 import * as Popover from '@radix-ui/react-popover';
-import { Text, Stepper } from '../ui';
+import { Text, Stepper, RiverGauge } from '../ui';
 import type { StepperStep } from '../ui';
 import { useParquetPreview, isNumericType, DROPDOWN_MAX, WINDOW_SIZE } from '../hooks/useParquetPreview';
 import { useDataProfile } from '../hooks/useDataProfile';
@@ -41,75 +41,6 @@ const HEADER_GAP = 8; // gap-1 between ColName and chevron
 const COL_CHROME = CELL_PAD_X * 2 + CHEVRON_W + HEADER_GAP;
 const MIN_COL_W = 50;
 const MAX_COL_W = 300;
-
-// ── Telemetry Conduit ────────────────────────────────────────────────────────
-
-/** Fusion-reactor row-count display: dominant numbers + thick masked conduit. */
-function RiverGauge({
-  filtered,
-  total,
-  pending,
-  hasFilter,
-  compact,
-}: {
-  filtered: number;
-  total: number;
-  pending: boolean;
-  hasFilter: boolean;
-  compact?: boolean;
-}) {
-  const ratio = total > 0 ? filtered / total : 0;
-  const h = compact ? 10 : 16;
-
-  return (
-    <div
-      className="flex flex-col gap-1"
-      style={{ minWidth: compact ? 140 : 220 }}
-    >
-      {/* Readout */}
-      <div className="flex items-baseline gap-2 font-mono tabular-nums">
-        <span
-          className="font-bold"
-          style={{
-            fontSize: compact ? 'var(--font-size-lg)' : 'var(--font-size-2xl)',
-            letterSpacing: '-0.02em',
-            color: hasFilter ? 'var(--color-cyan)' : 'var(--color-fg)',
-            transition: 'color var(--t-fast)',
-          }}
-        >
-          {filtered.toLocaleString()}
-        </span>
-        <span
-          style={{
-            fontSize: 'var(--font-size-xs)',
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase' as const,
-            color: 'var(--color-fg-3)',
-            opacity: 0.5,
-          }}
-        >
-          of {total.toLocaleString()}
-        </span>
-      </div>
-
-      {/* The Conduit — deep inset groove with flowing gradient fill */}
-      <div
-        className="w-full river-groove"
-        style={{ height: h }}
-      >
-        <div
-          className="h-full river-fill"
-          style={{
-            clipPath: `inset(0 ${100 - ratio * 100}% 0 0)`,
-            transition: 'clip-path 400ms cubic-bezier(0.25, 1, 0.5, 1), opacity 200ms',
-            opacity: pending ? 0.5 : 1,
-            animation: pending ? 'distPlotBreath 1.5s ease-in-out infinite' : 'none',
-          }}
-        />
-      </div>
-    </div>
-  );
-}
 
 // ── Formatting ────────────────────────────────────────────────────────────────
 
@@ -202,15 +133,38 @@ function ColName({ name }: { name: string }) {
   );
 }
 
-// ── Pipeline steps + index for Parquet preview ────────────────────────────────
+// ── Convergence Array — 4 honest steps derived from real physics ───────────────
 
-const PARQUET_STEPS = [
-  { key: 'profile', label: 'Reading schema' },
+const CONVERGENCE_STEPS: StepperStep[] = [
   { key: 'connect', label: 'Connecting' },
-  { key: 'query', label: 'Querying server' },
-  { key: 'draw', label: 'Drawing rows' },
-  { key: 'ready', label: 'Ready' },
-] as const;
+  { key: 'scan',    label: 'Scanning' },
+  { key: 'query',   label: 'Querying' },
+  { key: 'ready',   label: 'Ready' },
+];
+
+function deriveConvergenceStep(
+  status: PipelineStatus,
+  isQuerying: boolean,
+  isFetchingRange: boolean,
+  cacheGen: number,
+): number {
+  switch (status) {
+    case 'idle':
+      return 0;
+    case 'loading':
+      return 1;
+    case 'ready_background_work':
+    case 'ready':
+      if (isQuerying || isFetchingRange || cacheGen === 0) return 2;
+      return 3;
+    case 'unavailable':
+    case 'failed':
+    case 'error':
+      return 0;
+    default:
+      return 0;
+  }
+}
 
 // ── useRetainedState — bridges network gaps with a single law ─────────────────
 // Value is remembered across renders. Cleared when clearCondition fires.
@@ -1575,7 +1529,7 @@ export default function ParquetPreview({
   fileId: string;
   filename?: string;
   onExport?: () => void;
-  onProgress?: (config: { steps: StepperStep[]; active: number; busy?: boolean } | null) => void;
+  onProgress?: (config: { steps: StepperStep[]; active: number } | null) => void;
 }) {
   const {
     pipeline,
@@ -1589,6 +1543,7 @@ export default function ParquetPreview({
     applyFilters,
     clearCache,
     isQuerying,
+    isFetchingRange,
     cacheGen,
   } = useParquetPreview(fileId);
 
@@ -1660,14 +1615,8 @@ export default function ParquetPreview({
   const debRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resizingRef = useRef<{ name: string; startX: number; startW: number } | null>(null);
 
-  // ── State machine ────────────────────────────────────────────────────────
-  // Single source of truth: pipeline.activeStep drives stepper + table body.
-  //   0 = Reading schema  → table body: empty void
-  //   1 = Starting engine → table body: skeleton grid (columns known)
-  //   2 = Opening dataset → table body: skeleton grid
-  //   3 = Drawing rows    → table body: skeleton grid
-  //   4 = Ready           → table body: real data
-  const stage = pipeline.activeStep;
+  // ── Convergence Array — derive honest step from real physics ─────────────
+  const currentActive = deriveConvergenceStep(pipeline.status, isQuerying, isFetchingRange, cacheGen);
 
   // ── Broadcast pipeline state to parent via onProgress ──────────────────────
   const isError =
@@ -1675,19 +1624,18 @@ export default function ParquetPreview({
     pipeline.status === 'failed' ||
     pipeline.status === 'unavailable';
   const displayError = isError ? pipeline.error : undefined;
-  const currentActive = stage;
   const currentSteps: StepperStep[] =
     isError && displayError
-      ? PARQUET_STEPS.map((s, i) => (i === currentActive ? { ...s, error: displayError } : s))
-      : [...PARQUET_STEPS];
+      ? CONVERGENCE_STEPS.map((s, i) => (i === currentActive ? { ...s, error: displayError } : s))
+      : [...CONVERGENCE_STEPS];
 
   useEffect(() => {
     if (pipeline.status === 'unavailable' || pipeline.status === 'failed') {
       onProgress?.(null);
       return;
     }
-    onProgress?.({ steps: currentSteps, active: currentActive, busy: isQuerying });
-  }, [currentActive, isError, displayError, isQuerying]);
+    onProgress?.({ steps: currentSteps, active: currentActive });
+  }, [currentActive, isError, displayError]);
 
   // Cleanup: clear stepper when unmounting
   useEffect(() => {
@@ -2040,7 +1988,7 @@ export default function ParquetPreview({
     0,
   );
 
-  // Frozen snapshot for the skeleton grid — captured once at stage 1, never changes.
+  // Frozen snapshot for the skeleton grid — captured once when columns arrive, never changes.
   const skelRef = useRef<{ cols: ColumnInfo[]; widths: Record<string, number> } | null>(null);
   if (activeColumns.length > 0 && !skelRef.current) {
     skelRef.current = {
@@ -2097,7 +2045,7 @@ export default function ParquetPreview({
   }, [skelData]);
 
   // Memoize the entire skeleton overlay
-  const skelVisible = stage >= 1 && stage < 4;
+  const skelVisible = currentActive < 2 || (currentActive === 2 && cacheGen === 0);
   const skeletonOverlay = useMemo(
     () => (
       <div
@@ -2155,7 +2103,7 @@ export default function ParquetPreview({
 
           {/* Center: The Watchman */}
           <div className="justify-self-center">
-            <Stepper steps={currentSteps} active={currentActive} busy={isQuerying} />
+            <Stepper steps={currentSteps} active={currentActive} />
           </div>
 
           {/* Right: The Actuators */}
@@ -2189,10 +2137,11 @@ export default function ParquetPreview({
         {/* Bottom Tier: The River Gauge */}
         {totalRows > 0 && (
           <RiverGauge
-            filtered={filteredCount}
+            current={filteredCount}
             total={totalRows}
             pending={pendingConstraints}
-            hasFilter={hasAnyFilter}
+            accent={hasAnyFilter}
+            variant="tide"
           />
         )}
       </div>

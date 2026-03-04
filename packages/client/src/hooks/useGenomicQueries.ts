@@ -9,145 +9,153 @@ import type { DataProfile } from '@genome-hub/shared';
 // ─── Types ────────────────────────────────────────────────
 
 export interface Organism {
-  id:              string;
-  genus:           string;
-  species:         string;
-  strain:          string | null;
-  commonName:      string | null;
-  ncbiTaxId:       number | null;
+  id: string;
+  genus: string;
+  species: string;
+  strain: string | null;
+  commonName: string | null;
+  ncbiTaxId: number | null;
   referenceGenome: string | null;
-  displayName:     string;
-  fileCount:       number;
+  displayName: string;
+  fileCount: number;
   collectionCount: number;
-  createdAt:       string;
+  createdAt: string;
 }
 
 export interface Collection {
-  id:              string;
-  name:            string;
-  description:     string | null;
-  types:           string[];
-  metadata:        Record<string, unknown> | null;
-  techniques:      { id: string; name: string }[];
-  organisms:       { id: string; displayName: string }[];
-  createdBy:       string | null;
-  fileCount:       number;
-  createdAt:       string;
+  id: string;
+  name: string;
+  description: string | null;
+  types: string[];
+  metadata: Record<string, unknown> | null;
+  techniques: { id: string; name: string }[];
+  organisms: { id: string; displayName: string }[];
+  createdBy: string | null;
+  fileCount: number;
+  createdAt: string;
 }
 
 export interface GenomicFile {
-  id:              string;
-  filename:        string;
-  s3Key:           string;
-  sizeBytes:       number;
-  format:          string;
-  types:           string[];
-  md5:             string | null;
-  status:          'pending' | 'ready' | 'error';
-  uploadedAt:      string;
-  description:     string | null;
-  tags:            string[];
-  organisms:       { id: string; displayName: string }[];
-  collections:     { id: string; name: string | null }[];
-  uploadedBy:      string | null;
-  dataProfile:     DataProfile | null;
+  id: string;
+  filename: string;
+  s3Key: string;
+  sizeBytes: number;
+  format: string;
+  types: string[];
+  md5: string | null;
+  status: 'pending' | 'ready' | 'error';
+  uploadedAt: string;
+  description: string | null;
+  tags: string[];
+  organisms: { id: string; displayName: string }[];
+  collections: { id: string; name: string | null }[];
+  uploadedBy: string | null;
+  dataProfile: DataProfile | null;
 }
 
 export interface FileDetail {
-  id:              string;
-  filename:        string;
-  s3Key:           string;
-  sizeBytes:       number;
-  format:          string;
-  types:           string[];
-  md5:             string | null;
-  status:          'pending' | 'ready' | 'error';
-  description:     string | null;
-  tags:            string[];
-  uploadedBy:      string | null;
-  uploadedAt:      string;
-  collections:     { id: string; name: string; types: string[] }[];
-  organisms:       { id: string; displayName: string }[];
+  id: string;
+  filename: string;
+  s3Key: string;
+  sizeBytes: number;
+  format: string;
+  types: string[];
+  md5: string | null;
+  status: 'pending' | 'ready' | 'error';
+  description: string | null;
+  tags: string[];
+  uploadedBy: string | null;
+  uploadedAt: string;
+  collections: { id: string; name: string; types: string[] }[];
+  organisms: { id: string; displayName: string }[];
   provenance: {
-    upstream:   ProvenanceEdge[];
+    upstream: ProvenanceEdge[];
     downstream: ProvenanceEdge[];
   };
   links: ExternalLink[];
 }
 
 export interface ProvenanceEdge {
-  edgeId:   string;
+  edgeId: string;
   relation: string;
-  file:     { id: string; filename: string; types: string[]; format: string } | null;
+  file: { id: string; filename: string; types: string[]; format: string } | null;
 }
 
 export interface StorageStats {
-  totalFiles:  number;
-  totalBytes:  number;
-  byFormat:    { format: string; count: number; bytes: number }[];
+  totalFiles: number;
+  totalBytes: number;
+  byFormat: { format: string; count: number; bytes: number }[];
 }
 
 export interface Technique {
-  id:          string;
-  name:        string;
+  id: string;
+  name: string;
   description: string | null;
   defaultTags: string[];
-  createdAt:   string;
+  createdAt: string;
 }
 
 export interface RelationType {
-  id:          string;
-  name:        string;
+  id: string;
+  name: string;
   description: string | null;
-  createdAt:   string;
+  createdAt: string;
 }
 
 export interface FileType {
-  id:          string;
-  name:        string;
+  id: string;
+  name: string;
   description: string | null;
-  createdAt:   string;
+  createdAt: string;
 }
 
 export type LinkParentType = 'collection' | 'file';
 export type LinkServiceType =
-  | 'jira' | 'confluence' | 'slack'
-  | 'google-doc' | 'google-sheet' | 'google-drive'
-  | 'github' | 'notion' | 'benchling'
-  | 'ncbi' | 'ebi' | 'protocols-io'
+  | 'jira'
+  | 'confluence'
+  | 'slack'
+  | 'google-doc'
+  | 'google-sheet'
+  | 'google-drive'
+  | 'github'
+  | 'notion'
+  | 'benchling'
+  | 'ncbi'
+  | 'ebi'
+  | 'protocols-io'
   | 'link';
 
 export interface ExternalLink {
-  id:         string;
+  id: string;
   parentType: LinkParentType;
-  parentId:   string;
-  url:        string;
-  service:    LinkServiceType;
-  label:      string | null;
-  createdAt:  string;
+  parentId: string;
+  url: string;
+  service: LinkServiceType;
+  label: string | null;
+  createdAt: string;
 }
 
 export interface CollectionFile {
-  id:        string;
-  filename:  string;
-  types:     string[];
-  format:    string;
+  id: string;
+  filename: string;
+  types: string[];
+  format: string;
   sizeBytes: number;
-  status:    string;
+  status: string;
 }
 
 export interface CollectionDetail {
-  id:              string;
-  name:            string;
-  description:     string | null;
-  types:           string[];
-  metadata:        Record<string, unknown> | null;
-  techniques:      { id: string; name: string }[];
-  organisms:       { id: string; displayName: string }[];
-  createdBy:       string | null;
-  fileCount:       number;
-  links:           ExternalLink[];
-  files:           CollectionFile[];
+  id: string;
+  name: string;
+  description: string | null;
+  types: string[];
+  metadata: Record<string, unknown> | null;
+  techniques: { id: string; name: string }[];
+  organisms: { id: string; displayName: string }[];
+  createdBy: string | null;
+  fileCount: number;
+  links: ExternalLink[];
+  files: CollectionFile[];
 }
 
 // ─── Files ────────────────────────────────────────────────
@@ -170,7 +178,7 @@ export function useFilesQuery(filters?: { collectionId?: string; type?: string }
         if (f.dataProfile && !getValidFileProfile(f.id)) {
           setFileProfile(f.id, {
             dataProfile: f.dataProfile,
-            parquetUrl: '',  // populated on first parquet-url fetch
+            parquetUrl: '', // populated on first parquet-url fetch
             cachedAt: Date.now(),
           });
         }
@@ -192,8 +200,7 @@ export function useFileDetailQuery(fileId?: string) {
 export function useDeleteFileMutation() {
   const qc = useQueryClient();
   const mutation = useMutation({
-    mutationFn: (fileId: string) =>
-      mutateApi(`/api/files/${fileId}`, { method: 'DELETE' }),
+    mutationFn: (fileId: string) => mutateApi(`/api/files/${fileId}`, { method: 'DELETE' }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.files.all });
       qc.invalidateQueries({ queryKey: queryKeys.collections.all });
@@ -208,7 +215,10 @@ export function useDeleteFileMutation() {
 export function useUpdateFileMutation() {
   const qc = useQueryClient();
   const mutation = useMutation({
-    mutationFn: ({ fileId, body }: {
+    mutationFn: ({
+      fileId,
+      body,
+    }: {
       fileId: string;
       body: { types?: string[]; format?: string; description?: string | null; tags?: string[] };
     }) =>
@@ -224,8 +234,10 @@ export function useUpdateFileMutation() {
     onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to update file'),
   });
   const updateFile = useCallback(
-    (fileId: string, body: { types?: string[]; format?: string; description?: string | null; tags?: string[] }) =>
-      mutation.mutateAsync({ fileId, body }),
+    (
+      fileId: string,
+      body: { types?: string[]; format?: string; description?: string | null; tags?: string[] },
+    ) => mutation.mutateAsync({ fileId, body }),
     [mutation],
   );
   return { updateFile, pending: mutation.isPending };
@@ -245,8 +257,12 @@ export function useCreateOrganismMutation() {
   const qc = useQueryClient();
   const mutation = useMutation({
     mutationFn: (body: {
-      genus: string; species: string; strain?: string;
-      commonName?: string; ncbiTaxId?: number; referenceGenome?: string;
+      genus: string;
+      species: string;
+      strain?: string;
+      commonName?: string;
+      ncbiTaxId?: number;
+      referenceGenome?: string;
     }) =>
       mutateApi<Organism>('/api/organisms', {
         method: 'POST',
@@ -285,8 +301,7 @@ export function useUpdateOrganismMutation() {
 export function useDeleteOrganismMutation() {
   const qc = useQueryClient();
   const mutation = useMutation({
-    mutationFn: (id: string) =>
-      mutateApi(`/api/organisms/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: string) => mutateApi(`/api/organisms/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.organisms.all });
       toast.success('Deleted');
@@ -323,10 +338,12 @@ export function useCreateCollectionMutation() {
   const qc = useQueryClient();
   const mutation = useMutation({
     mutationFn: (body: {
-      name: string; types?: string[];
+      name: string;
+      types?: string[];
       metadata?: Record<string, unknown>;
       description?: string;
-      techniqueIds?: string[]; organismIds?: string[];
+      techniqueIds?: string[];
+      organismIds?: string[];
     }) =>
       mutateApi<Collection>('/api/collections', {
         method: 'POST',
@@ -342,7 +359,8 @@ export function useCreateCollectionMutation() {
       qc.invalidateQueries({ queryKey: queryKeys.stats.storage });
       toast.success('Collection created');
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to create collection'),
+    onError: (err) =>
+      toast.error(err instanceof Error ? err.message : 'Failed to create collection'),
   });
   return { createCollection: mutation.mutateAsync, pending: mutation.isPending };
 }
@@ -350,7 +368,13 @@ export function useCreateCollectionMutation() {
 export function useUpdateCollectionMutation() {
   const qc = useQueryClient();
   const mutation = useMutation({
-    mutationFn: ({ id, body }: { id: string; body: { name?: string; description?: string; types?: string[] } }) =>
+    mutationFn: ({
+      id,
+      body,
+    }: {
+      id: string;
+      body: { name?: string; description?: string; types?: string[] };
+    }) =>
       mutateApi(`/api/collections/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -360,7 +384,8 @@ export function useUpdateCollectionMutation() {
       qc.invalidateQueries({ queryKey: queryKeys.collections.all });
       qc.invalidateQueries({ queryKey: queryKeys.collections.detail(id) });
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to update collection'),
+    onError: (err) =>
+      toast.error(err instanceof Error ? err.message : 'Failed to update collection'),
   });
   const updateCollection = useCallback(
     (id: string, body: { name?: string; description?: string; types?: string[] }) =>
@@ -373,14 +398,14 @@ export function useUpdateCollectionMutation() {
 export function useDeleteCollectionMutation() {
   const qc = useQueryClient();
   const mutation = useMutation({
-    mutationFn: (id: string) =>
-      mutateApi(`/api/collections/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: string) => mutateApi(`/api/collections/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.collections.all });
       qc.invalidateQueries({ queryKey: queryKeys.stats.storage });
       toast.success('Collection deleted');
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to delete collection'),
+    onError: (err) =>
+      toast.error(err instanceof Error ? err.message : 'Failed to delete collection'),
   });
   return { deleteCollection: mutation.mutateAsync, pending: mutation.isPending };
 }
@@ -411,7 +436,8 @@ export function useCreateTechniqueMutation() {
       qc.invalidateQueries({ queryKey: queryKeys.techniques.all });
       toast.success('Technique created');
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to create technique'),
+    onError: (err) =>
+      toast.error(err instanceof Error ? err.message : 'Failed to create technique'),
   });
   return { createTechnique: mutation.mutateAsync, pending: mutation.isPending };
 }
@@ -437,8 +463,7 @@ export function useUpdateTechniqueMutation() {
 export function useDeleteTechniqueMutation() {
   const qc = useQueryClient();
   const mutation = useMutation({
-    mutationFn: (id: string) =>
-      mutateApi(`/api/techniques/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: string) => mutateApi(`/api/techniques/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.techniques.all });
       toast.success('Deleted');
@@ -474,7 +499,8 @@ export function useCreateFileTypeMutation() {
       qc.invalidateQueries({ queryKey: queryKeys.fileTypes.all });
       toast.success('File type created');
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to create file type'),
+    onError: (err) =>
+      toast.error(err instanceof Error ? err.message : 'Failed to create file type'),
   });
   return { createFileType: mutation.mutateAsync, pending: mutation.isPending };
 }
@@ -500,8 +526,7 @@ export function useUpdateFileTypeMutation() {
 export function useDeleteFileTypeMutation() {
   const qc = useQueryClient();
   const mutation = useMutation({
-    mutationFn: (id: string) =>
-      mutateApi(`/api/file-types/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: string) => mutateApi(`/api/file-types/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.fileTypes.all });
       toast.success('Deleted');
@@ -537,7 +562,8 @@ export function useCreateRelationTypeMutation() {
       qc.invalidateQueries({ queryKey: queryKeys.relationTypes.all });
       toast.success('Relation type created');
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to create relation type'),
+    onError: (err) =>
+      toast.error(err instanceof Error ? err.message : 'Failed to create relation type'),
   });
   return { createRelationType: mutation.mutateAsync, pending: mutation.isPending };
 }
@@ -563,8 +589,7 @@ export function useUpdateRelationTypeMutation() {
 export function useDeleteRelationTypeMutation() {
   const qc = useQueryClient();
   const mutation = useMutation({
-    mutationFn: (id: string) =>
-      mutateApi(`/api/relation-types/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: string) => mutateApi(`/api/relation-types/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.relationTypes.all });
       toast.success('Deleted');
@@ -580,9 +605,8 @@ export function useLinksQuery(parentType?: LinkParentType, parentId?: string) {
   const enabled = !!parentType && !!parentId;
   const result = useQuery({
     queryKey: queryKeys.links.list(parentType!, parentId!),
-    queryFn: () => fetchApi<ExternalLink[]>(
-      `/api/links?parentType=${parentType}&parentId=${parentId}`,
-    ),
+    queryFn: () =>
+      fetchApi<ExternalLink[]>(`/api/links?parentType=${parentType}&parentId=${parentId}`),
     enabled,
   });
   return { ...result, data: result.data ?? (enabled ? undefined : []) };
@@ -592,8 +616,10 @@ export function useCreateLinkMutation() {
   const qc = useQueryClient();
   const mutation = useMutation({
     mutationFn: (body: {
-      parentType: LinkParentType; parentId: string;
-      url: string; label?: string;
+      parentType: LinkParentType;
+      parentId: string;
+      url: string;
+      label?: string;
     }) =>
       mutateApi('/api/links', {
         method: 'POST',
@@ -614,8 +640,7 @@ export function useCreateLinkMutation() {
 export function useDeleteLinkMutation(parentType?: LinkParentType, parentId?: string) {
   const qc = useQueryClient();
   const mutation = useMutation({
-    mutationFn: (linkId: string) =>
-      mutateApi(`/api/links/${linkId}`, { method: 'DELETE' }),
+    mutationFn: (linkId: string) => mutateApi(`/api/links/${linkId}`, { method: 'DELETE' }),
     onSuccess: () => {
       if (parentType && parentId) {
         qc.invalidateQueries({ queryKey: queryKeys.links.list(parentType, parentId) });
@@ -656,8 +681,7 @@ export function useAddFilesToCollection() {
     onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to add files'),
   });
   const addFiles = useCallback(
-    (collectionId: string, fileIds: string[]) =>
-      mutation.mutateAsync({ collectionId, fileIds }),
+    (collectionId: string, fileIds: string[]) => mutation.mutateAsync({ collectionId, fileIds }),
     [mutation],
   );
   return { addFiles, pending: mutation.isPending };
@@ -676,13 +700,14 @@ export function useRemoveFilesFromCollection() {
       qc.invalidateQueries({ queryKey: queryKeys.collections.detail(collectionId) });
       qc.invalidateQueries({ queryKey: queryKeys.collections.all });
       qc.invalidateQueries({ queryKey: queryKeys.files.all });
-      toast.success(`Removed ${fileIds.length} file${fileIds.length !== 1 ? 's' : ''} from collection`);
+      toast.success(
+        `Removed ${fileIds.length} file${fileIds.length !== 1 ? 's' : ''} from collection`,
+      );
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to remove files'),
   });
   const removeFiles = useCallback(
-    (collectionId: string, fileIds: string[]) =>
-      mutation.mutateAsync({ collectionId, fileIds }),
+    (collectionId: string, fileIds: string[]) => mutation.mutateAsync({ collectionId, fileIds }),
     [mutation],
   );
   return { removeFiles, pending: mutation.isPending };
@@ -748,7 +773,8 @@ export function useAddCollectionOrganism() {
     onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to add organism'),
   });
   const addCollectionOrganism = useCallback(
-    (collectionId: string, organismId: string) => mutation.mutateAsync({ collectionId, organismId }),
+    (collectionId: string, organismId: string) =>
+      mutation.mutateAsync({ collectionId, organismId }),
     [mutation],
   );
   return { addCollectionOrganism, pending: mutation.isPending };
@@ -766,7 +792,8 @@ export function useRemoveCollectionOrganism() {
     onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to remove organism'),
   });
   const removeCollectionOrganism = useCallback(
-    (collectionId: string, organismId: string) => mutation.mutateAsync({ collectionId, organismId }),
+    (collectionId: string, organismId: string) =>
+      mutation.mutateAsync({ collectionId, organismId }),
     [mutation],
   );
   return { removeCollectionOrganism, pending: mutation.isPending };
@@ -790,7 +817,8 @@ export function useAddCollectionTechnique() {
     onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to add technique'),
   });
   const addCollectionTechnique = useCallback(
-    (collectionId: string, techniqueId: string) => mutation.mutateAsync({ collectionId, techniqueId }),
+    (collectionId: string, techniqueId: string) =>
+      mutation.mutateAsync({ collectionId, techniqueId }),
     [mutation],
   );
   return { addCollectionTechnique, pending: mutation.isPending };
@@ -805,10 +833,12 @@ export function useRemoveCollectionTechnique() {
       qc.invalidateQueries({ queryKey: queryKeys.collections.detail(collectionId) });
       qc.invalidateQueries({ queryKey: queryKeys.collections.all });
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to remove technique'),
+    onError: (err) =>
+      toast.error(err instanceof Error ? err.message : 'Failed to remove technique'),
   });
   const removeCollectionTechnique = useCallback(
-    (collectionId: string, techniqueId: string) => mutation.mutateAsync({ collectionId, techniqueId }),
+    (collectionId: string, techniqueId: string) =>
+      mutation.mutateAsync({ collectionId, techniqueId }),
     [mutation],
   );
   return { removeCollectionTechnique, pending: mutation.isPending };
@@ -819,8 +849,14 @@ export function useRemoveCollectionTechnique() {
 export function useAddProvenance() {
   const qc = useQueryClient();
   const mutation = useMutation({
-    mutationFn: ({ fileId, targetFileId, relation }: {
-      fileId: string; targetFileId: string; relation: string;
+    mutationFn: ({
+      fileId,
+      targetFileId,
+      relation,
+    }: {
+      fileId: string;
+      targetFileId: string;
+      relation: string;
     }) =>
       mutateApi(`/api/files/${fileId}/provenance`, {
         method: 'POST',
@@ -850,7 +886,8 @@ export function useRemoveProvenance() {
       qc.invalidateQueries({ queryKey: queryKeys.files.detail(fileId) });
       toast.success('Provenance link removed');
     },
-    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to remove provenance'),
+    onError: (err) =>
+      toast.error(err instanceof Error ? err.message : 'Failed to remove provenance'),
   });
   const removeProvenance = useCallback(
     (fileId: string, edgeId: string) => mutation.mutateAsync({ fileId, edgeId }),
@@ -862,23 +899,23 @@ export function useRemoveProvenance() {
 // ─── File preview ────────────────────────────────────────
 
 export interface FilePreviewPage {
-  lines:         string[];
-  truncated:     boolean;
-  previewable:   boolean;
-  format:        string;
+  lines: string[];
+  truncated: boolean;
+  previewable: boolean;
+  format: string;
   nextStartByte: number | null;
-  error?:        string;
+  error?: string;
 }
 
 export function useInfiniteFilePreview(fileId: string | undefined) {
   return useInfiniteQuery({
-    queryKey:        queryKeys.files.preview(fileId!),
-    queryFn:         ({ pageParam }) =>
+    queryKey: queryKeys.files.preview(fileId!),
+    queryFn: ({ pageParam }) =>
       fetchApi<FilePreviewPage>(`/api/files/${fileId}/preview?startByte=${pageParam}`),
     initialPageParam: 0,
     getNextPageParam: (lastPage) => lastPage.nextStartByte ?? undefined,
-    enabled:          !!fileId,
-    staleTime:        Infinity,
+    enabled: !!fileId,
+    staleTime: Infinity,
   });
 }
 
@@ -910,98 +947,107 @@ import { useAppStore, type UploadProgress } from '../stores/useAppStore';
 export type { UploadProgress };
 
 export function useMultipartUpload() {
-  const uploads = useAppStore(s => s.uploads);
-  const setUpload = useAppStore(s => s.setUpload);
-  const updateUploadStore = useAppStore(s => s.updateUpload);
-  const clearDone = useAppStore(s => s.clearDoneUploads);
+  const uploads = useAppStore((s) => s.uploads);
+  const setUpload = useAppStore((s) => s.setUpload);
+  const updateUploadStore = useAppStore((s) => s.updateUpload);
+  const clearDone = useAppStore((s) => s.clearDoneUploads);
   const qc = useQueryClient();
 
-  const upload = useCallback(async (
-    file:      File,
-    opts: {
-      description?: string;
-      tags?: string[];
-      organismIds?: string[];
-      collectionId?: string;
-      types?: string[];
-    },
-  ) => {
-    const tmpId = crypto.randomUUID();
+  const upload = useCallback(
+    async (
+      file: File,
+      opts: {
+        description?: string;
+        tags?: string[];
+        organismIds?: string[];
+        collectionId?: string;
+        types?: string[];
+      },
+    ) => {
+      const tmpId = crypto.randomUUID();
 
-    setUpload(tmpId, {
-      fileId: tmpId, filename: file.name,
-      loaded: 0, total: file.size, status: 'uploading',
-    });
-
-    try {
-      // 1. Initiate multipart upload
-      const initRes = await apiFetch('/api/uploads/initiate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          filename: file.name,
-          contentType: file.type || 'application/octet-stream',
-          sizeBytes: file.size,
-          description: opts.description,
-          tags: opts.tags,
-          organismIds: opts.organismIds,
-          collectionId: opts.collectionId,
-          types: opts.types,
-        }),
+      setUpload(tmpId, {
+        fileId: tmpId,
+        filename: file.name,
+        loaded: 0,
+        total: file.size,
+        status: 'uploading',
       });
-      const { fileId, uploadId, s3Key } = await initRes.json();
-      updateUploadStore(tmpId, { fileId });
 
-      // 2. Upload parts (5MB each)
-      const PART_SIZE = 5 * 1024 * 1024;
-      const partCount  = Math.ceil(file.size / PART_SIZE);
-      const parts: { PartNumber: number; ETag: string }[] = [];
-
-      for (let i = 0; i < partCount; i++) {
-        const start  = i * PART_SIZE;
-        const end    = Math.min(start + PART_SIZE, file.size);
-        const chunk  = file.slice(start, end);
-
-        // Get presigned URL for this part
-        const partRes = await apiFetch('/api/uploads/part-url', {
+      try {
+        // 1. Initiate multipart upload
+        const initRes = await apiFetch('/api/uploads/initiate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fileId, uploadId, s3Key, partNumber: i + 1 }),
+          body: JSON.stringify({
+            filename: file.name,
+            contentType: file.type || 'application/octet-stream',
+            sizeBytes: file.size,
+            description: opts.description,
+            tags: opts.tags,
+            organismIds: opts.organismIds,
+            collectionId: opts.collectionId,
+            types: opts.types,
+          }),
         });
-        const { url } = await partRes.json();
+        const { fileId, uploadId, s3Key } = await initRes.json();
+        updateUploadStore(tmpId, { fileId });
 
-        const putRes = await fetch(url, {
-          method: 'PUT',
-          body: chunk,
-          headers: { 'Content-Type': 'application/octet-stream' },
+        // 2. Upload parts (5MB each)
+        const PART_SIZE = 5 * 1024 * 1024;
+        const partCount = Math.ceil(file.size / PART_SIZE);
+        const parts: { PartNumber: number; ETag: string }[] = [];
+
+        for (let i = 0; i < partCount; i++) {
+          const start = i * PART_SIZE;
+          const end = Math.min(start + PART_SIZE, file.size);
+          const chunk = file.slice(start, end);
+
+          // Get presigned URL for this part
+          const partRes = await apiFetch('/api/uploads/part-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fileId, uploadId, s3Key, partNumber: i + 1 }),
+          });
+          const { url } = await partRes.json();
+
+          const putRes = await fetch(url, {
+            method: 'PUT',
+            body: chunk,
+            headers: { 'Content-Type': 'application/octet-stream' },
+          });
+
+          const etag = putRes.headers.get('ETag') ?? '';
+          parts.push({ PartNumber: i + 1, ETag: etag });
+          updateUploadStore(tmpId, { loaded: end });
+        }
+
+        // 3. Complete
+        await apiFetch('/api/uploads/complete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileId, uploadId, s3Key, parts }),
         });
 
-        const etag = putRes.headers.get('ETag') ?? '';
-        parts.push({ PartNumber: i + 1, ETag: etag });
-        updateUploadStore(tmpId, { loaded: end });
+        // Visual completion: let the RiverGauge settle before transitioning
+        updateUploadStore(tmpId, { loaded: file.size });
+        await new Promise((r) => setTimeout(r, 1000));
+        updateUploadStore(tmpId, { status: 'done' });
+        toast.success(`Upload complete: ${file.name}`);
+
+        // Invalidate relevant queries
+        qc.invalidateQueries({ queryKey: queryKeys.files.all });
+        qc.invalidateQueries({ queryKey: queryKeys.stats.storage });
+      } catch (err: unknown) {
+        updateUploadStore(tmpId, {
+          status: 'error',
+          error: err instanceof Error ? err.message : 'Upload failed',
+        });
+        toast.error(`Upload failed: ${file.name}`);
       }
-
-      // 3. Complete
-      await apiFetch('/api/uploads/complete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileId, uploadId, s3Key, parts }),
-      });
-
-      updateUploadStore(tmpId, { status: 'done', loaded: file.size });
-      toast.success(`Upload complete: ${file.name}`);
-
-      // Invalidate relevant queries
-      qc.invalidateQueries({ queryKey: queryKeys.files.all });
-      qc.invalidateQueries({ queryKey: queryKeys.stats.storage });
-    } catch (err: unknown) {
-      updateUploadStore(tmpId, {
-        status: 'error',
-        error: err instanceof Error ? err.message : 'Upload failed',
-      });
-      toast.error(`Upload failed: ${file.name}`);
-    }
-  }, [setUpload, updateUploadStore, qc]);
+    },
+    [setUpload, updateUploadStore, qc],
+  );
 
   return { uploads, upload, clearDone };
 }
@@ -1017,49 +1063,49 @@ export interface EngineStatus {
 }
 
 export interface EngineMethodOption {
-  value:        string;
-  label:        string;
+  value: string;
+  label: string;
   description?: string;
-  parameters?:  Record<string, string | number | boolean>;
+  parameters?: Record<string, string | number | boolean>;
 }
 
 export interface EngineMethodParam {
-  name:         string;
-  type:         string;
-  required:     boolean;
-  description:  string;
-  default?:     string;
-  accept?:      string[];
-  options?:     EngineMethodOption[];
+  name: string;
+  type: string;
+  required: boolean;
+  description: string;
+  default?: string;
+  accept?: string[];
+  options?: EngineMethodOption[];
 }
 
 export interface EngineMethodStep {
-  key:   string;
+  key: string;
   label: string;
 }
 
 export interface EngineMethod {
-  id:          string;
-  name:        string;
+  id: string;
+  name: string;
   description: string;
-  async?:      boolean;
-  steps?:      EngineMethodStep[];
-  parameters:  EngineMethodParam[];
-  returns:     { type: string; description: string };
+  async?: boolean;
+  steps?: EngineMethodStep[];
+  parameters: EngineMethodParam[];
+  returns: { type: string; description: string };
 }
 
 export interface EngineJobStatus {
-  status:   'queued' | 'running' | 'saving' | 'complete' | 'failed';
+  status: 'queued' | 'running' | 'saving' | 'complete' | 'failed';
   progress: {
     pct_complete: number | null;
     rate_per_sec: number | null;
-    eta_seconds:  number | null;
+    eta_seconds: number | null;
   };
-  step:      string | null;
-  stage:     string | null;
-  items:     { complete: number; total: number } | null;
-  error:     string | null;
-  fileId?:   string;
+  step: string | null;
+  stage: string | null;
+  items: { complete: number; total: number } | null;
+  error: string | null;
+  fileId?: string;
   filename?: string;
 }
 
@@ -1112,8 +1158,7 @@ export function useUpdateEngineMutation() {
 export function useDeleteEngineMutation() {
   const qc = useQueryClient();
   const mutation = useMutation({
-    mutationFn: (id: string) =>
-      mutateApi(`/api/engines/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: string) => mutateApi(`/api/engines/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.engines.all });
       toast.success('Engine removed');
@@ -1152,7 +1197,11 @@ export function useEngineJobQuery(jobId?: string) {
 export function useRunMethodMutation() {
   const qc = useQueryClient();
   const mutation = useMutation({
-    mutationFn: ({ engineId, methodId, params }: {
+    mutationFn: ({
+      engineId,
+      methodId,
+      params,
+    }: {
       engineId: string;
       methodId: string;
       params: Record<string, string>;
@@ -1182,15 +1231,15 @@ export function useRunMethodMutation() {
 // ─── Pipeline errors ───────────────────────────────────────
 
 export interface PipelineError {
-  id:            string;
-  filename:      string;
-  sizeBytes:     number;
-  format:        string;
-  status:        string;
+  id: string;
+  filename: string;
+  sizeBytes: number;
+  format: string;
+  status: string;
   parquetStatus: string;
-  parquetError:  string | null;
-  uploadedAt:    string;
-  updatedAt:     string;
+  parquetError: string | null;
+  uploadedAt: string;
+  updatedAt: string;
 }
 
 export function usePipelineErrors() {

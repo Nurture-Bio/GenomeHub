@@ -368,6 +368,8 @@ export function useParquetPreview(fileId: string) {
   const [baseProfile, setBaseProfile] = useState<DataProfile | null>(cachedProfile);
   const [isQuerying, setIsQuerying] = useState(false);
   const [cacheGen, setCacheGen] = useState(0);
+  const fetchingCountRef = useRef(0);
+  const [isFetchingRange, setIsFetchingRange] = useState(false);
 
   // Arrow table cache: window offset → raw Arrow Table (zero-copy from IPC)
   const arrowCache = useRef<Map<number, ArrowTable>>(new Map());
@@ -560,6 +562,8 @@ export function useParquetPreview(fileId: string) {
       // Skip if this window is already cached
       if (arrowCache.current.has(offset)) return;
 
+      fetchingCountRef.current++;
+      setIsFetchingRange(true);
       try {
         const result = await serverQuery(
           fileId,
@@ -587,6 +591,9 @@ export function useParquetPreview(fileId: string) {
         }
       } catch {
         // Fetch failed — ignore (abort or network error)
+      } finally {
+        fetchingCountRef.current--;
+        if (fetchingCountRef.current === 0) setIsFetchingRange(false);
       }
     },
     [fileId],
@@ -670,6 +677,7 @@ export function useParquetPreview(fileId: string) {
     applyFilters,
     clearCache,
     isQuerying,
+    isFetchingRange,
     cacheGen,
   };
 }

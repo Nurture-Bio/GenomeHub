@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { cx } from 'class-variance-authority';
 import { statusDot, button, input, modalOverlay } from '../ui/recipes';
-import { Text, Heading, ComboBox, FilterChip, Stepper } from '../ui';
+import { Text, Heading, ComboBox, FilterChip, Stepper, RiverGauge } from '../ui';
 import type { ComboBoxItem, StepperStep, StepHealth } from '../ui';
 import { FORMAT_META } from '../lib/formats';
 import {
@@ -306,10 +306,10 @@ function MethodForm({ engineId, method }: { engineId: string; method: EngineMeth
 
 // ── Progress bar (above stepper dots) ────────────────────
 //
-// Visual state is decoupled from data state. The bar has trailing
-// memory: when the active step advances, it tweens to 100% before
-// resetting for the new step. Container height is fixed — no layout
-// shifts regardless of data availability.
+// RiverGauge variant="waterfall" handles all the physics:
+//   — Monotonic ratchet (never slides backward)
+//   — Terminal dissolve at 100%
+//   — resetKey resets the high-water mark on step change
 
 function ProgressBar({
   engine,
@@ -318,93 +318,45 @@ function ProgressBar({
   engine: ReturnType<typeof useEngineMethod>;
   activeStep: number;
 }) {
-  const { progress, items, pollLost } = engine;
+  const { progress, items } = engine;
 
-  // 1. Raw data truth
-  const rawPct =
-    progress?.pct_complete != null
-      ? Math.round(progress.pct_complete * 100)
-      : items && items.total > 0
-        ? Math.round((items.complete / items.total) * 100)
-        : null;
-
-  // 2. Decoupled visual memory — per-step lifecycle
-  //    Step completes → fill 100% → fade out → gone.
-  //    Next step's bar stays invisible until real progress data arrives.
-  //    The bar NEVER visually regresses — it only ever grows or disappears.
-  const [visualPct, setVisualPct] = useState(0);
-  const [barOpacity, setBarOpacity] = useState(1);
-  const prevStepRef = useRef(activeStep);
-  const tweenPhase = useRef<'idle' | 'filling' | 'fading' | 'waiting'>('idle');
-
-  useEffect(() => {
-    if (activeStep > prevStepRef.current) {
-      // Phase 1: fill to 100% (300ms CSS transition)
-      tweenPhase.current = 'filling';
-      setVisualPct(100);
-      setBarOpacity(1);
-
-      const fillTimer = setTimeout(() => {
-        // Phase 2: fade out (300ms CSS transition)
-        tweenPhase.current = 'fading';
-        setBarOpacity(0);
-
-        const fadeTimer = setTimeout(() => {
-          // Phase 3: reset width invisibly, wait for new data before revealing
-          prevStepRef.current = activeStep;
-          tweenPhase.current = 'waiting';
-          setVisualPct(0);
-        }, 300);
-        return () => clearTimeout(fadeTimer);
-      }, 300);
-      return () => clearTimeout(fillTimer);
-    } else if (tweenPhase.current === 'waiting') {
-      // New step's first real data arrived — reveal from current value
-      if (rawPct != null && rawPct > 0) {
-        tweenPhase.current = 'idle';
-        setVisualPct(rawPct);
-        setBarOpacity(1);
-      }
-    } else if (tweenPhase.current === 'idle') {
-      // Normal forward update within the same step
-      setVisualPct((prev) => Math.max(prev, rawPct ?? 0));
-    }
-  }, [activeStep, rawPct]);
-
-  // 3. Fixed container — never return null, never shift layout
-  const barColor = pollLost ? 'var(--color-amber-dim)' : 'var(--color-cyan)';
-  const hasData =
-    rawPct != null || (tweenPhase.current !== 'idle' && tweenPhase.current !== 'waiting');
+  // Derive current/total from items (preferred) or pct_complete (fallback)
+  let current: number;
+  let total: number;
+  if (items && items.total > 0) {
+    current = items.complete;
+    total = items.total;
+  } else if (progress?.pct_complete != null) {
+    current = Math.round(progress.pct_complete * 100);
+    total = 100;
+  } else {
+    current = 0;
+    total = 0;
+  }
 
   return (
-    <div className="flex flex-col gap-1.5" style={{ minHeight: 28 }}>
-      <div
-        className="h-1 rounded-full overflow-hidden"
-        style={{ background: 'var(--color-raised)' }}
-      >
-        <div
-          className="h-full rounded-full"
-          style={{
-            width: `${visualPct}%`,
-            opacity: barOpacity,
-            background: barColor,
-            // Suppress width transition during invisible reset (waiting phase)
-            transition:
-              tweenPhase.current === 'waiting'
-                ? 'opacity 300ms ease, background var(--t-phi) var(--ease-phi)'
-                : 'width 200ms ease-out, opacity 300ms ease, background var(--t-phi) var(--ease-phi)',
-          }}
+    <div className="flex flex-col gap-1" style={{ minHeight: 28 }}>
+      {total > 0 ? (
+        <RiverGauge
+          current={current}
+          total={total}
+          variant="waterfall"
+          resetKey={activeStep}
+          compact
+          accent
         />
-      </div>
+      ) : (
+        <div style={{ height: 10 }} />
+      )}
+      {/* Telemetry metadata */}
       <div
         className="flex gap-2.5 font-mono justify-center"
         style={{
           fontSize: 'var(--font-size-xs)',
-          opacity: hasData ? barOpacity : 0,
+          opacity: total > 0 ? 1 : 0,
           transition: 'opacity 300ms ease',
         }}
       >
-        <Text variant="dim">{visualPct}%</Text>
         {progress?.eta_seconds != null && (
           <Text variant="dim">ETA {formatEta(progress.eta_seconds)}</Text>
         )}

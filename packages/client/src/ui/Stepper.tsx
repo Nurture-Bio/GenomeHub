@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { Text } from './Text';
 
@@ -27,8 +26,6 @@ const H = 44; // SVG height
 const CONN_W = 1.5; // connector stroke width
 const GLOW_W = 6; // flourish glow line width (fake glow via opacity)
 
-const STEP_PACE_MS = 382; // 1000/φ² — must match CSS --t-phi
-
 // derived
 const CONN = GAP - 2 * R - 2 * PAD; // connector line length (26px)
 
@@ -41,60 +38,39 @@ function accentFor(h: StepHealth): string {
 }
 
 /**
- * Stepper — pure SVG state engine display.
+ * Stepper — pure SVG lens.
  *
- * Visual state is decoupled from data state. The incoming `active`
- * prop is the data truth; internally the Stepper maintains a
- * `visualActive` that catches up one step at a time with a pacing
- * delay, ensuring every connector sweep and node ping plays out
- * even when the backend blows through phases in milliseconds.
+ * The `active` prop is the sole truth. No internal pacing timer,
+ * no catch-up loop. The parent derives the step from real physics
+ * and the Stepper renders it immediately.
  *
  * Error messages live on StepperStep.error — rendered natively.
  */
 export default function Stepper({
   steps,
-  active: dataActive,
+  active,
+  progress,
   header,
   detail,
   stepHealth,
   opacity,
-  busy,
 }: {
   steps: readonly StepperStep[];
   active: number;
+  /** Continuous 0–100 progress within the active step. CSS interpolates between ticks. */
+  progress?: number;
   header?: ReactNode;
   detail?: ReactNode;
   stepHealth?: Record<string, StepHealth>;
   opacity?: number;
-  /** When true on the final step, suppresses the flourish and pulses instead. */
-  busy?: boolean;
 }) {
   const n = steps.length;
 
-  // ── Visual pacing: catch-up loop ───────────────────
-  const [visualActive, setVisualActive] = useState(dataActive);
-
-  useEffect(() => {
-    // Reset backward immediately (cancel, restart, error)
-    if (dataActive < visualActive) {
-      setVisualActive(dataActive);
-      return;
-    }
-    // Catch up one step at a time
-    if (dataActive > visualActive) {
-      const timer = setTimeout(() => {
-        setVisualActive((prev) => prev + 1);
-      }, STEP_PACE_MS);
-      return () => clearTimeout(timer);
-    }
-  }, [dataActive, visualActive]);
-
   if (n === 0) return null;
 
-  // ── All rendering uses visualActive ────────────────
-  const active = visualActive;
-  // Final step loses its flourish when busy — it pulses like an in-progress step
-  const isFinal = active === n - 1 && !busy;
+  const isFinal = active === n - 1;
+  // The Bound State: final step is implicitly 100%, otherwise use the prop (0% default)
+  const resolvedProgress = isFinal ? 100 : (progress ?? 0);
   const activeStep = steps[active];
   const activeKey = activeStep?.key;
   const activeError = activeStep?.error;
@@ -166,6 +142,23 @@ export default function Stepper({
                   strokeDasharray={CONN}
                   strokeDashoffset={CONN}
                   className="stepper-reveal"
+                />
+              )}
+              {/* ── Progress Vessel — GPU-interpolated wake ── */}
+              {i === active && !isFinal && (
+                <line
+                  x1={x1}
+                  y1={CY}
+                  x2={x2}
+                  y2={CY}
+                  stroke={accent}
+                  strokeWidth={CONN_W}
+                  strokeLinecap="round"
+                  strokeDasharray={CONN}
+                  strokeDashoffset={CONN * (1 - resolvedProgress / 100)}
+                  style={{
+                    transition: 'stroke-dashoffset 300ms cubic-bezier(0.4, 0, 0.2, 1)',
+                  }}
                 />
               )}
               {isFinal && reached && (
