@@ -3,23 +3,26 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import type { DataProfile } from '@genome-hub/shared';
 
 export interface UploadProgress {
-  fileId:   string;
+  fileId: string;
   filename: string;
-  loaded:   number;
-  total:    number;
-  status:   'uploading' | 'done' | 'error';
-  error?:   string;
+  loaded: number;
+  total: number;
+  status: 'uploading' | 'done' | 'error';
+  error?: string;
 }
 
 /** Cached parquet-url response — profile + presigned URL with TTL. */
 export interface FileProfileCache {
   dataProfile: DataProfile;
-  parquetUrl:  string;
-  cachedAt:    number;  // Date.now() when cached
+  parquetUrl: string;
+  cachedAt: number; // Date.now() when cached
 }
 
 /** Presigned URLs expire after 1 hour; refresh after 50 minutes. */
 const PARQUET_URL_TTL_MS = 50 * 60 * 1000;
+
+/** Maximum file profiles in memory — LRU eviction beyond this cap. */
+const MAX_FILE_PROFILES = 50;
 
 interface RecentSelections {
   collections: string[];
@@ -65,11 +68,9 @@ export const useAppStore = create<AppState>()(
           return { selectedFileIds: next };
         }),
 
-      selectAllFiles: (ids) =>
-        set({ selectedFileIds: new Set(ids) }),
+      selectAllFiles: (ids) => set({ selectedFileIds: new Set(ids) }),
 
-      clearSelection: () =>
-        set({ selectedFileIds: new Set<string>() }),
+      clearSelection: () => set({ selectedFileIds: new Set<string>() }),
 
       addRecentSelection: (kind, id) =>
         set((s) => {
@@ -115,9 +116,15 @@ export const useAppStore = create<AppState>()(
       clearUploads: () => set({ uploads: new Map() }),
 
       setFileProfile: (fileId, cache) =>
-        set((s) => ({
-          fileProfiles: { ...s.fileProfiles, [fileId]: cache },
-        })),
+        set((s) => {
+          const entries = Object.entries(s.fileProfiles).filter(([id]) => id !== fileId);
+          // Evict oldest when at capacity
+          if (entries.length >= MAX_FILE_PROFILES) {
+            entries.sort((a, b) => a[1].cachedAt - b[1].cachedAt);
+            entries.splice(0, entries.length - MAX_FILE_PROFILES + 1);
+          }
+          return { fileProfiles: { ...Object.fromEntries(entries), [fileId]: cache } };
+        }),
 
       mergeFileProfile: (fileId, patch) =>
         set((s) => {
@@ -147,6 +154,6 @@ export const useAppStore = create<AppState>()(
       partialize: (state): PersistedState => ({
         recentSelections: state.recentSelections,
       }),
-    }
-  )
+    },
+  ),
 );

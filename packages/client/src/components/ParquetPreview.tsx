@@ -1587,6 +1587,7 @@ export default function ParquetPreview({
     hasRow,
     fetchRange,
     applyFilters,
+    clearCache,
     isQuerying,
     cacheGen,
   } = useParquetPreview(fileId);
@@ -1820,6 +1821,17 @@ export default function ParquetPreview({
     if (cacheGen > 0) return; // Arrow cache already populated
     applyFilters([], sortSpecs);
   }, [isTableOpen, pipeline.status, cacheGen, sortSpecs, applyFilters]);
+
+  // When the drawer closes, release constrained stats/histograms — they'll
+  // be recomputed when the drawer reopens and filters fire again.
+  const prevTableOpen = useRef(isTableOpen);
+  useEffect(() => {
+    if (prevTableOpen.current && !isTableOpen) {
+      setConstrainedStats({});
+      setConstrainedHistograms({});
+    }
+    prevTableOpen.current = isTableOpen;
+  }, [isTableOpen]);
 
   // ── Build filter specs and apply ────────────────────────────────────────────
 
@@ -2252,7 +2264,12 @@ export default function ParquetPreview({
 
       {/* ── The Vault Door (Data Drawer Header) ─────────────────────── */}
       <div
-        onClick={() => setIsTableOpen((o) => !o)}
+        onClick={() => {
+          setIsTableOpen((o) => {
+            if (o) clearCache(); // closing — flush Arrow cache
+            return !o;
+          });
+        }}
         className="group vault-door flex items-center justify-between px-6 py-[1lh] mx-3 shrink-0"
       >
         {/* Left: The Handle */}

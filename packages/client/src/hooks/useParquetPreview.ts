@@ -432,6 +432,9 @@ export function useParquetPreview(fileId: string) {
 
       return () => {
         cancelled = true;
+        abortRef.current?.abort();
+        arrowCache.current.clear();
+        fallbackRows.current.clear();
       };
     }
 
@@ -514,6 +517,9 @@ export function useParquetPreview(fileId: string) {
     return () => {
       cancelled = true;
       clearTimeout(pollTimer);
+      abortRef.current?.abort();
+      arrowCache.current.clear();
+      fallbackRows.current.clear();
     };
   }, [fileId]);
 
@@ -644,6 +650,14 @@ export function useParquetPreview(fileId: string) {
     [fileId],
   );
 
+  /** Flush Arrow cache + abort in-flight requests. Call when the table drawer closes. */
+  const clearCache = useCallback(() => {
+    abortRef.current?.abort();
+    arrowCache.current.clear();
+    fallbackRows.current.clear();
+    setCacheGen((g) => g + 1);
+  }, []);
+
   return {
     pipeline,
     columns,
@@ -654,6 +668,7 @@ export function useParquetPreview(fileId: string) {
     hasRow,
     fetchRange,
     applyFilters,
+    clearCache,
     isQuerying,
     cacheGen,
   };
