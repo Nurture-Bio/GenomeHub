@@ -43,7 +43,7 @@ export const button = cva(
       size: 'md',
       pending: false,
     },
-  }
+  },
 );
 
 export type ButtonVariants = VariantProps<typeof button>;
@@ -70,27 +70,24 @@ export const input = cva(
       variant: 'default',
       size: 'md',
     },
-  }
+  },
 );
 
 export type InputVariants = VariantProps<typeof input>;
 
 // ── CARD ────────────────────────────────────────────────
 
-export const card = cva(
-  'card-surface border border-line rounded-md overflow-hidden',
-  {
-    variants: {
-      elevated: {
-        true: 'shadow-md',
-        false: '',
-      },
+export const card = cva('card-surface border border-line rounded-md overflow-hidden', {
+  variants: {
+    elevated: {
+      true: 'shadow-md',
+      false: '',
     },
-    defaultVariants: {
-      elevated: false,
-    },
-  }
-);
+  },
+  defaultVariants: {
+    elevated: false,
+  },
+});
 
 export type CardVariants = VariantProps<typeof card>;
 
@@ -109,7 +106,7 @@ export const dropdown = cva(
     defaultVariants: {
       position: 'above',
     },
-  }
+  },
 );
 
 export type DropdownVariants = VariantProps<typeof dropdown>;
@@ -128,7 +125,7 @@ export const dropdownItem = cva(
     defaultVariants: {
       selected: false,
     },
-  }
+  },
 );
 
 export type DropdownItemVariants = VariantProps<typeof dropdownItem>;
@@ -158,9 +155,9 @@ export type TextVariants = VariantProps<typeof text>;
 export const heading = cva('', {
   variants: {
     level: {
-      display:    'font-display font-bold text-display tracking-tight text-fg',
-      title:      'font-display font-semibold text-title tracking-tight text-cyan',
-      heading:    'font-display font-semibold text-heading text-cyan animate-fade-in',
+      display: 'font-display font-bold text-display tracking-tight text-fg',
+      title: 'font-display font-semibold text-title tracking-tight text-cyan',
+      heading: 'font-display font-semibold text-heading text-cyan animate-fade-in',
       subheading: 'font-sans font-semibold text-lg text-fg',
     },
   },
@@ -177,8 +174,10 @@ export const badge = cva('font-sans font-bold', {
   variants: {
     variant: {
       status: 'text-body uppercase tracking-overline px-1 py-px rounded-sm bg-raised',
-      count: 'inline-flex items-center bg-raised text-body leading-none py-px px-1 font-semibold rounded-sm normal-case',
-      filter: 'bg-base border border-line rounded-sm px-1 py-0.5 text-body font-semibold normal-case',
+      count:
+        'inline-flex items-center bg-raised text-body leading-none py-px px-1 font-semibold rounded-sm normal-case',
+      filter:
+        'bg-base border border-line rounded-sm px-1 py-0.5 text-body font-semibold normal-case',
     },
     color: {
       accent: 'text-cyan',
@@ -205,13 +204,13 @@ export const navLink = cva(
     variants: {
       active: {
         true: 'text-cyan nav-active-indicator',
-        false: 'text-fg-2 hover:text-fg hover:bg-raised/50',
+        false: 'text-fg-3 hover:text-fg',
       },
     },
     defaultVariants: {
       active: false,
     },
-  }
+  },
 );
 
 export type NavLinkVariants = VariantProps<typeof navLink>;
@@ -239,45 +238,40 @@ export type StatusDotVariants = VariantProps<typeof statusDot>;
 
 // ── PROGRESS TRACK ──────────────────────────────────────
 
-export const progressTrack = cva(
-  'flex bg-raised gap-px overflow-hidden rounded-full h-1'
-);
+export const progressTrack = cva('flex bg-raised gap-px overflow-hidden rounded-full h-1');
 
 // ── MODAL OVERLAY ───────────────────────────────────────
 
 export const modalOverlay = cva(
-  'fixed inset-0 bg-black/75 z-modal flex items-center justify-center px-2'
+  'fixed inset-0 bg-black/75 z-modal flex items-center justify-center px-2',
 );
 
 // ── MODAL CARD ──────────────────────────────────────────
 
 export const modalCard = cva(
-  'bg-elevated border border-line rounded-lg shadow-lg p-3 w-full max-w-embed'
+  'bg-elevated border border-line rounded-lg shadow-lg p-3 w-full max-w-embed',
 );
 
 // ── RECONNECT BANNER ────────────────────────────────────
 
 export const reconnectBanner = cva(
-  'bg-red text-white text-center py-1 text-body font-bold uppercase tracking-wide animate-pulse-slow'
+  'bg-red text-white text-center py-1 text-body font-bold uppercase tracking-wide animate-pulse-slow',
 );
 
 // ── EMBED CARD ──────────────────────────────────────────
 
-export const embedCard = cva(
-  'bg-base border-l-2 rounded-md py-1.5 px-2 max-w-embed',
-  {
-    variants: {
-      color: {
-        red: 'border-l-red',
-        yellow: 'border-l-yellow',
-        green: 'border-l-green',
-      },
+export const embedCard = cva('bg-base border-l-2 rounded-md py-1.5 px-2 max-w-embed', {
+  variants: {
+    color: {
+      red: 'border-l-red',
+      yellow: 'border-l-yellow',
+      green: 'border-l-green',
     },
-    defaultVariants: {
-      color: 'green',
-    },
-  }
-);
+  },
+  defaultVariants: {
+    color: 'green',
+  },
+});
 
 export type EmbedCardVariants = VariantProps<typeof embedCard>;
 
@@ -295,7 +289,7 @@ export const inlineInput = cva(
     defaultVariants: {
       font: 'body',
     },
-  }
+  },
 );
 
 export type InlineInputVariants = VariantProps<typeof inlineInput>;
@@ -314,7 +308,7 @@ export const chip = cva(
     defaultVariants: {
       variant: 'default',
     },
-  }
+  },
 );
 
 export type ChipVariants = VariantProps<typeof chip>;
@@ -339,7 +333,7 @@ export const iconAction = cva(
       color: 'dim',
       reveal: false,
     },
-  }
+  },
 );
 
 export type IconActionVariants = VariantProps<typeof iconAction>;

@@ -5,7 +5,7 @@
  * Data layer: rows come from fetchWindow() → server query → Map cache.
  */
 
-import { useRef, useMemo, useState, useCallback, useEffect, memo } from 'react';
+import { useRef, useMemo, useState, useCallback, useEffect, useTransition, memo } from 'react';
 import type { CSSProperties, RefObject } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
@@ -15,33 +15,112 @@ import {
   type ColumnDef,
 } from '@tanstack/react-table';
 import * as Popover from '@radix-ui/react-popover';
-import { Text } from '../ui';
+import { Text, Stepper } from '../ui';
 import type { StepperStep } from '../ui';
 import { useParquetPreview, isNumericType, DROPDOWN_MAX } from '../hooks/useParquetPreview';
 import { useDataProfile } from '../hooks/useDataProfile';
 import { useDerivedState } from '../hooks/useDerivedState';
 import { apiFetch } from '../lib/api';
 import { useAppStore } from '../stores/useAppStore';
-import type { ColumnInfo, ColumnStats, ColumnCardinality, FilterSpec, FilterOp, SortSpec, PipelineStatus } from '../hooks/useParquetPreview';
+import type {
+  ColumnInfo,
+  ColumnStats,
+  ColumnCardinality,
+  FilterSpec,
+  SortSpec,
+  PipelineStatus,
+} from '../hooks/useParquetPreview';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const ROW_H       = 28;
-const PX_PER_CHAR   = 7.5;
-const CELL_PAD_X    = 6;       // padding: '_ 6px' on header/data cells
-const CHEVRON_W     = 8;       // SortChevron svg width
-const HEADER_GAP    = 8;       // gap-1 between ColName and chevron
-const COL_CHROME    = CELL_PAD_X * 2 + CHEVRON_W + HEADER_GAP;
-const MIN_COL_W     = 50;
-const MAX_COL_W     = 300;
-const WINDOW_SIZE = 200;  // rows per fetch window
+const ROW_H = 28;
+const PX_PER_CHAR = 7.5;
+const CELL_PAD_X = 6; // padding: '_ 6px' on header/data cells
+const CHEVRON_W = 8; // SortChevron svg width
+const HEADER_GAP = 8; // gap-1 between ColName and chevron
+const COL_CHROME = CELL_PAD_X * 2 + CHEVRON_W + HEADER_GAP;
+const MIN_COL_W = 50;
+const MAX_COL_W = 300;
+const WINDOW_SIZE = 200; // rows per fetch window
+
+// ── Telemetry Conduit ────────────────────────────────────────────────────────
+
+/** Fusion-reactor row-count display: dominant numbers + thick masked conduit. */
+function RiverGauge({
+  filtered,
+  total,
+  pending,
+  hasFilter,
+  compact,
+}: {
+  filtered: number;
+  total: number;
+  pending: boolean;
+  hasFilter: boolean;
+  compact?: boolean;
+}) {
+  const ratio = total > 0 ? filtered / total : 0;
+  const h = compact ? 10 : 16;
+
+  return (
+    <div
+      className="flex flex-col gap-1"
+      style={{ minWidth: compact ? 140 : 220 }}
+    >
+      {/* Readout */}
+      <div className="flex items-baseline gap-2 font-mono tabular-nums">
+        <span
+          className="font-bold"
+          style={{
+            fontSize: compact ? 'var(--font-size-lg)' : 'var(--font-size-2xl)',
+            letterSpacing: '-0.02em',
+            color: hasFilter ? 'var(--color-cyan)' : 'var(--color-fg)',
+            transition: 'color var(--t-fast)',
+          }}
+        >
+          {filtered.toLocaleString()}
+        </span>
+        <span
+          style={{
+            fontSize: 'var(--font-size-xs)',
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase' as const,
+            color: 'var(--color-fg-3)',
+            opacity: 0.5,
+          }}
+        >
+          of {total.toLocaleString()}
+        </span>
+      </div>
+
+      {/* The Conduit — deep inset groove with flowing gradient fill */}
+      <div
+        className="w-full river-groove"
+        style={{ height: h }}
+      >
+        <div
+          className="h-full river-fill"
+          style={{
+            clipPath: `inset(0 ${100 - ratio * 100}% 0 0)`,
+            transition: 'clip-path 400ms cubic-bezier(0.25, 1, 0.5, 1), opacity 200ms',
+            opacity: pending ? 0.5 : 1,
+            animation: pending ? 'distPlotBreath 1.5s ease-in-out infinite' : 'none',
+          }}
+        />
+      </div>
+    </div>
+  );
+}
 
 // ── Formatting ────────────────────────────────────────────────────────────────
 
 function fmt(value: unknown, type: string | null | undefined): string {
   if (value === null || value === undefined) return '';
   if (!type) return String(value);
-  const base = type.replace(/\(.+\)/, '').trim().toUpperCase();
+  const base = type
+    .replace(/\(.+\)/, '')
+    .trim()
+    .toUpperCase();
   if (base === 'FLOAT' || base === 'DOUBLE' || base === 'DECIMAL') {
     return (value as number).toFixed(2);
   }
@@ -49,7 +128,7 @@ function fmt(value: unknown, type: string | null | undefined): string {
     const n = value as number;
     const a = Math.abs(n);
     if (a >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
-    if (a >= 10_000)    return (n / 1_000).toFixed(1) + 'K';
+    if (a >= 10_000) return (n / 1_000).toFixed(1) + 'K';
     return n.toLocaleString();
   }
   const s = typeof value === 'object' ? JSON.stringify(value) : String(value);
@@ -73,7 +152,7 @@ function colWFromName(name: string, type: string, maxCharLen?: number): number {
   const headerChars = Math.max(...segments.map((s, i) => s.length + (i > 0 ? 2 : 0)));
   const dataChars = maxCharLen ?? headerChars;
   const chars = Math.max(headerChars, dataChars);
-  const px    = Math.round(chars * PX_PER_CHAR) + COL_CHROME;
+  const px = Math.round(chars * PX_PER_CHAR) + COL_CHROME;
   return Math.min(MAX_COL_W, Math.max(MIN_COL_W, px));
 }
 
@@ -83,12 +162,18 @@ function SortChevron({ dir, index }: { dir: 'asc' | 'desc' | false | null; index
   const active = dir === 'asc' || dir === 'desc';
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
-      <svg width="8" height="5" viewBox="0 0 8 5" fill="currentColor" style={{
-        transition: 'transform var(--t-fast) var(--ease-move)',
-        transform: dir === 'desc' ? 'rotate(180deg)' : 'none',
-        opacity: active ? 1 : 0.3,
-        color: active ? 'var(--color-cyan)' : 'inherit',
-      }}>
+      <svg
+        width="8"
+        height="5"
+        viewBox="0 0 8 5"
+        fill="currentColor"
+        style={{
+          transition: 'transform var(--t-fast) var(--ease-move)',
+          transform: dir === 'desc' ? 'rotate(180deg)' : 'none',
+          opacity: active ? 1 : 0.3,
+          color: active ? 'var(--color-cyan)' : 'inherit',
+        }}
+      >
         <path d="M4 0L7.5 4.5H0.5L4 0Z" />
       </svg>
       {index !== undefined && index >= 0 && (
@@ -109,7 +194,10 @@ function ColName({ name }: { name: string }) {
     <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.3 }}>
       <span style={{ color: 'var(--color-fg-3)' }}>{parts[0]}</span>
       {parts.slice(1).map((part, i) => (
-        <span key={i}><span style={{ color: 'var(--color-fg-3)' }}>› </span>{part}</span>
+        <span key={i}>
+          <span style={{ color: 'var(--color-fg-3)' }}>› </span>
+          {part}
+        </span>
       ))}
     </span>
   );
@@ -118,13 +206,12 @@ function ColName({ name }: { name: string }) {
 // ── Pipeline steps + index for Parquet preview ────────────────────────────────
 
 const PARQUET_STEPS = [
-  { key: 'profile',  label: 'Reading schema' },
-  { key: 'connect',  label: 'Connecting' },
-  { key: 'query',    label: 'Querying server' },
-  { key: 'draw',     label: 'Drawing rows' },
-  { key: 'ready',    label: 'Ready' },
+  { key: 'profile', label: 'Reading schema' },
+  { key: 'connect', label: 'Connecting' },
+  { key: 'query', label: 'Querying server' },
+  { key: 'draw', label: 'Drawing rows' },
+  { key: 'ready', label: 'Ready' },
 ] as const;
-
 
 // ── useRetainedState — bridges network gaps with a single law ─────────────────
 // Value is remembered across renders. Cleared when clearCondition fires.
@@ -144,118 +231,152 @@ function useRetainedState<T>(value: T | undefined, clearCondition: boolean): T |
 // Ghost mask clip is driven purely by inherited CSS vars (--lo, --hi) from the
 // parent track container — zero JS overhead, zero imperative handles.
 
-const DistributionPlot = memo(function DistributionPlot({
-  staticBins, dynamicBins, height, pending,
-}: {
-  staticBins:   number[];
-  dynamicBins?: number[];
-  height:       number;
-  pending?:     boolean;
-}) {
-  const n = staticBins.length;
-  if (n === 0) return null;
+const DistributionPlot = memo(
+  function DistributionPlot({
+    staticBins,
+    dynamicBins,
+    height,
+    pending,
+  }: {
+    staticBins: number[];
+    dynamicBins?: number[];
+    height: number;
+    pending?: boolean;
+  }) {
+    const n = staticBins.length;
+    if (n === 0) return null;
 
-  // Independent density normalization — each layer fills its own peak to full height.
-  const staticMax  = useMemo(() => Math.max(...staticBins, 1),  [staticBins]);
+    // Independent density normalization — each layer fills its own peak to full height.
+    const staticMax = useMemo(() => Math.max(...staticBins, 1), [staticBins]);
 
-  const binW = 100 / n;
+    const binW = 100 / n;
 
-  // Bridge network gaps: retain last dynamic bins during queries, clear on reset.
-  const activeDynamicBins = useRetainedState(
-    dynamicBins && dynamicBins.length > 0 ? dynamicBins : undefined,
-    !dynamicBins && !pending,
-  );
-  const activeBins = activeDynamicBins || staticBins;
-  const activeMax = activeBins === staticBins
-    ? staticMax
-    : Math.max(...activeBins, 1);
+    // Bridge network gaps: retain last dynamic bins during queries, clear on reset.
+    const activeDynamicBins = useRetainedState(
+      dynamicBins && dynamicBins.length > 0 ? dynamicBins : undefined,
+      !dynamicBins && !pending,
+    );
+    const activeBins = activeDynamicBins || staticBins;
+    const activeMax = activeBins === staticBins ? staticMax : Math.max(...activeBins, 1);
 
-  const clipId = useRef(`ghost-mask-${Math.random().toString(36).slice(2, 8)}`).current;
+    const clipId = useRef(`ghost-mask-${Math.random().toString(36).slice(2, 8)}`).current;
 
-  // Memoize static rects — bin data only changes when server responds, not during drag
-  const staticRects = useMemo(() =>
-    staticBins.map((v, i) => {
-      const barH = (v / staticMax) * height;
-      return (
-        <rect key={i}
-          x={i * binW} y={height - barH}
-          width={binW} height={barH}
-          fill="var(--color-cyan)"
-        />
-      );
-    }),
-    [staticBins, staticMax, height, binW],
-  );
+    // Memoize static rects — bin data only changes when server responds, not during drag
+    const staticRects = useMemo(
+      () =>
+        staticBins.map((v, i) => {
+          const barH = (v / staticMax) * height;
+          return (
+            <rect
+              key={i}
+              x={i * binW}
+              y={height - barH}
+              width={binW}
+              height={barH}
+              fill="var(--color-cyan)"
+            />
+          );
+        }),
+      [staticBins, staticMax, height, binW],
+    );
 
-  // Memoize dynamic rects — only recompute when bin data or height changes
-  const dynamicRects = useMemo(() =>
-    activeBins.map((v, i) => {
-      const barH = (v / activeMax) * height;
-      return (
-        <rect key={i}
-          x={i * binW}
-          width={binW}
-          fill="var(--color-cyan)" opacity={0.45}
-          style={{
-            y: height - barH,
-            height: barH,
-            transition: 'y 300ms ease-out, height 300ms ease-out',
-          }}
-        />
-      );
-    }),
-    [activeBins, activeMax, height, binW],
-  );
+    // Memoize dynamic rects — only recompute when bin data or height changes
+    const dynamicRects = useMemo(
+      () =>
+        activeBins.map((v, i) => {
+          const barH = (v / activeMax) * height;
+          return (
+            <rect
+              key={i}
+              x={i * binW}
+              width={binW}
+              fill="var(--color-cyan)"
+              opacity={0.45}
+              style={{
+                y: height - barH,
+                height: barH,
+                transition: 'y 300ms ease-out, height 300ms ease-out',
+              }}
+            />
+          );
+        }),
+      [activeBins, activeMax, height, binW],
+    );
 
-  return (
-    <svg
-      viewBox={`0 0 100 ${height}`}
-      preserveAspectRatio="none"
-      style={{
-        position: 'absolute', inset: 0, width: '100%', height: '100%',
-        pointerEvents: 'none',
-      }}
-    >
-      <defs>
-        <clipPath id={clipId}>
-          {/* Pure CSS-driven clip — inherits --lo / --hi from parent container */}
-          <rect y="0" height={height} style={{
-            x: 'calc(var(--lo) * 1%)',
-            width: 'max(0px, calc((var(--hi) - var(--lo)) * 1%))',
-          } as React.CSSProperties} />
-        </clipPath>
-      </defs>
+    return (
+      <svg
+        viewBox={`0 0 100 ${height}`}
+        preserveAspectRatio="none"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          pointerEvents: 'none',
+        }}
+      >
+        <defs>
+          <clipPath id={clipId}>
+            {/* Pure CSS-driven clip — inherits --lo / --hi from parent container */}
+            <rect
+              y="0"
+              height={height}
+              style={
+                {
+                  x: 'calc(var(--lo) * 1%)',
+                  width: 'max(0px, calc((var(--hi) - var(--lo)) * 1%))',
+                } as React.CSSProperties
+              }
+            />
+          </clipPath>
+        </defs>
 
-      {/* Static layer — absolute reference shape, never clipped */}
-      <g opacity={0.12}>{staticRects}</g>
+        {/* Static layer — absolute reference shape, never clipped */}
+        <g opacity={0.12}>{staticRects}</g>
 
-      {/* Dynamic layer — always mounted so CSS can transition from the
+        {/* Dynamic layer — always mounted so CSS can transition from the
            first frame.  Before any filter, overlays the static shape exactly.
            When the first query responds, bars morph smoothly. */}
-      <g clipPath={`url(#${clipId})`} style={{
-        opacity: pending ? 0.5 : 1,
-        transition: 'opacity 200ms',
-        animation: pending ? 'distPlotBreath 1.5s ease-in-out infinite' : 'none',
-      }}>
-        {dynamicRects}
-      </g>
-    </svg>
-  );
-},
-// Custom comparator: only re-render when bin data or pending changes.
-// Clip position is driven by inherited CSS vars — never triggers re-render.
-(prev, next) =>
-  prev.staticBins === next.staticBins &&
-  prev.dynamicBins === next.dynamicBins &&
-  prev.height === next.height &&
-  prev.pending === next.pending,
+        <g
+          clipPath={`url(#${clipId})`}
+          style={{
+            opacity: pending ? 0.5 : 1,
+            transition: 'opacity 200ms',
+            animation: pending ? 'distPlotBreath 1.5s ease-in-out infinite' : 'none',
+          }}
+        >
+          {dynamicRects}
+        </g>
+      </svg>
+    );
+  },
+  // Custom comparator: only re-render when bin data or pending changes.
+  // Clip position is driven by inherited CSS vars — never triggers re-render.
+  (prev, next) =>
+    prev.staticBins === next.staticBins &&
+    prev.dynamicBins === next.dynamicBins &&
+    prev.height === next.height &&
+    prev.pending === next.pending,
 );
 
 // ── EditableNumber ────────────────────────────────────────────────────────────
 
-function EditableNumber({ value, min, max, isFloat, color, onCommit, align = 'left' }: {
-  value: number; min: number; max: number; isFloat: boolean;
-  color: string; onCommit: (v: number) => void; align?: 'left' | 'right';
+function EditableNumber({
+  value,
+  min,
+  max,
+  isFloat,
+  color,
+  onCommit,
+  align = 'left',
+}: {
+  value: number;
+  min: number;
+  max: number;
+  isFloat: boolean;
+  color: string;
+  onCommit: (v: number) => void;
+  align?: 'left' | 'right';
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -276,7 +397,10 @@ function EditableNumber({ value, min, max, isFloat, color, onCommit, align = 'le
   // Keep commas live as the user types
   const handleChange = (raw: string) => {
     const stripped = raw.replace(/,/g, '');
-    if (stripped === '' || stripped === '-' || stripped === '.') { setDraft(stripped); return; }
+    if (stripped === '' || stripped === '-' || stripped === '.') {
+      setDraft(stripped);
+      return;
+    }
     const parsed = Number(stripped);
     if (!isNaN(parsed)) {
       setDraft(isFloat ? stripped : parsed.toLocaleString());
@@ -290,9 +414,9 @@ function EditableNumber({ value, min, max, isFloat, color, onCommit, align = 'le
         type="text"
         inputMode="decimal"
         value={draft}
-        onChange={e => handleChange(e.target.value)}
+        onChange={(e) => handleChange(e.target.value)}
         onBlur={commit}
-        onKeyDown={e => {
+        onKeyDown={(e) => {
           if (e.key === 'Enter') commit();
           if (e.key === 'Escape') setEditing(false);
         }}
@@ -323,8 +447,12 @@ function EditableNumber({ value, min, max, isFloat, color, onCommit, align = 'le
         borderBottom: '1px dashed transparent',
         transition: 'border-color var(--t-fast)',
       }}
-      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--color-fg-3)'; }}
-      onMouseLeave={e => { e.currentTarget.style.borderColor = 'transparent'; }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = 'var(--color-fg-3)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = 'transparent';
+      }}
       title="Click to edit"
     >
       {display}
@@ -337,13 +465,16 @@ function EditableNumber({ value, min, max, isFloat, color, onCommit, align = 'le
 // the query result is identical — skip the network request.
 
 function hasDataInDelta(
-  oldVal: number, newVal: number,
-  min: number, max: number,
+  oldVal: number,
+  newVal: number,
+  min: number,
+  max: number,
   histogram: number[],
 ): boolean {
   const n = histogram.length;
   const range = max - min || 1;
-  const toBin = (v: number) => Math.max(0, Math.min(n - 1, Math.floor(((v - min) / range) * (n - 1))));
+  const toBin = (v: number) =>
+    Math.max(0, Math.min(n - 1, Math.floor(((v - min) / range) * (n - 1))));
   const a = toBin(Math.min(oldVal, newVal));
   const b = toBin(Math.max(oldVal, newVal));
   for (let i = a; i <= b; i++) {
@@ -356,26 +487,42 @@ function hasDataInDelta(
 
 // Stable color constants — module-level so useCallback deps never churn
 const AMBER_COLOR = 'var(--color-amber)';
-const AMBER_GLOW  = 'oklch(0.750 0.185 60 / 0.28)';
-const CYAN_COLOR  = 'var(--color-cyan)';
-const CYAN_GLOW   = 'oklch(0.750 0.180 195 / 0.25)';
+const AMBER_GLOW = 'oklch(0.750 0.185 60 / 0.28)';
+const CYAN_COLOR = 'var(--color-cyan)';
+const CYAN_GLOW = 'oklch(0.750 0.180 195 / 0.25)';
 
-function RangeSlider({ name, min, max, low, high, onDrag, onCommit, constrainedMin, constrainedMax, pending, staticHistogram, dynamicHistogram }: {
-  name: string; min: number; max: number; low: number; high: number;
-  onDrag:           (name: string, lo: number, hi: number) => void;
-  onCommit:         (name: string) => void;
-  constrainedMin?:  number;
-  constrainedMax?:  number;
-  pending?:         boolean;
+function RangeSlider({
+  name,
+  min,
+  max,
+  low,
+  high,
+  onDrag,
+  onCommit,
+  constrainedMin,
+  constrainedMax,
+  pending,
+  staticHistogram,
+  dynamicHistogram,
+}: {
+  name: string;
+  min: number;
+  max: number;
+  low: number;
+  high: number;
+  onDrag: (name: string, lo: number, hi: number) => void;
+  onCommit: (name: string) => void;
+  constrainedMin?: number;
+  constrainedMax?: number;
+  pending?: boolean;
   staticHistogram?: number[];
   dynamicHistogram?: number[];
 }) {
-
   const [isDragging, setIsDragging] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const dragStartRef = useRef<{ lo: number; hi: number } | null>(null);
-  const trackRef = useRef<HTMLDivElement>(null);   // outer gauge — CSS var host
-  const sliderRef = useRef<HTMLDivElement>(null);  // inner track — pixel measurements
+  const trackRef = useRef<HTMLDivElement>(null); // outer gauge — CSS var host
+  const sliderRef = useRef<HTMLDivElement>(null); // inner track — pixel measurements
   const panStartRef = useRef<{ x: number; lo: number; hi: number; trackW: number } | null>(null);
   const lowInputRef = useRef<HTMLInputElement>(null);
   const highInputRef = useRef<HTMLInputElement>(null);
@@ -386,17 +533,17 @@ function RangeSlider({ name, min, max, low, high, onDrag, onCommit, constrainedM
   lowRef.current = low;
   highRef.current = high;
 
-  const range   = max - min || 1;
-  const full    = low <= min && high >= max;
+  const range = max - min || 1;
+  const full = low <= min && high >= max;
 
   // Bridge network gaps: retain constrained bounds during queries, clear on reset.
   const activeConMin = useRetainedState(constrainedMin, full);
   const activeConMax = useRetainedState(constrainedMax, full);
   const isFloat = !Number.isInteger(min) || !Number.isInteger(max);
-  const step    = isFloat ? 'any' as const : 1;
+  const step = isFloat ? ('any' as const) : 1;
 
   const hasConData = activeConMin !== undefined && activeConMax !== undefined;
-  const conLoPct = hasConData ? Math.max(0,   ((activeConMin! - min) / range) * 100) : 0;
+  const conLoPct = hasConData ? Math.max(0, ((activeConMin! - min) / range) * 100) : 0;
   const conHiPct = hasConData ? Math.min(100, ((activeConMax! - min) / range) * 100) : 100;
 
   // OOB = thumb is visibly past the constrained data boundary.  Epsilon is
@@ -404,47 +551,50 @@ function RangeSlider({ name, min, max, low, high, onDrag, onCommit, constrainedM
   // drift across the DuckDB → Arrow IPC → JS pipeline.  If the thumb is
   // within a fraction the eye cannot perceive, honor the scientist's intent.
   const epsilon = range * 0.001;
-  const lowOob  = !pending && hasConData && low  < activeConMin! - epsilon;
+  const lowOob = !pending && hasConData && low < activeConMin! - epsilon;
   const highOob = !pending && hasConData && high > activeConMax! + epsilon;
 
   // ── Imperative engine — drives all track + thumb visuals at 60fps ──────────
   // React only sees the final values on pointerUp.  Between pointer events
   // every pixel is moved by CSS-variable writes on the container DOM node.
 
-  const syncTrack = useCallback((loVal: number, hiVal: number) => {
-    const el = trackRef.current;
-    if (!el) return;
-    const loPct = ((loVal - min) / range) * 100;
-    const hiPct = ((hiVal - min) / range) * 100;
-    el.style.setProperty('--lo', String(loPct));
-    el.style.setProperty('--hi', String(hiPct));
+  const syncTrack = useCallback(
+    (loVal: number, hiVal: number) => {
+      const el = trackRef.current;
+      if (!el) return;
+      const loPct = ((loVal - min) / range) * 100;
+      const hiPct = ((hiVal - min) / range) * 100;
+      el.style.setProperty('--lo', String(loPct));
+      el.style.setProperty('--hi', String(hiPct));
 
-    // OOB detection — drives amber void + thumb color
-    const pendingNow = !!pending;
-    const oobLo = !pendingNow && hasConData && loVal < activeConMin! - epsilon;
-    const oobHi = !pendingNow && hasConData && hiVal > activeConMax! + epsilon;
-    el.style.setProperty('--oob-lo', oobLo ? '0.5' : '0');
-    el.style.setProperty('--oob-hi', oobHi ? '0.5' : '0');
+      // OOB detection — drives amber void + thumb color
+      const pendingNow = !!pending;
+      const oobLo = !pendingNow && hasConData && loVal < activeConMin! - epsilon;
+      const oobHi = !pendingNow && hasConData && hiVal > activeConMax! + epsilon;
+      el.style.setProperty('--oob-lo', oobLo ? '0.5' : '0');
+      el.style.setProperty('--oob-hi', oobHi ? '0.5' : '0');
 
-    // Thumb colors — direct DOM writes bypass React reconciliation
-    const loIn = lowInputRef.current;
-    const hiIn = highInputRef.current;
-    if (loIn) {
-      loIn.style.setProperty('--range-thumb-color', oobLo ? AMBER_COLOR : CYAN_COLOR);
-      loIn.style.setProperty('--range-thumb-glow',  oobLo ? AMBER_GLOW  : CYAN_GLOW);
-      loIn.style.opacity = String(oobLo ? 0.90 : 1);
-    }
-    if (hiIn) {
-      hiIn.style.setProperty('--range-thumb-color', oobHi ? AMBER_COLOR : CYAN_COLOR);
-      hiIn.style.setProperty('--range-thumb-glow',  oobHi ? AMBER_GLOW  : CYAN_GLOW);
-      hiIn.style.opacity = String(oobHi ? 0.90 : 1);
-    }
+      // Thumb colors — direct DOM writes bypass React reconciliation
+      const loIn = lowInputRef.current;
+      const hiIn = highInputRef.current;
+      if (loIn) {
+        loIn.style.setProperty('--range-thumb-color', oobLo ? AMBER_COLOR : CYAN_COLOR);
+        loIn.style.setProperty('--range-thumb-glow', oobLo ? AMBER_GLOW : CYAN_GLOW);
+        loIn.style.opacity = String(oobLo ? 0.9 : 1);
+      }
+      if (hiIn) {
+        hiIn.style.setProperty('--range-thumb-color', oobHi ? AMBER_COLOR : CYAN_COLOR);
+        hiIn.style.setProperty('--range-thumb-glow', oobHi ? AMBER_GLOW : CYAN_GLOW);
+        hiIn.style.opacity = String(oobHi ? 0.9 : 1);
+      }
 
-    // Force uncontrolled inputs to match (panning, clip-to-reality, reset).
-    // Numeric comparison avoids float-string fuzz (e.g. "15" vs "15.000000000001").
-    if (loIn && Math.abs(Number(loIn.value) - loVal) > 1e-7) loIn.value = String(loVal);
-    if (hiIn && Math.abs(Number(hiIn.value) - hiVal) > 1e-7) hiIn.value = String(hiVal);
-  }, [min, range, pending, hasConData, activeConMin, activeConMax, epsilon]);
+      // Force uncontrolled inputs to match (panning, clip-to-reality, reset).
+      // Numeric comparison avoids float-string fuzz (e.g. "15" vs "15.000000000001").
+      if (loIn && Math.abs(Number(loIn.value) - loVal) > 1e-7) loIn.value = String(loVal);
+      if (hiIn && Math.abs(Number(hiIn.value) - hiVal) > 1e-7) hiIn.value = String(hiVal);
+    },
+    [min, range, pending, hasConData, activeConMin, activeConMax, epsilon],
+  );
 
   // Sync CSS vars + uncontrolled inputs from React props.
   // Only fires when user is NOT interacting (initial mount, reset, commit response).
@@ -500,68 +650,78 @@ function RangeSlider({ name, min, max, low, high, onDrag, onCommit, constrainedM
 
   // ── Track Panning — grab between thumbs to slide the whole window ──────────
 
-  const handlePanStart = useCallback((e: React.PointerEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const track = sliderRef.current;
-    if (!track) return;
-    const trackW = track.getBoundingClientRect().width;
-    const lo = lowRef.current;
-    const hi = highRef.current;
-    panStartRef.current = { x: e.clientX, lo, hi, trackW };
-    dragStartRef.current = { lo, hi };
-    setIsDragging(true);
-    setIsPanning(true);
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    const capturedTarget = e.target as HTMLElement;
-    const capturedPointerId = e.pointerId;
+  const handlePanStart = useCallback(
+    (e: React.PointerEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const track = sliderRef.current;
+      if (!track) return;
+      const trackW = track.getBoundingClientRect().width;
+      const lo = lowRef.current;
+      const hi = highRef.current;
+      panStartRef.current = { x: e.clientX, lo, hi, trackW };
+      dragStartRef.current = { lo, hi };
+      setIsDragging(true);
+      setIsPanning(true);
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      const capturedTarget = e.target as HTMLElement;
+      const capturedPointerId = e.pointerId;
 
-    const onMove = (ev: PointerEvent) => {
-      const s = panStartRef.current;
-      if (!s) return;
-      const deltaPx = ev.clientX - s.x;
-      const deltaVal = (deltaPx / s.trackW) * range;
-      const span = s.hi - s.lo;
-      let newLo = s.lo + deltaVal;
-      let newHi = s.hi + deltaVal;
-      if (newLo < min) { newLo = min; newHi = min + span; }
-      else if (newHi > max) { newHi = max; newLo = max - span; }
-      lowRef.current = newLo;
-      highRef.current = newHi;
-      syncTrack(newLo, newHi);
-      onDrag(name, newLo, newHi);
-    };
+      const onMove = (ev: PointerEvent) => {
+        const s = panStartRef.current;
+        if (!s) return;
+        const deltaPx = ev.clientX - s.x;
+        const deltaVal = (deltaPx / s.trackW) * range;
+        const span = s.hi - s.lo;
+        let newLo = s.lo + deltaVal;
+        let newHi = s.hi + deltaVal;
+        if (newLo < min) {
+          newLo = min;
+          newHi = min + span;
+        } else if (newHi > max) {
+          newHi = max;
+          newLo = max - span;
+        }
+        lowRef.current = newLo;
+        highRef.current = newHi;
+        syncTrack(newLo, newHi);
+        onDrag(name, newLo, newHi);
+      };
 
-    const onUp = () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      window.removeEventListener('pointercancel', onUp);
-      try { capturedTarget.releasePointerCapture(capturedPointerId); } catch {}
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      panStartRef.current = null;
-      setIsPanning(false);
-      setIsDragging(false);
-      const curLo = lowRef.current;
-      const curHi = highRef.current;
-      const start = dragStartRef.current;
-      if (start && staticHistogram && staticHistogram.length > 0) {
-        const loChanged = curLo !== start.lo;
-        const hiChanged = curHi !== start.hi;
-        const loDelta = loChanged && hasDataInDelta(start.lo, curLo, min, max, staticHistogram);
-        const hiDelta = hiChanged && hasDataInDelta(start.hi, curHi, min, max, staticHistogram);
-        if ((loChanged || hiChanged) && !loDelta && !hiDelta) return;
-      }
-      onDrag(name, curLo, curHi);
-      onCommit(name);
-    };
+      const onUp = () => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('pointercancel', onUp);
+        try {
+          capturedTarget.releasePointerCapture(capturedPointerId);
+        } catch {}
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        panStartRef.current = null;
+        setIsPanning(false);
+        setIsDragging(false);
+        const curLo = lowRef.current;
+        const curHi = highRef.current;
+        const start = dragStartRef.current;
+        if (start && staticHistogram && staticHistogram.length > 0) {
+          const loChanged = curLo !== start.lo;
+          const hiChanged = curHi !== start.hi;
+          const loDelta = loChanged && hasDataInDelta(start.lo, curLo, min, max, staticHistogram);
+          const hiDelta = hiChanged && hasDataInDelta(start.hi, curHi, min, max, staticHistogram);
+          if ((loChanged || hiChanged) && !loDelta && !hiDelta) return;
+        }
+        onDrag(name, curLo, curHi);
+        onCommit(name);
+      };
 
-    document.body.style.cursor = 'grabbing';
-    document.body.style.userSelect = 'none';
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-    window.addEventListener('pointercancel', onUp);
-  }, [name, min, max, range, onDrag, onCommit, staticHistogram, syncTrack]);
+      document.body.style.cursor = 'grabbing';
+      document.body.style.userSelect = 'none';
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointercancel', onUp);
+    },
+    [name, min, max, range, onDrag, onCommit, staticHistogram, syncTrack],
+  );
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -569,24 +729,27 @@ function RangeSlider({ name, min, max, low, high, onDrag, onCommit, constrainedM
 
   // Initial CSS-var seeds — syncTrack overwrites immediately via useEffect,
   // but the inline values prevent a single frame of wrong positioning.
-  const lowPct  = ((low  - min) / range) * 100;
+  const lowPct = ((low - min) / range) * 100;
   const highPct = ((high - min) / range) * 100;
   const trackVars = {
     '--lo': String(lowPct),
     '--hi': String(highPct),
     '--c-lo': String(conLoPct),
     '--c-hi': String(conHiPct),
-    '--oob-lo': lowOob  ? '0.5' : '0',
+    '--oob-lo': lowOob ? '0.5' : '0',
     '--oob-hi': highOob ? '0.5' : '0',
   } as CSSProperties;
 
   return (
-    <div ref={trackRef} style={{
-      background: 'oklch(0.13 0.01 240 / 0.5)',
-      borderRadius: 6,
-      padding: '6px 8px 4px',
-      ...trackVars,
-    }}>
+    <div
+      ref={trackRef}
+      style={{
+        background: 'oklch(0.13 0.01 240 / 0.5)',
+        borderRadius: 6,
+        padding: '6px 8px 4px',
+        ...trackVars,
+      }}
+    >
       {staticHistogram && staticHistogram.length > 0 && (
         <div className="relative" style={{ height: PLOT_H, marginBottom: 2 }}>
           <DistributionPlot
@@ -599,30 +762,42 @@ function RangeSlider({ name, min, max, low, high, onDrag, onCommit, constrainedM
       )}
       <div ref={sliderRef} className="relative" style={{ height: 20 }}>
         {/* Ghost base — full width reference line */}
-        <div className="absolute top-1/2 -translate-y-1/2 rounded-full w-full"
-          style={{ height: 2, background: CYAN_COLOR, opacity: 0.10 }} />
+        <div
+          className="absolute top-1/2 -translate-y-1/2 rounded-full w-full"
+          style={{ height: 2, background: CYAN_COLOR, opacity: 0.1 }}
+        />
 
         {/* Left amber void — thumb → density boundary (CSS-driven) */}
-        <div className="absolute top-1/2 -translate-y-1/2 rounded-full" style={{
-          left: 'calc(var(--lo) * 1%)',
-          width: 'max(0%, calc((var(--c-lo) - var(--lo)) * 1%))',
-          height: 3,
-          background: AMBER_COLOR,
-          opacity: 'var(--oob-lo)',
-          boxShadow: `0 0 6px ${AMBER_GLOW}`,
-          transition: 'opacity var(--t-fast)',
-        } as CSSProperties} />
+        <div
+          className="absolute top-1/2 -translate-y-1/2 rounded-full"
+          style={
+            {
+              left: 'calc(var(--lo) * 1%)',
+              width: 'max(0%, calc((var(--c-lo) - var(--lo)) * 1%))',
+              height: 3,
+              background: AMBER_COLOR,
+              opacity: 'var(--oob-lo)',
+              boxShadow: `0 0 6px ${AMBER_GLOW}`,
+              transition: 'opacity var(--t-fast)',
+            } as CSSProperties
+          }
+        />
 
         {/* Right amber void — density boundary → thumb (CSS-driven) */}
-        <div className="absolute top-1/2 -translate-y-1/2 rounded-full" style={{
-          left: 'calc(var(--c-hi) * 1%)',
-          width: 'max(0%, calc((var(--hi) - var(--c-hi)) * 1%))',
-          height: 3,
-          background: AMBER_COLOR,
-          opacity: 'var(--oob-hi)',
-          boxShadow: `0 0 6px ${AMBER_GLOW}`,
-          transition: 'opacity var(--t-fast)',
-        } as CSSProperties} />
+        <div
+          className="absolute top-1/2 -translate-y-1/2 rounded-full"
+          style={
+            {
+              left: 'calc(var(--c-hi) * 1%)',
+              width: 'max(0%, calc((var(--hi) - var(--c-hi)) * 1%))',
+              height: 3,
+              background: AMBER_COLOR,
+              opacity: 'var(--oob-hi)',
+              boxShadow: `0 0 6px ${AMBER_GLOW}`,
+              transition: 'opacity var(--t-fast)',
+            } as CSSProperties
+          }
+        />
 
         {/* Constrained data extent — double-click to clip */}
         {hasConData && (
@@ -630,42 +805,53 @@ function RangeSlider({ name, min, max, low, high, onDrag, onCommit, constrainedM
             className="absolute top-1/2 -translate-y-1/2 rounded-full"
             title="Double-click to clip handles to this range"
             onDoubleClick={handleClipToReality}
-            style={{
-              left: 'calc(var(--c-lo) * 1%)',
-              width: 'calc(max(0, var(--c-hi) - var(--c-lo)) * 1%)',
-              height: 4,
-              background: CYAN_COLOR,
-              opacity: isDragging ? 0 : pending ? 0.15 : 0.40,
-              cursor: 'pointer',
-              transition: 'opacity var(--t-fast)',
-            } as CSSProperties}
+            style={
+              {
+                left: 'calc(var(--c-lo) * 1%)',
+                width: 'calc(max(0, var(--c-hi) - var(--c-lo)) * 1%)',
+                height: 4,
+                background: CYAN_COLOR,
+                opacity: isDragging ? 0 : pending ? 0.15 : 0.4,
+                cursor: 'pointer',
+                transition: 'opacity var(--t-fast)',
+              } as CSSProperties
+            }
           />
         )}
 
         {/* Cyan truth track — only where data exists between thumbs */}
-        <div className="absolute top-1/2 -translate-y-1/2 rounded-full"
-          style={{
-            left:  hasConData
-              ? 'max(calc(var(--lo) * 1%), calc(var(--c-lo) * 1%))'
-              : 'calc(var(--lo) * 1%)',
-            right: hasConData
-              ? 'max(calc((100 - var(--hi)) * 1%), calc((100 - var(--c-hi)) * 1%))'
-              : 'calc((100 - var(--hi)) * 1%)',
-            height: 2,
-            background: CYAN_COLOR,
-            opacity: full ? 0.10 : isDragging ? 1 : hasConData ? 0.40 : 1,
-          } as CSSProperties} />
+        <div
+          className="absolute top-1/2 -translate-y-1/2 rounded-full"
+          style={
+            {
+              left: hasConData
+                ? 'max(calc(var(--lo) * 1%), calc(var(--c-lo) * 1%))'
+                : 'calc(var(--lo) * 1%)',
+              right: hasConData
+                ? 'max(calc((100 - var(--hi)) * 1%), calc((100 - var(--c-hi)) * 1%))'
+                : 'calc((100 - var(--hi)) * 1%)',
+              height: 2,
+              background: CYAN_COLOR,
+              opacity: full ? 0.1 : isDragging ? 1 : hasConData ? 0.4 : 1,
+            } as CSSProperties
+          }
+        />
 
         {/* Pannable window — grab between thumbs to slide the whole range */}
         {!full && (
           <div
-            style={{
-              position: 'absolute', top: 0,
-              left: 'calc(var(--lo) * 1%)',
-              width: 'calc(max(0, var(--hi) - var(--lo)) * 1%)',
-              height: '100%', zIndex: 2,
-              cursor: isPanning ? 'grabbing' : 'grab',
-            } as CSSProperties}
+            style={
+              {
+                position: 'absolute',
+                top: 0,
+                left: 'calc(var(--lo) * 1%)',
+                width: 'calc(max(0, var(--hi) - var(--lo)) * 1%)',
+                height: '100%',
+                zIndex: 2,
+                cursor: isPanning ? 'grabbing' : 'grab',
+                pointerEvents: isDragging ? 'none' : undefined,
+              } as CSSProperties
+            }
             onPointerDown={handlePanStart}
           />
         )}
@@ -674,12 +860,14 @@ function RangeSlider({ name, min, max, low, high, onDrag, onCommit, constrainedM
           ref={lowInputRef}
           type="range"
           className="range-thumb range-low absolute inset-0 w-full appearance-none bg-transparent cursor-pointer"
-          min={min} max={max} step={step} defaultValue={low}
-          style={{ zIndex: 3 } as CSSProperties}
+          min={min}
+          max={max}
+          step={step}
+          defaultValue={low}
           onPointerDown={handleDragStart}
           onPointerUp={handleDragEnd}
           onPointerCancel={handleDragEnd}
-          onChange={e => {
+          onChange={(e) => {
             const v = Math.min(Number(e.target.value), highRef.current);
             lowRef.current = v;
             syncTrack(v, highRef.current);
@@ -690,12 +878,14 @@ function RangeSlider({ name, min, max, low, high, onDrag, onCommit, constrainedM
           ref={highInputRef}
           type="range"
           className="range-thumb range-high absolute inset-0 w-full appearance-none bg-transparent cursor-pointer"
-          min={min} max={max} step={step} defaultValue={high}
-          style={{ zIndex: 4 } as CSSProperties}
+          min={min}
+          max={max}
+          step={step}
+          defaultValue={high}
           onPointerDown={handleDragStart}
           onPointerUp={handleDragEnd}
           onPointerCancel={handleDragEnd}
-          onChange={e => {
+          onChange={(e) => {
             const v = Math.max(Number(e.target.value), lowRef.current);
             highRef.current = v;
             syncTrack(lowRef.current, v);
@@ -703,16 +893,31 @@ function RangeSlider({ name, min, max, low, high, onDrag, onCommit, constrainedM
           }}
         />
       </div>
-      <div className="flex justify-between font-mono mt-0.5" style={{ fontSize: 'var(--font-size-xs)' }}>
+      <div
+        className="flex justify-between font-mono mt-0.5"
+        style={{ fontSize: 'var(--font-size-xs)' }}
+      >
         <EditableNumber
-          value={low} min={min} max={high} isFloat={isFloat}
+          value={low}
+          min={min}
+          max={high}
+          isFloat={isFloat}
           color={lowOob ? 'var(--color-amber)' : full ? 'var(--color-fg-3)' : 'var(--color-fg-2)'}
-          onCommit={v => { onDrag(name, v, high); onCommit(name); }}
+          onCommit={(v) => {
+            onDrag(name, v, high);
+            onCommit(name);
+          }}
         />
         <EditableNumber
-          value={high} min={low} max={max} isFloat={isFloat}
+          value={high}
+          min={low}
+          max={max}
+          isFloat={isFloat}
           color={highOob ? 'var(--color-amber)' : full ? 'var(--color-fg-3)' : 'var(--color-fg-2)'}
-          onCommit={v => { onDrag(name, low, v); onCommit(name); }}
+          onCommit={(v) => {
+            onDrag(name, low, v);
+            onCommit(name);
+          }}
           align="right"
         />
       </div>
@@ -722,11 +927,16 @@ function RangeSlider({ name, min, max, low, high, onDrag, onCommit, constrainedM
 
 // ── MultiSelect ───────────────────────────────────────────────────────────────
 
-function MultiSelect({ values, selected, onToggle, onClear }: {
-  values:   string[];
+function MultiSelect({
+  values,
+  selected,
+  onToggle,
+  onClear,
+}: {
+  values: string[];
   selected: Set<string>;
   onToggle: (v: string) => void;
-  onClear:  () => void;
+  onClear: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const count = selected.size;
@@ -737,53 +947,102 @@ function MultiSelect({ values, selected, onToggle, onClear }: {
         <button
           className="w-full flex items-center justify-between gap-1.5 rounded-sm border border-line px-2 py-1 cursor-pointer bg-transparent transition-colors"
           style={{ fontSize: 'var(--font-size-xs)' }}
-          onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-base)'; }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'var(--color-base)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent';
+          }}
         >
-          <span className="truncate" style={{ color: count > 0 ? 'var(--color-fg)' : 'var(--color-fg-3)' }}>
+          <span
+            className="truncate"
+            style={{ color: count > 0 ? 'var(--color-fg)' : 'var(--color-fg-3)' }}
+          >
             {count > 0 ? `${count} of ${values.length}` : 'All'}
           </span>
-          {count > 0
-            ? <span className="shrink-0 rounded px-1 font-mono font-bold tabular-nums"
-                style={{ fontSize: 'var(--font-size-xs)', background: 'var(--color-cyan)', color: 'var(--color-void)' }}>
-                {count}
-              </span>
-            : <svg width="8" height="8" viewBox="0 0 8 8" className="shrink-0 opacity-40">
-                <path d="M2 3l2 2 2-2" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-              </svg>
-          }
+          {count > 0 ? (
+            <span
+              className="shrink-0 rounded px-1 font-mono font-bold tabular-nums"
+              style={{
+                fontSize: 'var(--font-size-xs)',
+                background: 'var(--color-cyan)',
+                color: 'var(--color-void)',
+              }}
+            >
+              {count}
+            </span>
+          ) : (
+            <svg width="8" height="8" viewBox="0 0 8 8" className="shrink-0 opacity-40">
+              <path
+                d="M2 3l2 2 2-2"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.2"
+                strokeLinecap="round"
+              />
+            </svg>
+          )}
         </button>
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content
-          sideOffset={4} align="start"
+          sideOffset={4}
+          align="start"
           className="border border-line shadow-lg rounded-md z-popover animate-fade-in"
-          style={{ minWidth: 'var(--radix-popover-trigger-width)', maxHeight: 260, overflowY: 'auto', background: 'var(--color-void)' }}
+          style={{
+            minWidth: 'var(--radix-popover-trigger-width)',
+            maxHeight: 260,
+            overflowY: 'auto',
+            background: 'var(--color-void)',
+          }}
         >
           {count > 0 && (
             <button
               className="block w-full text-left px-2 py-1.5 font-mono cursor-pointer bg-transparent border-none"
-              style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-fg-3)', borderBottom: '1px solid var(--color-line)' }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-base)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-              onClick={() => { onClear(); setOpen(false); }}
+              style={{
+                fontSize: 'var(--font-size-xs)',
+                color: 'var(--color-fg-3)',
+                borderBottom: '1px solid var(--color-line)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--color-base)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+              }}
+              onClick={() => {
+                onClear();
+                setOpen(false);
+              }}
             >
               Clear selection
             </button>
           )}
-          {values.map(v => (
-            <label key={v}
+          {values.map((v) => (
+            <label
+              key={v}
               className="flex items-center gap-2 px-2 py-1 cursor-pointer"
               style={{ fontSize: 'var(--font-size-xs)' }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'var(--color-base)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
-              <input type="checkbox"
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'var(--color-base)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+              }}
+            >
+              <input
+                type="checkbox"
                 checked={selected.has(v)}
                 onChange={() => onToggle(v)}
                 style={{ accentColor: 'var(--color-cyan)', flexShrink: 0 }}
               />
-              <span className="font-mono truncate"
-                style={{ color: selected.has(v) ? 'var(--color-cyan)' : 'var(--color-fg)', fontWeight: selected.has(v) ? 600 : 400 }}>
+              <span
+                className="font-mono truncate"
+                style={{
+                  color: selected.has(v) ? 'var(--color-cyan)' : 'var(--color-fg)',
+                  fontWeight: selected.has(v) ? 600 : 400,
+                }}
+              >
                 {v}
               </span>
             </label>
@@ -796,27 +1055,24 @@ function MultiSelect({ values, selected, onToggle, onClear }: {
 
 // ── InlineSelect ──────────────────────────────────────────────────────────────
 
-function InlineSelect({ values, selected, onToggle }: {
-  values:   string[];
+function InlineSelect({
+  values,
+  selected,
+  onToggle,
+}: {
+  values: string[];
   selected: Set<string>;
   onToggle: (v: string) => void;
 }) {
   return (
     <div className="flex flex-wrap gap-1">
-      {values.map(v => {
+      {values.map((v) => {
         const on = selected.has(v);
         return (
           <button
             key={v}
             onClick={() => onToggle(v)}
-            className="font-mono cursor-pointer border rounded-sm px-1.5 py-0.5 transition-colors"
-            style={{
-              fontSize: 'var(--font-size-xs)',
-              background:   on ? 'var(--color-cyan)'   : 'transparent',
-              color:        on ? 'var(--color-void)'   : 'var(--color-fg-2)',
-              borderColor:  on ? 'var(--color-cyan)'   : 'var(--color-line)',
-              fontWeight:   on ? 600 : 400,
-            }}
+            className={`sigil sigil-sm ${on ? 'active' : ''}`}
           >
             {v}
           </button>
@@ -871,33 +1127,45 @@ function partitionColumns(
 // ── ControlCenter (was FilterSidebar) ─────────────────────────────────────────
 
 const ControlCenter = memo(function ControlCenter({
-  columns, columnStats, columnCardinality,
-  rangeState, selected, textFilters,
-  onRangeDrag, onRangeCommit, onToggleSelect, onClearSelect, onTextChange,
+  columns,
+  columnStats,
+  columnCardinality,
+  rangeState,
+  selected,
+  textFilters,
+  onRangeDrag,
+  onRangeCommit,
+  onToggleSelect,
+  onClearSelect,
+  onTextChange,
   hasAnyFilter,
-  constrainedStats, noResults, pendingConstraints,
-  staticHistograms, constrainedHistograms,
-  visibleColumns, onToggleVisible,
+  constrainedStats,
+  noResults,
+  pendingConstraints,
+  staticHistograms,
+  constrainedHistograms,
+  visibleColumns,
+  onToggleVisible,
 }: {
-  columns:             ColumnInfo[];
-  columnStats:         Record<string, ColumnStats>;
-  columnCardinality:   Record<string, ColumnCardinality>;
-  rangeState:          Record<string, [number, number]>;
-  selected:            Record<string, Set<string>>;
-  textFilters:         Record<string, string>;
-  onRangeDrag:         (name: string, lo: number, hi: number) => void;
-  onRangeCommit:       (name: string) => void;
-  onToggleSelect:      (name: string, v: string) => void;
-  onClearSelect:       (name: string) => void;
-  onTextChange:        (name: string, v: string) => void;
-  hasAnyFilter:        boolean;
-  constrainedStats:    Record<string, ColumnStats>;
-  noResults:           boolean;
-  pendingConstraints:  boolean;
-  staticHistograms:    Record<string, number[]>;
+  columns: ColumnInfo[];
+  columnStats: Record<string, ColumnStats>;
+  columnCardinality: Record<string, ColumnCardinality>;
+  rangeState: Record<string, [number, number]>;
+  selected: Record<string, Set<string>>;
+  textFilters: Record<string, string>;
+  onRangeDrag: (name: string, lo: number, hi: number) => void;
+  onRangeCommit: (name: string) => void;
+  onToggleSelect: (name: string, v: string) => void;
+  onClearSelect: (name: string) => void;
+  onTextChange: (name: string, v: string) => void;
+  hasAnyFilter: boolean;
+  constrainedStats: Record<string, ColumnStats>;
+  noResults: boolean;
+  pendingConstraints: boolean;
+  staticHistograms: Record<string, number[]>;
   constrainedHistograms: Record<string, number[]>;
-  visibleColumns:      Set<string>;
-  onToggleVisible:     (name: string) => void;
+  visibleColumns: Set<string>;
+  onToggleVisible: (name: string) => void;
 }) {
   // Partition into low-cardinality chips, numerics, and text columns
   const lowCard: { col: ColumnInfo; card: ColumnCardinality; sel: Set<string> }[] = [];
@@ -918,13 +1186,17 @@ const ControlCenter = memo(function ControlCenter({
   }
 
   const renderColumnCard = (c: ColumnInfo) => {
-    const isNum  = isNumericType(c.type);
-    const stats  = columnStats[c.name];
-    const card   = columnCardinality[c.name];
-    const sel    = selected[c.name] ?? new Set<string>();
+    const isNum = isNumericType(c.type);
+    const stats = columnStats[c.name];
+    const card = columnCardinality[c.name];
+    const sel = selected[c.name] ?? new Set<string>();
     const hasCard = card && card.distinct >= 1 && card.distinct <= DROPDOWN_MAX;
     const active = isNum
-      ? !!(rangeState[c.name] && stats && (rangeState[c.name][0] > stats.min || rangeState[c.name][1] < stats.max))
+      ? !!(
+          rangeState[c.name] &&
+          stats &&
+          (rangeState[c.name][0] > stats.min || rangeState[c.name][1] < stats.max)
+        )
       : hasCard
         ? sel.size > 0
         : !!textFilters[c.name]?.trim();
@@ -933,20 +1205,32 @@ const ControlCenter = memo(function ControlCenter({
       <div key={c.name}>
         <div className="flex items-baseline gap-1.5 mb-1">
           <span
-            onClick={(e) => { e.stopPropagation(); onToggleVisible(c.name); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleVisible(c.name);
+            }}
             className="font-semibold cursor-pointer select-none"
             title={visibleColumns.has(c.name) ? 'Hide in table' : 'Show in table'}
             style={{
               fontSize: 'var(--font-size-xs)',
-              color: active ? 'var(--color-cyan)' : visibleColumns.has(c.name) ? 'var(--color-fg-2)' : 'var(--color-fg-3)',
-              borderBottom: visibleColumns.has(c.name) ? '1px solid var(--color-cyan)' : '1px dashed var(--color-fg-3)',
+              color: active
+                ? 'var(--color-cyan)'
+                : visibleColumns.has(c.name)
+                  ? 'var(--color-fg-2)'
+                  : 'var(--color-fg-3)',
+              borderBottom: visibleColumns.has(c.name)
+                ? '1px solid var(--color-cyan)'
+                : '1px dashed var(--color-fg-3)',
               opacity: visibleColumns.has(c.name) ? 1 : 0.5,
               transition: 'color var(--t-fast), opacity var(--t-fast), border-color var(--t-fast)',
             }}
           >
             {c.name}
           </span>
-          <span className="font-mono shrink-0 ml-auto" style={{ fontSize: 'calc(var(--font-size-xs) - 1px)', opacity: 0.25 }}>
+          <span
+            className="font-mono shrink-0 ml-auto"
+            style={{ fontSize: 'calc(var(--font-size-xs) - 1px)', opacity: 0.25 }}
+          >
             {c.type}
           </span>
         </div>
@@ -955,17 +1239,35 @@ const ControlCenter = memo(function ControlCenter({
           !stats ? (
             /* Schema says numeric but stats haven't hydrated — skeleton track */
             <div style={{ height: 20, position: 'relative' }}>
-              <div className="skeleton rounded-full" style={{ height: 2, width: '100%', position: 'absolute', top: '50%', transform: 'translateY(-50%)' }} />
+              <div
+                className="skeleton rounded-full"
+                style={{
+                  height: 2,
+                  width: '100%',
+                  position: 'absolute',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                }}
+              />
             </div>
           ) : stats.min === stats.max ? (
-            <span className="font-mono" style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-fg-3)', fontStyle: 'italic' }}>
-              {Number.isInteger(stats.min) ? stats.min.toLocaleString() : stats.min.toFixed(2)} (constant)
+            <span
+              className="font-mono"
+              style={{
+                fontSize: 'var(--font-size-xs)',
+                color: 'var(--color-fg-3)',
+                fontStyle: 'italic',
+              }}
+            >
+              {Number.isInteger(stats.min) ? stats.min.toLocaleString() : stats.min.toFixed(2)}{' '}
+              (constant)
             </span>
           ) : (
             <RangeSlider
               name={c.name}
-              min={stats.min} max={stats.max}
-              low={rangeState[c.name]?.[0]  ?? stats.min}
+              min={stats.min}
+              max={stats.max}
+              low={rangeState[c.name]?.[0] ?? stats.min}
               high={rangeState[c.name]?.[1] ?? stats.max}
               constrainedMin={hasAnyFilter ? constrainedStats[c.name]?.min : undefined}
               constrainedMax={hasAnyFilter ? constrainedStats[c.name]?.max : undefined}
@@ -978,20 +1280,27 @@ const ControlCenter = memo(function ControlCenter({
           )
         ) : hasCard ? (
           card.values.length === 1 ? (
-            <span className="font-mono" style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-fg-3)', fontStyle: 'italic' }}>
+            <span
+              className="font-mono"
+              style={{
+                fontSize: 'var(--font-size-xs)',
+                color: 'var(--color-fg-3)',
+                fontStyle: 'italic',
+              }}
+            >
               {card.values[0]} (constant)
             </span>
           ) : card.values.length <= 6 ? (
             <InlineSelect
               values={card.values}
               selected={sel}
-              onToggle={v => onToggleSelect(c.name, v)}
+              onToggle={(v) => onToggleSelect(c.name, v)}
             />
           ) : (
             <MultiSelect
               values={card.values}
               selected={sel}
-              onToggle={v => onToggleSelect(c.name, v)}
+              onToggle={(v) => onToggleSelect(c.name, v)}
               onClear={() => onClearSelect(c.name)}
             />
           )
@@ -999,13 +1308,14 @@ const ControlCenter = memo(function ControlCenter({
           <input
             className="w-full bg-transparent border border-line rounded-sm text-fg-2 font-mono placeholder:text-fg-3 focus:outline-none"
             style={{
-              fontSize: 'var(--font-size-xs)', padding: '3px 6px',
+              fontSize: 'var(--font-size-xs)',
+              padding: '3px 6px',
               borderColor: textFilters[c.name]?.trim() ? 'var(--color-cyan)' : undefined,
               transition: 'border-color var(--t-fast)',
             }}
             placeholder="Search…"
             value={textFilters[c.name] ?? ''}
-            onChange={e => onTextChange(c.name, e.target.value)}
+            onChange={(e) => onTextChange(c.name, e.target.value)}
             spellCheck={false}
           />
         ) : null}
@@ -1020,25 +1330,22 @@ const ControlCenter = memo(function ControlCenter({
         <div className="flex flex-wrap gap-x-5 gap-y-2 px-4 pt-4 pb-2">
           {lowCard.map(({ col, card, sel }) => (
             <div key={col.name} className="flex items-center gap-1.5">
-              <span className="font-semibold shrink-0" style={{
-                fontSize: 'var(--font-size-xs)',
-                color: sel.size > 0 ? 'var(--color-cyan)' : 'var(--color-fg-3)',
-              }}>
+              <span
+                className="font-semibold shrink-0"
+                style={{
+                  fontSize: 'var(--font-size-xs)',
+                  color: sel.size > 0 ? 'var(--color-cyan)' : 'var(--color-fg-3)',
+                }}
+              >
                 {col.name}
               </span>
-              {card.values.map(v => {
+              {card.values.map((v) => {
                 const on = sel.has(v);
                 return (
-                  <button key={v}
+                  <button
+                    key={v}
                     onClick={() => onToggleSelect(col.name, v)}
-                    className="font-mono cursor-pointer border rounded-sm px-1.5 py-0.5 transition-colors"
-                    style={{
-                      fontSize: 'var(--font-size-xs)',
-                      background:  on ? 'var(--color-cyan)' : 'transparent',
-                      color:       on ? 'var(--color-void)' : 'var(--color-fg-2)',
-                      borderColor: on ? 'var(--color-cyan)' : 'var(--color-line)',
-                      fontWeight:  on ? 600 : 400,
-                    }}
+                    className={`sigil sigil-sm ${on ? 'active' : ''}`}
                   >
                     {v}
                   </button>
@@ -1050,17 +1357,23 @@ const ControlCenter = memo(function ControlCenter({
       )}
 
       {/* Two-column layout: numerics left, text right */}
-      <div className="grid gap-4 p-4"
-        style={{ gridTemplateColumns: (numerics.length > 0 && texts.length > 0) ? '1fr 1fr' : '1fr' }}>
+      <div
+        className="grid gap-4 p-4"
+        style={{ gridTemplateColumns: numerics.length > 0 && texts.length > 0 ? '1fr 1fr' : '1fr' }}
+      >
         {numerics.length > 0 && (
-          <div className="grid gap-4 content-start"
-            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+          <div
+            className="grid gap-4 content-start"
+            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}
+          >
             {numerics.map(renderColumnCard)}
           </div>
         )}
         {texts.length > 0 && (
-          <div className="grid gap-4 content-start"
-            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+          <div
+            className="grid gap-4 content-start"
+            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}
+          >
             {texts.map(renderColumnCard)}
           </div>
         )}
@@ -1072,26 +1385,36 @@ const ControlCenter = memo(function ControlCenter({
 // ── VirtualRows ───────────────────────────────────────────────────────────────
 
 const VirtualRows = memo(function VirtualRows({
-  scrollRef, rowCount, fetchRange, getCell, hasRow, columns, columnStats, colWidths, totalWidth, pipelineStatus, cacheGen: _cacheGen,
+  scrollRef,
+  rowCount,
+  fetchRange,
+  getCell,
+  hasRow,
+  columns,
+  columnStats,
+  colWidths,
+  totalWidth,
+  pipelineStatus,
+  cacheGen: _cacheGen,
 }: {
-  scrollRef:   RefObject<HTMLDivElement | null>;
-  rowCount:    number;
-  fetchRange:  (offset: number, limit: number, signal?: AbortSignal) => Promise<void>;
-  getCell:     (globalIndex: number, colName: string) => unknown;
-  hasRow:      (globalIndex: number) => boolean;
-  columns:     ColumnInfo[];
+  scrollRef: RefObject<HTMLDivElement | null>;
+  rowCount: number;
+  fetchRange: (offset: number, limit: number, signal?: AbortSignal) => Promise<void>;
+  getCell: (globalIndex: number, colName: string) => unknown;
+  hasRow: (globalIndex: number) => boolean;
+  columns: ColumnInfo[];
   columnStats: Record<string, ColumnStats>;
-  colWidths:   Record<string, number>;
-  totalWidth:  number;
+  colWidths: Record<string, number>;
+  totalWidth: number;
   pipelineStatus: PipelineStatus;
-  cacheGen:    number; // prop change triggers re-render when Arrow data arrives
+  cacheGen: number; // prop change triggers re-render when Arrow data arrives
 }) {
   const virtualizer = useVirtualizer({
-    count:            rowCount,
+    count: rowCount,
     getScrollElement: () => scrollRef.current,
-    estimateSize:     () => ROW_H,
-    overscan:         20,
-    initialRect:      { width: 0, height: 800 },
+    estimateSize: () => ROW_H,
+    overscan: 20,
+    initialRect: { width: 0, height: 800 },
   });
 
   // Debounced fetch — waits 150ms after scroll stops before hitting the server.
@@ -1102,7 +1425,7 @@ const VirtualRows = memo(function VirtualRows({
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const start = items.length > 0 ? items[0].index : -1;
-  const end   = items.length > 0 ? items[items.length - 1].index : -1;
+  const end = items.length > 0 ? items[items.length - 1].index : -1;
 
   useEffect(() => {
     if (start < 0) return;
@@ -1114,7 +1437,10 @@ const VirtualRows = memo(function VirtualRows({
     for (let i = start; i <= end; i++) {
       if (!hasRow(i)) {
         const ws = Math.floor(i / WINDOW_SIZE) * WINDOW_SIZE;
-        if (!seen.has(ws)) { seen.add(ws); windowStarts.push(ws); }
+        if (!seen.has(ws)) {
+          seen.add(ws);
+          windowStarts.push(ws);
+        }
       }
     }
 
@@ -1128,9 +1454,7 @@ const VirtualRows = memo(function VirtualRows({
       abortRef.current = controller;
 
       Promise.all(
-        windowStarts.map(ws =>
-          fetchRange(ws, WINDOW_SIZE, controller.signal).catch(() => {})
-        )
+        windowStarts.map((ws) => fetchRange(ws, WINDOW_SIZE, controller.signal).catch(() => {})),
       );
       // No local state update — fetchRange stores the Arrow table in the
       // hook's cache and bumps cacheGen, which propagates as a prop change.
@@ -1140,65 +1464,96 @@ const VirtualRows = memo(function VirtualRows({
       clearTimeout(timerRef.current);
       abortRef.current?.abort();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [start, end, fetchRange, hasRow, pipelineStatus, _cacheGen]);
 
   return (
     <>
       <div style={{ height: virtualizer.getTotalSize(), minWidth: '100%', width: totalWidth }} />
-      <div style={{ position: 'relative', minWidth: '100%', width: totalWidth, marginTop: -virtualizer.getTotalSize() }}>
-        {items.map(vRow => {
+      <div
+        style={{
+          position: 'relative',
+          minWidth: '100%',
+          width: totalWidth,
+          marginTop: -virtualizer.getTotalSize(),
+        }}
+      >
+        {items.map((vRow) => {
           const rowLoaded = hasRow(vRow.index);
 
           return (
-            <div key={vRow.key} className="flex"
+            <div
+              key={vRow.key}
+              className="flex"
               style={{
-                position: 'absolute', top: 0, left: 0, width: '100%', height: ROW_H,
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: ROW_H,
                 transform: `translateY(${Math.round(vRow.start)}px)`,
               }}
             >
-              {columns.map(c => {
-                const w      = colWidths[c.name] ?? colWFromName(c.name, c.type);
-                const isNum  = isNumericType(c.type);
-                const stats  = isNum ? columnStats[c.name] : undefined;
+              {columns.map((c) => {
+                const w = colWidths[c.name] ?? colWFromName(c.name, c.type);
+                const isNum = isNumericType(c.type);
+                const stats = isNum ? columnStats[c.name] : undefined;
 
                 if (!rowLoaded) {
                   const pct = 55 + ((vRow.index * 17 + c.name.length * 11) % 40);
                   return (
-                    <div key={c.name} style={{
-                      width: w, minWidth: 50, flexShrink: 0,
-                      padding: '0 6px',
-                      borderBottom: '1px solid var(--color-line)',
-                      lineHeight: `${ROW_H}px`,
-                    }}>
-                      <div className="skeleton rounded" style={{ height: 12, width: `${pct}%`, marginTop: 8,
-                        ...(isNum ? { marginLeft: 'auto' } : {}),
-                      }} />
+                    <div
+                      key={c.name}
+                      style={{
+                        width: w,
+                        minWidth: 50,
+                        flexShrink: 0,
+                        padding: '0 6px',
+                        borderBottom: '1px solid var(--color-line)',
+                        lineHeight: `${ROW_H}px`,
+                      }}
+                    >
+                      <div
+                        className="skeleton rounded"
+                        style={{
+                          height: 12,
+                          width: `${pct}%`,
+                          marginTop: 8,
+                          ...(isNum ? { marginLeft: 'auto' } : {}),
+                        }}
+                      />
                     </div>
                   );
                 }
 
                 // Direct Arrow vector access — no materialized Record
-                const raw    = getCell(vRow.index, c.name);
+                const raw = getCell(vRow.index, c.name);
                 const numVal = isNum ? (typeof raw === 'number' ? raw : NaN) : NaN;
 
                 return (
-                  <div key={c.name} style={{
-                    width: w, minWidth: 50, flexShrink: 0,
-                    padding: '0 6px',
-                    borderBottom: '1px solid var(--color-line)',
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    textAlign: isNum ? 'right' : 'left',
-                    fontVariantNumeric: isNum ? 'tabular-nums' : undefined,
-                    lineHeight: `${ROW_H}px`,
-                    fontSize: 'var(--font-size-xs)',
-                    fontFamily: 'var(--font-mono)',
-                    ...(stats && !isNaN(numVal) ? heatStyle(numVal, stats.min, stats.max) : {}),
-                  }}>
-                    {raw === null || raw === undefined
-                      ? <span style={{ color: 'var(--color-fg-3)', fontStyle: 'italic' }}>—</span>
-                      : fmt(raw, c.type)
-                    }
+                  <div
+                    key={c.name}
+                    style={{
+                      width: w,
+                      minWidth: 50,
+                      flexShrink: 0,
+                      padding: '0 6px',
+                      borderBottom: '1px solid var(--color-line)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      textAlign: isNum ? 'right' : 'left',
+                      fontVariantNumeric: isNum ? 'tabular-nums' : undefined,
+                      lineHeight: `${ROW_H}px`,
+                      fontSize: 'var(--font-size-xs)',
+                      fontFamily: 'var(--font-mono)',
+                      ...(stats && !isNaN(numVal) ? heatStyle(numVal, stats.min, stats.max) : {}),
+                    }}
+                  >
+                    {raw === null || raw === undefined ? (
+                      <span style={{ color: 'var(--color-fg-3)', fontStyle: 'italic' }}>—</span>
+                    ) : (
+                      fmt(raw, c.type)
+                    )}
                   </div>
                 );
               })}
@@ -1212,15 +1567,28 @@ const VirtualRows = memo(function VirtualRows({
 
 // ── ParquetPreview ─────────────────────────────────────────────────────────────
 
-export default function ParquetPreview({ fileId, onProgress }: {
+export default function ParquetPreview({
+  fileId,
+  filename,
+  onExport,
+  onProgress,
+}: {
   fileId: string;
+  filename?: string;
+  onExport?: () => void;
   onProgress?: (config: { steps: StepperStep[]; active: number } | null) => void;
 }) {
   const {
-    pipeline, columns, totalRows, filteredCount,
+    pipeline,
+    columns,
+    totalRows,
+    filteredCount,
     baseProfile,
-    getCell, hasRow, fetchRange,
-    applyFilters, isQuerying, cacheGen,
+    getCell,
+    hasRow,
+    fetchRange,
+    applyFilters,
+    cacheGen,
   } = useParquetPreview(fileId);
 
   // Demand-driven: fetch enrichable attributes from the server
@@ -1249,7 +1617,7 @@ export default function ParquetPreview({ fileId, onProgress }: {
     for (const [name, c] of Object.entries(raw)) {
       result[name] = {
         distinct: c.distinct,
-        values: (c.topValues ?? []).map(tv => tv.value),
+        values: (c.topValues ?? []).map((tv) => tv.value),
       };
     }
     return result;
@@ -1263,9 +1631,9 @@ export default function ParquetPreview({ fileId, onProgress }: {
   const [constrainedHistograms, setConstrainedHistograms] = useState<Record<string, number[]>>({});
 
   // ── Reprofile handler ──────────────────────────────────────────────────────
-  const setFileProfile = useAppStore(s => s.setFileProfile);
-  const [reprofiling, setReprofiling] = useState(false);
-  const handleReprofile = useCallback(async () => {
+  const setFileProfile = useAppStore((s) => s.setFileProfile);
+  const [_reprofiling, setReprofiling] = useState(false);
+  const _handleReprofile = useCallback(async () => {
     setReprofiling(true);
     try {
       const res = await apiFetch(`/api/files/${fileId}/reprofile`, { method: 'POST' });
@@ -1279,13 +1647,16 @@ export default function ParquetPreview({ fileId, onProgress }: {
         // Force page reload to pick up fresh profile
         window.location.reload();
       }
-    } catch { /* non-fatal */ }
-    finally { setReprofiling(false); }
+    } catch {
+      /* non-fatal */
+    } finally {
+      setReprofiling(false);
+    }
   }, [fileId, setFileProfile]);
 
-  const scrollRef   = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  const debRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resizingRef = useRef<{ name: string; startX: number; startW: number } | null>(null);
 
   // ── State machine ────────────────────────────────────────────────────────
@@ -1298,14 +1669,16 @@ export default function ParquetPreview({ fileId, onProgress }: {
   const stage = pipeline.activeStep;
 
   // ── Broadcast pipeline state to parent via onProgress ──────────────────────
-  const isError = pipeline.status === 'error' || pipeline.status === 'failed' || pipeline.status === 'unavailable';
+  const isError =
+    pipeline.status === 'error' ||
+    pipeline.status === 'failed' ||
+    pipeline.status === 'unavailable';
   const displayError = isError ? pipeline.error : undefined;
   const currentActive = stage;
-  const currentSteps: StepperStep[] = isError && displayError
-    ? PARQUET_STEPS.map((s, i) =>
-        i === currentActive ? { ...s, error: displayError } : s
-      )
-    : [...PARQUET_STEPS];
+  const currentSteps: StepperStep[] =
+    isError && displayError
+      ? PARQUET_STEPS.map((s, i) => (i === currentActive ? { ...s, error: displayError } : s))
+      : [...PARQUET_STEPS];
 
   useEffect(() => {
     if (pipeline.status === 'unavailable' || pipeline.status === 'failed') {
@@ -1329,7 +1702,8 @@ export default function ParquetPreview({ fileId, onProgress }: {
     (overrides: Record<string, number>) => {
       const result: Record<string, number> = {};
       for (const c of columns) {
-        result[c.name] = overrides[c.name] ?? colWFromName(c.name, c.type, charLengths?.[c.name]?.max);
+        result[c.name] =
+          overrides[c.name] ?? colWFromName(c.name, c.type, charLengths?.[c.name]?.max);
       }
       return result;
     },
@@ -1353,30 +1727,31 @@ export default function ParquetPreview({ fileId, onProgress }: {
   );
 
   const triggerRef = useRef<() => void>(() => {});
-  const [selected,           setSelected]           = useState<Record<string, Set<string>>>({});
-  const [textFilters,        setTextFilters]        = useState<Record<string, string>>({});
-  const [sorting,            setSorting]             = useState<SortingState>([]);
-  const [constrainedStats,   setConstrainedStats]   = useState<Record<string, ColumnStats>>({});
+  const [, startTransition] = useTransition();
+  const [selected, setSelected] = useState<Record<string, Set<string>>>({});
+  const [textFilters, setTextFilters] = useState<Record<string, string>>({});
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [constrainedStats, setConstrainedStats] = useState<Record<string, ColumnStats>>({});
   const [pendingConstraints, setPendingConstraints] = useState(false);
 
   // ── Drawer & column visibility state ────────────────────────────────────────
   const [isTableOpen, setIsTableOpen] = useState(false);
 
-  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(() =>
-    new Set(columns.map(c => c.name))
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(
+    () => new Set(columns.map((c) => c.name)),
   );
 
   // Seed visibleColumns when columns first arrive
   const seededRef = useRef(false);
   if (columns.length > 0 && !seededRef.current && visibleColumns.size === 0) {
     seededRef.current = true;
-    setVisibleColumns(new Set(columns.map(c => c.name)));
+    setVisibleColumns(new Set(columns.map((c) => c.name)));
   }
 
   // activeColumns is defined after partitionColumns — see Derived state section.
 
   const handleToggleVisible = useCallback((name: string) => {
-    setVisibleColumns(prev => {
+    setVisibleColumns((prev) => {
       const next = new Set(prev);
       if (next.has(name)) next.delete(name);
       else next.add(name);
@@ -1386,12 +1761,13 @@ export default function ParquetPreview({ fileId, onProgress }: {
 
   // ── TanStack Table (header sort state only) ────────────────────────────────
 
-  const columnDefs: ColumnDef<unknown>[] = useMemo(() =>
-    columns.map(c => ({
-      id: c.name,
-      accessorKey: c.name,
-      meta: { type: c.type },
-    })),
+  const columnDefs: ColumnDef<unknown>[] = useMemo(
+    () =>
+      columns.map((c) => ({
+        id: c.name,
+        accessorKey: c.name,
+        meta: { type: c.type },
+      })),
     [columns],
   );
 
@@ -1405,13 +1781,21 @@ export default function ParquetPreview({ fileId, onProgress }: {
     getCoreRowModel: getCoreRowModel(),
   });
 
-  const sortSpecs: SortSpec[] = useMemo(() =>
-    sorting.map(s => ({ column: s.id, direction: s.desc ? 'desc' as const : 'asc' as const })),
+  const sortSpecs: SortSpec[] = useMemo(
+    () =>
+      sorting.map((s) => ({
+        column: s.id,
+        direction: s.desc ? ('desc' as const) : ('asc' as const),
+      })),
     [sorting],
   );
 
-
-  useEffect(() => () => { if (debRef.current) clearTimeout(debRef.current); }, []);
+  useEffect(
+    () => () => {
+      if (debRef.current) clearTimeout(debRef.current);
+    },
+    [],
+  );
 
   // ── The Doorbell ─────────────────────────────────────────────────────────────
   // When the drawer opens, VirtualRows mounts and expects rows.  But if no
@@ -1456,16 +1840,18 @@ export default function ParquetPreview({ fileId, onProgress }: {
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
 
     setPendingConstraints(true);
-    applyFilters(filters, sortSpecs, columnStats).then(result => {
-      if (result.constrainedStats) setConstrainedStats(result.constrainedStats);
-      else setConstrainedStats({});
-      if (result.constrainedHistograms) setConstrainedHistograms(result.constrainedHistograms);
-      else setConstrainedHistograms({});
-      setPendingConstraints(false);
-    }).catch((err) => {
-      console.error('Filter query error:', err);
-      setPendingConstraints(false);
-    });
+    applyFilters(filters, sortSpecs, columnStats)
+      .then((result) => {
+        if (result.constrainedStats) setConstrainedStats(result.constrainedStats);
+        else setConstrainedStats({});
+        if (result.constrainedHistograms) setConstrainedHistograms(result.constrainedHistograms);
+        else setConstrainedHistograms({});
+        setPendingConstraints(false);
+      })
+      .catch((err) => {
+        console.error('Filter query error:', err);
+        setPendingConstraints(false);
+      });
   }, [pipeline.status, rangeState, selected, textFilters, sortSpecs, columnStats, applyFilters]);
 
   // Keep ref synced so debounced callbacks always call the latest version
@@ -1477,9 +1863,10 @@ export default function ParquetPreview({ fileId, onProgress }: {
   const isFirstReadyRef = useRef(true);
   useEffect(() => {
     if (pipeline.status === 'ready') {
-      const hasActiveFilters = Object.values(textFilters).some(v => v.trim())
-        || Object.keys(selected).some(k => selected[k].size > 0)
-        || sorting.length > 0;
+      const hasActiveFilters =
+        Object.values(textFilters).some((v) => v.trim()) ||
+        Object.keys(selected).some((k) => selected[k].size > 0) ||
+        sorting.length > 0;
 
       if (isFirstReadyRef.current) {
         isFirstReadyRef.current = false;
@@ -1487,7 +1874,7 @@ export default function ParquetPreview({ fileId, onProgress }: {
       }
       triggerRef.current();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pipeline.status, sorting]);
 
   // ── Filter handlers ──────────────────────────────────────────────────────────
@@ -1502,36 +1889,53 @@ export default function ParquetPreview({ fileId, onProgress }: {
       rafRef.current = requestAnimationFrame(() => {
         rafRef.current = null;
         const p = pendingDrag.current;
-        if (p) setRangeOverrides(prev => ({ ...prev, [p.name]: [p.lo, p.hi] }));
+        if (p) setRangeOverrides((prev) => ({ ...prev, [p.name]: [p.lo, p.hi] }));
       });
     }
   }, []);
 
   const handleRangeCommit = useCallback((_name: string) => {
     if (debRef.current) clearTimeout(debRef.current);
-    triggerRef.current();
-  }, []);
+    startTransition(() => {
+      triggerRef.current();
+    });
+  }, [startTransition]);
 
   const handleTextChange = useCallback((name: string, value: string) => {
-    setTextFilters(prev => ({ ...prev, [name]: value }));
+    setTextFilters((prev) => ({ ...prev, [name]: value }));
     if (debRef.current) clearTimeout(debRef.current);
     debRef.current = setTimeout(() => triggerRef.current(), 300);
   }, []);
 
   const handleToggleSelect = useCallback((name: string, value: string) => {
-    setSelected(prev => {
+    // Paint the chip immediately
+    setSelected((prev) => {
       const set = new Set(prev[name] ?? []);
-      if (set.has(value)) set.delete(value); else set.add(value);
-      if (set.size === 0) { const next = { ...prev }; delete next[name]; return next; }
+      if (set.has(value)) set.delete(value);
+      else set.add(value);
+      if (set.size === 0) {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      }
       return { ...prev, [name]: set };
     });
-    setTimeout(() => triggerRef.current(), 0);
-  }, []);
+    // Defer the heavy tree reconciliation
+    startTransition(() => {
+      triggerRef.current();
+    });
+  }, [startTransition]);
 
   const handleClearSelect = useCallback((name: string) => {
-    setSelected(prev => { const next = { ...prev }; delete next[name]; return next; });
-    setTimeout(() => triggerRef.current(), 0);
-  }, []);
+    setSelected((prev) => {
+      const next = { ...prev };
+      delete next[name];
+      return next;
+    });
+    startTransition(() => {
+      triggerRef.current();
+    });
+  }, [startTransition]);
 
   const handleClearAll = useCallback(() => {
     setRangeOverrides({});
@@ -1540,9 +1944,11 @@ export default function ParquetPreview({ fileId, onProgress }: {
     setConstrainedStats({});
     setConstrainedHistograms({});
     setPendingConstraints(false);
-    // Clear filters on the hook
-    applyFilters([], sortSpecs);
-  }, [columns, columnStats, sortSpecs, applyFilters]);
+    // Defer the heavy filter clear
+    startTransition(() => {
+      applyFilters([], sortSpecs);
+    });
+  }, [columns, columnStats, sortSpecs, applyFilters, startTransition]);
 
   // ── Column resize ──────────────────────────────────────────────────────────
 
@@ -1551,7 +1957,7 @@ export default function ParquetPreview({ fileId, onProgress }: {
     const onMove = (e: MouseEvent) => {
       const r = resizingRef.current;
       if (!r) return;
-      setColWidthOverrides(prev => ({
+      setColWidthOverrides((prev) => ({
         ...prev,
         [r.name]: Math.max(50, r.startW + e.clientX - r.startX),
       }));
@@ -1571,12 +1977,14 @@ export default function ParquetPreview({ fileId, onProgress }: {
 
   // ── Derived state ──────────────────────────────────────────────────────────
 
-  const hasAnyFilter = Object.entries(rangeState).some(([name, [lo, hi]]) => {
-    const s = columnStats[name];
-    return s && (lo > s.min || hi < s.max);
-  }) || Object.keys(selected).some(k => selected[k].size > 0)
-     || Object.values(textFilters).some(v => v.trim());
-  const noResults  = hasAnyFilter && filteredCount === 0;
+  const hasAnyFilter =
+    Object.entries(rangeState).some(([name, [lo, hi]]) => {
+      const s = columnStats[name];
+      return s && (lo > s.min || hi < s.max);
+    }) ||
+    Object.keys(selected).some((k) => selected[k].size > 0) ||
+    Object.values(textFilters).some((v) => v.trim());
+  const noResults = hasAnyFilter && filteredCount === 0;
 
   // Partition columns into constants (single-value), variables (filterable), and tableEligible.
   // Low-cardinality categoricals (≤5 distinct) appear in the ControlCenter as chips
@@ -1589,8 +1997,8 @@ export default function ParquetPreview({ fileId, onProgress }: {
   // activeColumns: table-eligible columns that are toggled visible.
   // Constants live in the Metadata Crown badges. Low-cardinality categoricals
   // live in the ControlCenter as InlineSelect chips. Neither appears in the table.
-  const activeColumns = useMemo(() =>
-    tableEligible.filter(c => visibleColumns.has(c.name)),
+  const activeColumns = useMemo(
+    () => tableEligible.filter((c) => visibleColumns.has(c.name)),
     [tableEligible, visibleColumns],
   );
 
@@ -1600,11 +2008,13 @@ export default function ParquetPreview({ fileId, onProgress }: {
   );
 
   // Frozen snapshot for the skeleton grid — captured once at stage 1, never changes.
-  const skelRef = useRef<{ cols: ColumnInfo[], widths: Record<string, number> } | null>(null);
+  const skelRef = useRef<{ cols: ColumnInfo[]; widths: Record<string, number> } | null>(null);
   if (activeColumns.length > 0 && !skelRef.current) {
     skelRef.current = {
       cols: activeColumns,
-      widths: Object.fromEntries(activeColumns.map(c => [c.name, colWidths[c.name] ?? colWFromName(c.name, c.type)])),
+      widths: Object.fromEntries(
+        activeColumns.map((c) => [c.name, colWidths[c.name] ?? colWFromName(c.name, c.type)]),
+      ),
     };
   }
 
@@ -1613,24 +2023,37 @@ export default function ParquetPreview({ fileId, onProgress }: {
   const SKEL_ROWS = 15;
   const skeletonGrid = useMemo(() => {
     if (!skelData) return null;
-    const skelTotalWidth = skelData.cols.reduce((s, c) => s + (skelData.widths[c.name] ?? colWFromName(c.name, c.type)), 0);
+    const skelTotalWidth = skelData.cols.reduce(
+      (s, c) => s + (skelData.widths[c.name] ?? colWFromName(c.name, c.type)),
+      0,
+    );
     return (
       <div className="flex flex-col" style={{ width: skelTotalWidth }}>
         {Array.from({ length: SKEL_ROWS }, (_, i) => (
           <div key={i} className="flex" style={{ height: ROW_H }}>
-            {skelData.cols.map(c => {
+            {skelData.cols.map((c) => {
               const isNum = isNumericType(c.type);
               return (
-                <div key={c.name} style={{
-                  width: skelData.widths[c.name] ?? colWFromName(c.name, c.type),
-                  minWidth: 50, flexShrink: 0, padding: '0 6px',
-                  borderBottom: '1px solid var(--color-line)',
-                  lineHeight: `${ROW_H}px`,
-                }}>
-                  <div className="skeleton rounded"
-                    style={{ height: 12, width: `${55 + ((i * 17 + c.name.length * 11) % 40)}%`, marginTop: 8,
+                <div
+                  key={c.name}
+                  style={{
+                    width: skelData.widths[c.name] ?? colWFromName(c.name, c.type),
+                    minWidth: 50,
+                    flexShrink: 0,
+                    padding: '0 6px',
+                    borderBottom: '1px solid var(--color-line)',
+                    lineHeight: `${ROW_H}px`,
+                  }}
+                >
+                  <div
+                    className="skeleton rounded"
+                    style={{
+                      height: 12,
+                      width: `${55 + ((i * 17 + c.name.length * 11) % 40)}%`,
+                      marginTop: 8,
                       ...(isNum ? { marginLeft: 'auto' } : {}),
-                    }} />
+                    }}
+                  />
                 </div>
               );
             })}
@@ -1642,16 +2065,23 @@ export default function ParquetPreview({ fileId, onProgress }: {
 
   // Memoize the entire skeleton overlay
   const skelVisible = stage >= 1 && stage < 4;
-  const skeletonOverlay = useMemo(() => (
-    <div style={{
-      position: 'absolute', inset: 0, zIndex: 10,
-      background: 'var(--color-void)',
-      opacity: skelVisible ? 1 : 0,
-      pointerEvents: skelVisible ? 'auto' : 'none',
-    }}>
-      {skeletonGrid}
-    </div>
-  ), [skelVisible, skeletonGrid]);
+  const skeletonOverlay = useMemo(
+    () => (
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          zIndex: 10,
+          background: 'var(--color-void)',
+          opacity: skelVisible ? 1 : 0,
+          pointerEvents: skelVisible ? 'auto' : 'none',
+        }}
+      >
+        {skeletonGrid}
+      </div>
+    ),
+    [skelVisible, skeletonGrid],
+  );
 
   // ── Loading / error states ─────────────────────────────────────────────────
 
@@ -1664,111 +2094,134 @@ export default function ParquetPreview({ fileId, onProgress }: {
   const isReady = pipeline.status === 'ready' || pipeline.status === 'ready_background_work';
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden" style={{
-      background: 'var(--color-void)', minHeight: 600,
-    }}>
+    <div
+      className="flex flex-col flex-1"
+      style={{
+        background: 'var(--color-void)',
+        minHeight: 600,
+      }}
+    >
+      {/* ── Glass Canopy: The Monolithic Chassis ─────────────────────── */}
+      <div className="sticky top-0 z-50 shrink-0 glass-canopy mx-3 mt-3 px-4 pt-3 pb-4 flex flex-col gap-3">
 
-      {/* ── Row count heading ────────────────────────────────────────────────── */}
-      {totalRows > 0 && (
-        <div className="shrink-0 flex items-baseline gap-2 px-4 pt-3 pb-1 font-mono" style={{
-          fontSize: 'var(--font-size-body)',
-        }}>
-          <span className="tabular-nums font-semibold" style={{
-            color: hasAnyFilter ? 'var(--color-cyan)' : 'var(--color-fg-2)',
-            transition: 'color var(--t-fast)',
-          }}>
-            {filteredCount.toLocaleString()}
-          </span>
-          <span style={{ color: 'var(--color-fg-3)', transition: 'opacity var(--t-fast)' }}>
-            of {totalRows.toLocaleString()} rows
-          </span>
-          <span style={{
-            color: 'var(--color-cyan)',
-            opacity: hasAnyFilter ? 1 : 0,
-            transition: 'opacity var(--t-fast)',
-          }}>
-            match
-          </span>
-          <button onClick={handleClearAll}
-            className="cursor-pointer select-none font-mono rounded"
-            style={{
-              fontSize: 'var(--font-size-xs)',
-              fontWeight: 600,
-              padding: '2px 10px',
-              color: 'oklch(0.750 0.180 30)',
-              border: '1px solid oklch(0.750 0.180 30 / 0.4)',
-              background: 'transparent',
-              opacity: hasAnyFilter ? 1 : 0,
-              pointerEvents: hasAnyFilter ? 'auto' : 'none',
-              transition: 'opacity var(--t-fast), background 200ms, border-color 200ms',
-              alignSelf: 'center',
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.background = 'oklch(0.650 0.180 30 / 0.14)';
-              e.currentTarget.style.borderColor = 'oklch(0.750 0.180 30 / 0.7)';
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.background = 'transparent';
-              e.currentTarget.style.borderColor = 'oklch(0.750 0.180 30 / 0.4)';
-            }}
-          >
-            Reset
-          </button>
+        {/* Top Tier: Identity, Watchman, and Actuators */}
+        <div className="grid grid-cols-3 items-center">
+          {/* Left: The True Name */}
+          <div className="flex items-baseline gap-1 justify-self-start">
+            {filename && (
+              <>
+                <span className="text-2xl font-bold tracking-tight text-fg">
+                  {filename.includes('.') ? filename.slice(0, filename.lastIndexOf('.')) : filename}
+                </span>
+                <span className="text-xl font-normal text-cyan/70">
+                  {filename.includes('.') ? `.${filename.slice(filename.lastIndexOf('.') + 1)}` : ''}
+                </span>
+              </>
+            )}
+          </div>
+
+          {/* Center: The Watchman */}
+          <div className="justify-self-center">
+            <Stepper steps={currentSteps} active={currentActive} />
+          </div>
+
+          {/* Right: The Actuators */}
+          <div className="flex items-center gap-2 justify-self-end">
+            {/* Ghost Valve */}
+            <button
+              type="button"
+              onClick={handleClearAll}
+              className={`ghost flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-mono uppercase tracking-[0.15em] cursor-pointer bg-transparent border-none text-cyan/70 hover:text-cyan hover:bg-cyan/10 active:scale-95 ${
+                hasAnyFilter ? 'awake' : ''
+              }`}
+            >
+              <span>Clear Filters</span>
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            {/* Export Valve */}
+            {onExport && (
+              <button
+                type="button"
+                onClick={onExport}
+                className="sigil"
+              >
+                Export
+              </button>
+            )}
+          </div>
         </div>
-      )}
 
-      {/* ── Control Center (filter grid + badges) ──────────────────────────── */}
-      <div className="flex-1 overflow-y-auto">
+        {/* Bottom Tier: The River Gauge */}
+        {totalRows > 0 && (
+          <RiverGauge
+            filtered={filteredCount}
+            total={totalRows}
+            pending={pendingConstraints}
+            hasFilter={hasAnyFilter}
+          />
+        )}
+      </div>
+
+      {/* ── Scroll Room (filter grid + badges) ─────────────────────────── */}
+      <div className="flex-1">
         {columns.length > 0 ? (
+          <>
+            {/* Metadata Crown — invariant column badges */}
+            {constants.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 px-4 pt-3">
+                {constants.map(({ col, value }) => (
+                  <span
+                    key={col.name}
+                    className="font-mono"
+                    style={{
+                      fontSize: 'var(--font-size-xs)',
+                      color: 'var(--color-fg-3)',
+                    }}
+                  >
+                    {col.name}{' '}
+                    <span style={{ color: 'var(--color-cyan)', fontWeight: 600 }}>{value}</span>
+                  </span>
+                ))}
+              </div>
+            )}
 
-            <>
-              {/* Metadata Crown — invariant column badges */}
-              {constants.length > 0 && (
-                <div className="flex flex-wrap items-center gap-2 px-4 pt-3">
-                  {constants.map(({ col, value }) => (
-                    <span key={col.name}
-                      className="font-mono"
-                      style={{
-                        fontSize: 'var(--font-size-xs)',
-                        color: 'var(--color-fg-3)',
-                      }}>
-                      {col.name}{' '}
-                      <span style={{ color: 'var(--color-cyan)', fontWeight: 600 }}>{value}</span>
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {/* Variable columns — filter grid */}
-              <ControlCenter
-                columns={variables}
-                columnStats={columnStats}
-                columnCardinality={columnCardinality}
-                rangeState={rangeState}
-                selected={selected}
-                textFilters={textFilters}
-                onRangeDrag={handleRangeDrag}
-                onRangeCommit={handleRangeCommit}
-                onToggleSelect={handleToggleSelect}
-                onClearSelect={handleClearSelect}
-                onTextChange={handleTextChange}
-                hasAnyFilter={hasAnyFilter}
-                constrainedStats={constrainedStats}
-                noResults={noResults}
-                pendingConstraints={pendingConstraints}
-                staticHistograms={staticHistograms}
-                constrainedHistograms={constrainedHistograms}
-                visibleColumns={visibleColumns}
-                onToggleVisible={handleToggleVisible}
-              />
-            </>
-
+            {/* Variable columns — filter grid */}
+            <ControlCenter
+              columns={variables}
+              columnStats={columnStats}
+              columnCardinality={columnCardinality}
+              rangeState={rangeState}
+              selected={selected}
+              textFilters={textFilters}
+              onRangeDrag={handleRangeDrag}
+              onRangeCommit={handleRangeCommit}
+              onToggleSelect={handleToggleSelect}
+              onClearSelect={handleClearSelect}
+              onTextChange={handleTextChange}
+              hasAnyFilter={hasAnyFilter}
+              constrainedStats={constrainedStats}
+              noResults={noResults}
+              pendingConstraints={pendingConstraints}
+              staticHistograms={staticHistograms}
+              constrainedHistograms={constrainedHistograms}
+              visibleColumns={visibleColumns}
+              onToggleVisible={handleToggleVisible}
+            />
+          </>
         ) : (
           /* Skeleton control center */
-          <div className="grid gap-4 p-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+          <div
+            className="grid gap-4 p-4"
+            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}
+          >
             {Array.from({ length: 6 }, (_, i) => (
               <div key={i}>
-                <div className="skeleton rounded" style={{ height: 10, width: `${50 + (i * 13) % 30}%`, marginBottom: 8 }} />
+                <div
+                  className="skeleton rounded"
+                  style={{ height: 10, width: `${50 + ((i * 13) % 30)}%`, marginBottom: 8 }}
+                />
                 <div className="skeleton rounded" style={{ height: 22, width: '100%' }} />
               </div>
             ))}
@@ -1776,85 +2229,53 @@ export default function ParquetPreview({ fileId, onProgress }: {
         )}
       </div>
 
-      {/* ── Show Data — the god bar ──────────────────────────────────────── */}
+      {/* ── The Vault Door (Data Drawer Header) ─────────────────────── */}
       <div
-        className="shrink-0 cursor-pointer select-none"
-        style={{
-          background: isTableOpen
-            ? 'color-mix(in srgb, var(--color-cyan) 12%, var(--color-cyan-wash))'
-            : 'var(--color-cyan-wash)',
-          borderTop: '1px solid var(--color-cyan-dim)',
-          borderBottom: '1px solid var(--color-cyan-dim)',
-          color: 'var(--color-cyan)',
-          transition: 'background 200ms',
-        }}
-        onMouseEnter={e => {
-          e.currentTarget.style.background = 'color-mix(in srgb, var(--color-cyan) 12%, var(--color-cyan-wash))';
-        }}
-        onMouseLeave={e => {
-          e.currentTarget.style.background = isTableOpen
-            ? 'color-mix(in srgb, var(--color-cyan) 12%, var(--color-cyan-wash))'
-            : 'var(--color-cyan-wash)';
-        }}
-        onClick={() => setIsTableOpen(o => !o)}
+        onClick={() => setIsTableOpen((o) => !o)}
+        className="group vault-door flex items-center justify-between px-6 py-[1lh] mx-3 shrink-0"
       >
-        <div className="flex items-center gap-4 px-5" style={{ height: 48 }}>
-          <div className="flex items-center gap-3">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-              style={{
-                transition: 'transform 300ms ease-out',
-                transform: isTableOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-              }}>
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-            <span className="font-mono font-bold whitespace-nowrap" style={{
-              fontSize: 'var(--font-size-lg)',
-              letterSpacing: '0.02em',
-            }}>
-              {isTableOpen ? 'Hide Data' : 'Show Data'}
-            </span>
-          </div>
-          <div className="flex-1" />
-          {totalRows > 0 && (
-            <span className="font-mono" style={{ fontSize: 'var(--font-size-body)' }}>
-              <span className="tabular-nums font-semibold" style={{
-                color: hasAnyFilter ? 'var(--color-cyan)' : 'oklch(0.750 0.180 195 / 0.6)',
-              }}>
-                {filteredCount.toLocaleString()}
-              </span>
-              <span style={{ color: 'oklch(0.750 0.180 195 / 0.4)' }}>
-                {' '}of {totalRows.toLocaleString()} rows
-              </span>
-            </span>
-          )}
-          <div className="flex-1" />
+        {/* Left: The Handle */}
+        <div className="flex items-center gap-3">
+          <svg
+            className={`w-4 h-4 text-fg-3 transition-transform duration-300 group-hover:text-cyan ${isTableOpen ? 'rotate-180' : ''}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+          <span className="text-xs font-mono uppercase tracking-[0.2em] text-fg-2 group-hover:text-fg transition-colors">
+            {isTableOpen ? 'Close Data Vault' : 'Inspect Data Vault'}
+          </span>
+        </div>
 
-          {/* Column projection — quiet toggles, right side */}
-          {tableEligible.length > 0 && (
-            <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+        {/* Right: The Lenses (Numeric / Text column toggles) */}
+        {tableEligible.length > 0 && (
+          <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
             {[
-              { label: 'Numeric', subset: tableEligible.filter(c => isNumericType(c.type)) },
-              { label: 'Text', subset: tableEligible.filter(c => !isNumericType(c.type)) },
+              { label: 'Numeric', subset: tableEligible.filter((c) => isNumericType(c.type)) },
+              { label: 'Text', subset: tableEligible.filter((c) => !isNumericType(c.type)) },
             ].map(({ label, subset }) => {
               if (subset.length === 0) return null;
-              const allOn = subset.every(c => visibleColumns.has(c.name));
+              const allOn = subset.every((c) => visibleColumns.has(c.name));
               return (
-                <button key={label}
-                  className="cursor-pointer border-none bg-transparent select-none font-mono"
+                <button
+                  key={label}
+                  className="cursor-pointer border-none bg-transparent select-none font-mono text-xs uppercase tracking-[0.1em] px-2 py-1 rounded transition-colors"
                   style={{
-                    fontSize: 'var(--font-size-body)',
-                    color: allOn ? 'var(--color-cyan)' : 'var(--color-amber-dim)',
-                    borderBottom: allOn ? '1px solid var(--color-cyan)' : '1px solid var(--color-amber-dim)',
-                    padding: '0 2px 1px',
-                    transition: 'color var(--t-fast), border-color var(--t-fast)',
+                    color: allOn ? 'var(--color-cyan)' : 'var(--color-fg-3)',
+                    borderBottom: allOn
+                      ? '1px solid var(--color-cyan)'
+                      : '1px solid transparent',
                   }}
                   onClick={() => {
-                    setVisibleColumns(prev => {
+                    setVisibleColumns((prev) => {
                       const next = new Set(prev);
                       if (allOn) {
-                        subset.forEach(c => next.delete(c.name));
+                        subset.forEach((c) => next.delete(c.name));
                       } else {
-                        subset.forEach(c => next.add(c.name));
+                        subset.forEach((c) => next.add(c.name));
                       }
                       return next;
                     });
@@ -1864,86 +2285,107 @@ export default function ParquetPreview({ fileId, onProgress }: {
                 </button>
               );
             })}
-            </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* ── Table Drawer ───────────────────────────────────────────────────── */}
       <div
         ref={scrollRef}
-        className="parquet-scroll overflow-auto flex flex-col shrink-0"
+        className="overflow-auto flex flex-col shrink-0 mx-3"
         style={{
-          height: isTableOpen ? '60vh' : '0px',
+          height: isTableOpen ? '40vh' : '0px',
           transition: 'height 300ms ease-out',
-          scrollbarWidth: 'auto',
-          scrollbarColor: 'var(--color-cyan-dim) var(--color-cyan-wash)',
-        }}>
-        <style>{`
-          .parquet-scroll::-webkit-scrollbar { height: 24px; width: 12px; }
-          .parquet-scroll::-webkit-scrollbar-track { background: var(--color-cyan-wash); }
-          .parquet-scroll::-webkit-scrollbar-thumb { background: var(--color-cyan-dim); border-radius: 12px; }
-          .parquet-scroll:hover::-webkit-scrollbar-thumb { background: var(--color-cyan); }
-        `}</style>
+          scrollbarGutter: 'stable',
+        }}
+      >
         {/* Table header — sticky within unified scroll container */}
 
-        <div className="shrink-0 font-mono"
+        <div
+          className="shrink-0 font-mono mt-[1lh]"
           style={{
-            position: 'sticky', top: 0, zIndex: 10,
+            position: 'sticky',
+            top: 0,
+            zIndex: 10,
             background: 'var(--color-void)',
             ...(activeColumns.length === 0 ? { borderBottom: '2px solid var(--color-line)' } : {}),
-          }}>
-          {activeColumns.length > 0 && (() => {
-            const headerGroup = table.getHeaderGroups()[0];
-            const activeColumnSet = new Set(activeColumns.map(c => c.name));
-            const columnMap = new Map(columns.map(c => [c.name, c]));
-            return (
-              <div className="flex" style={{ minWidth: '100%', width: activeTotalWidth, borderBottom: '2px solid var(--color-line)' }}>
-                {headerGroup.headers.map(header => {
-                  if (!activeColumnSet.has(header.id)) return null;
-                  const c = columnMap.get(header.id)!;
-                  const w = colWidths[c.name] ?? colW(c.type);
-                  const sorted = header.column.getIsSorted();
-                  const sortIdx = header.column.getSortIndex();
-                  const multiSort = sorting.length > 1;
+          }}
+        >
+          {activeColumns.length > 0 &&
+            (() => {
+              const headerGroup = table.getHeaderGroups()[0];
+              const activeColumnSet = new Set(activeColumns.map((c) => c.name));
+              const columnMap = new Map(columns.map((c) => [c.name, c]));
+              return (
+                <div
+                  className="flex"
+                  style={{
+                    minWidth: '100%',
+                    width: activeTotalWidth,
+                    borderBottom: '2px solid var(--color-line)',
+                  }}
+                >
+                  {headerGroup.headers.map((header) => {
+                    if (!activeColumnSet.has(header.id)) return null;
+                    const c = columnMap.get(header.id)!;
+                    const w = colWidths[c.name] ?? colW(c.type);
+                    const sorted = header.column.getIsSorted();
+                    const sortIdx = header.column.getSortIndex();
+                    const multiSort = sorting.length > 1;
 
-                  return (
-                    <div key={header.id}
-                      className="text-left font-semibold text-fg-2 select-none relative group cursor-pointer"
-                      style={{
-                        width: w, minWidth: 50, flexShrink: 0, padding: '3px 6px',
-                        background: 'var(--color-void)',
-                        borderBottom: `2px solid ${sorted ? 'var(--color-cyan)' : 'var(--color-line)'}`,
-                        fontSize: 'var(--font-size-xs)',
-                      }}
-                      onClick={header.column.getToggleSortingHandler()}
-                    >
-                      <div className="flex items-start gap-1">
-                        <ColName name={c.name} />
-                        <SortChevron dir={sorted || null} index={multiSort ? sortIdx : -1} />
-                      </div>
-                      <span style={{ fontSize: 'calc(var(--font-size-xs) - 1px)', opacity: 0.35 }}>{c.type}</span>
+                    return (
                       <div
-                        className="absolute top-0 right-0 bottom-0 opacity-0 group-hover:opacity-100"
-                        style={{ width: 3, cursor: 'col-resize', background: 'var(--color-line)', transition: 'opacity var(--t-fast)' }}
-                        onMouseDown={e => { e.stopPropagation(); handleResizeStart(c.name, e.clientX, w); }}
-                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--color-cyan)'; }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'var(--color-line)'; }}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })()}
+                        key={header.id}
+                        className="text-left font-semibold text-fg-2 select-none relative group cursor-pointer"
+                        style={{
+                          width: w,
+                          minWidth: 50,
+                          flexShrink: 0,
+                          padding: '3px 6px',
+                          background: 'var(--color-void)',
+                          borderBottom: `2px solid ${sorted ? 'var(--color-cyan)' : 'var(--color-line)'}`,
+                          fontSize: 'var(--font-size-xs)',
+                        }}
+                        onClick={header.column.getToggleSortingHandler()}
+                      >
+                        <div className="flex items-start gap-1">
+                          <ColName name={c.name} />
+                          <SortChevron dir={sorted || null} index={multiSort ? sortIdx : -1} />
+                        </div>
+                        <span
+                          style={{ fontSize: 'calc(var(--font-size-xs) - 1px)', opacity: 0.35 }}
+                        >
+                          {c.type}
+                        </span>
+                        <div
+                          className="absolute top-0 right-0 bottom-0 opacity-0 group-hover:opacity-100"
+                          style={{
+                            width: 3,
+                            cursor: 'col-resize',
+                            background: 'var(--color-line)',
+                            transition: 'opacity var(--t-fast)',
+                          }}
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                            handleResizeStart(c.name, e.clientX, w);
+                          }}
+                          onMouseEnter={(e) => {
+                            (e.currentTarget as HTMLElement).style.background = 'var(--color-cyan)';
+                          }}
+                          onMouseLeave={(e) => {
+                            (e.currentTarget as HTMLElement).style.background = 'var(--color-line)';
+                          }}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
         </div>
 
-
         {/* Table body */}
-        <div
-          className="flex-1 min-w-0"
-          style={{ position: 'relative' }}
-        >
+        <div className="flex-1 min-w-0" style={{ position: 'relative' }}>
           {skeletonOverlay}
 
           {isReady && filteredCount > 0 && isTableOpen && (
@@ -1963,9 +2405,19 @@ export default function ParquetPreview({ fileId, onProgress }: {
           )}
 
           {isReady && filteredCount === 0 && (
-            <div className="flex flex-col items-center justify-center gap-3" style={{ height: '100%', minHeight: 200 }}>
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"
-                style={{ opacity: 0.3, color: 'var(--color-fg-3)' }}>
+            <div
+              className="flex flex-col items-center justify-center gap-3"
+              style={{ height: '100%', minHeight: 200 }}
+            >
+              <svg
+                width="32"
+                height="32"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                style={{ opacity: 0.3, color: 'var(--color-fg-3)' }}
+              >
                 <circle cx="11" cy="11" r="8" />
                 <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 <line x1="8" y1="11" x2="14" y2="11" />
@@ -1981,7 +2433,6 @@ export default function ParquetPreview({ fileId, onProgress }: {
             </div>
           )}
         </div>
-
       </div>
     </div>
   );

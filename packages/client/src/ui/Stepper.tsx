@@ -16,16 +16,16 @@ export type StepHealth = 'normal' | 'warning' | 'error';
 // transform + opacity (GPU-composited). One-shot transitions
 // use stroke/fill (SVG-internal paint, no surrounding repaint).
 
-const R      = 7;     // outer ring radius
-const CORE   = 2.5;   // inner core radius
-const RING   = 1.5;   // ring stroke width
-const GAP    = 48;    // center-to-center node spacing
-const PAD    = 4;     // connector inset from ring edge
-const MX     = 20;    // SVG horizontal margin (room for ping at scale 2.5)
-const CY     = 22;    // vertical center
-const H      = 44;    // SVG height
-const CONN_W = 1.5;   // connector stroke width
-const GLOW_W = 6;     // flourish glow line width (fake glow via opacity)
+const R = 7; // outer ring radius
+const CORE = 2.5; // inner core radius
+const RING = 1.5; // ring stroke width
+const GAP = 48; // center-to-center node spacing
+const PAD = 4; // connector inset from ring edge
+const MX = 20; // SVG horizontal margin (room for ping at scale 2.5)
+const CY = 22; // vertical center
+const H = 44; // SVG height
+const CONN_W = 1.5; // connector stroke width
+const GLOW_W = 6; // flourish glow line width (fake glow via opacity)
 
 const STEP_PACE_MS = 382; // 1000/φ² — must match CSS --t-phi
 
@@ -33,7 +33,11 @@ const STEP_PACE_MS = 382; // 1000/φ² — must match CSS --t-phi
 const CONN = GAP - 2 * R - 2 * PAD; // connector line length (26px)
 
 function accentFor(h: StepHealth): string {
-  return h === 'error' ? 'var(--color-red)' : h === 'warning' ? 'var(--color-amber)' : 'var(--color-cyan)';
+  return h === 'error'
+    ? 'var(--color-red)'
+    : h === 'warning'
+      ? 'var(--color-amber)'
+      : 'var(--color-cyan)';
 }
 
 /**
@@ -47,7 +51,14 @@ function accentFor(h: StepHealth): string {
  *
  * Error messages live on StepperStep.error — rendered natively.
  */
-export default function Stepper({ steps, active: dataActive, header, detail, stepHealth, opacity }: {
+export default function Stepper({
+  steps,
+  active: dataActive,
+  header,
+  detail,
+  stepHealth,
+  opacity,
+}: {
   steps: readonly StepperStep[];
   active: number;
   header?: ReactNode;
@@ -69,7 +80,7 @@ export default function Stepper({ steps, active: dataActive, header, detail, ste
     // Catch up one step at a time
     if (dataActive > visualActive) {
       const timer = setTimeout(() => {
-        setVisualActive(prev => prev + 1);
+        setVisualActive((prev) => prev + 1);
       }, STEP_PACE_MS);
       return () => clearTimeout(timer);
     }
@@ -87,7 +98,7 @@ export default function Stepper({ steps, active: dataActive, header, detail, ste
   // step.error takes precedence → always 'error' health
   const health: StepHealth = activeError
     ? 'error'
-    : (activeKey ? stepHealth?.[activeKey] : undefined) ?? 'normal';
+    : ((activeKey ? stepHealth?.[activeKey] : undefined) ?? 'normal');
   const accent = accentFor(health);
 
   const W = 2 * MX + (n - 1) * GAP;
@@ -97,7 +108,7 @@ export default function Stepper({ steps, active: dataActive, header, detail, ste
     <div
       className="rounded-md"
       style={{
-        background: 'var(--color-void)',
+        background: 'transparent',
         padding: '12px 16px',
         opacity: opacity ?? 1,
         transition: 'opacity var(--t-phi) var(--ease-phi)',
@@ -109,7 +120,13 @@ export default function Stepper({ steps, active: dataActive, header, detail, ste
         viewBox={`0 0 ${W} ${H}`}
         width={W}
         height={H}
-        style={{ display: 'block', maxWidth: '100%', height: 'auto', margin: '0 auto', overflow: 'visible' }}
+        style={{
+          display: 'block',
+          maxWidth: '100%',
+          height: 'auto',
+          margin: '0 auto',
+          overflow: 'visible',
+        }}
         role="img"
         aria-label={`Step ${active + 1} of ${n}: ${activeStep?.label}`}
       >
@@ -123,7 +140,10 @@ export default function Stepper({ steps, active: dataActive, header, detail, ste
           return (
             <g key={`c${i}`}>
               <line
-                x1={x1} y1={CY} x2={x2} y2={CY}
+                x1={x1}
+                y1={CY}
+                x2={x2}
+                y2={CY}
                 stroke={reached || revealing ? 'var(--color-cyan)' : 'var(--color-line)'}
                 strokeWidth={CONN_W}
                 strokeLinecap="round"
@@ -132,7 +152,10 @@ export default function Stepper({ steps, active: dataActive, header, detail, ste
               {revealing && (
                 <line
                   key={`r${active}`}
-                  x1={x1} y1={CY} x2={x2} y2={CY}
+                  x1={x1}
+                  y1={CY}
+                  x2={x2}
+                  y2={CY}
                   stroke={accent}
                   strokeWidth={CONN_W}
                   strokeLinecap="round"
@@ -143,7 +166,10 @@ export default function Stepper({ steps, active: dataActive, header, detail, ste
               )}
               {isFinal && reached && (
                 <line
-                  x1={x1} y1={CY} x2={x2} y2={CY}
+                  x1={x1}
+                  y1={CY}
+                  x2={x2}
+                  y2={CY}
                   stroke="var(--color-cyan)"
                   strokeWidth={GLOW_W}
                   strokeLinecap="round"
@@ -161,11 +187,7 @@ export default function Stepper({ steps, active: dataActive, header, detail, ste
           const current = i === active;
           const pulsing = current && !isFinal;
 
-          const color = current
-            ? accent
-            : reached
-              ? 'var(--color-cyan)'
-              : 'var(--color-line)';
+          const color = current ? accent : reached ? 'var(--color-cyan)' : 'var(--color-line)';
 
           return (
             <g key={step.key} transform={`translate(${cx(i)},${CY})`}>
@@ -203,7 +225,8 @@ export default function Stepper({ steps, active: dataActive, header, detail, ste
                   fill={color}
                   style={{
                     transform: reached ? 'scale(1)' : 'scale(0)',
-                    transition: 'transform var(--t-phi) var(--ease-phi), fill var(--t-phi) var(--ease-phi)',
+                    transition:
+                      'transform var(--t-phi) var(--ease-phi), fill var(--t-phi) var(--ease-phi)',
                     willChange: 'transform',
                   }}
                 />
