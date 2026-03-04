@@ -734,7 +734,7 @@
 /* ── The Glass Canopy — frosted void ─────────────────── */
 .glass-canopy {
   --_glass-blur: blur(12px);
-  background: oklch(from var(--color-void) l c h / 0.85);
+  background: oklch(from var(--color-void) l c h / 0.72);
   -webkit-backdrop-filter: var(--_glass-blur);
   backdrop-filter: var(--_glass-blur);
   border: 1px solid oklch(1 0 0 / 0.10);
@@ -750,6 +750,25 @@
 }
 
 /* ── River Gauge — the flow indicator ────────────────── */
+.river-gauge { opacity: 1; }
+.river-gauge.dissolved {
+  opacity: 0;
+  transition: opacity 500ms ease-in 300ms;
+}
+.river-readout {
+  font-size: var(--font-size-2xl);
+  letter-spacing: -0.02em;
+  color: var(--color-fg);
+  transition: color var(--t-fast);
+}
+.river-readout.compact { font-size: var(--font-size-lg); }
+.river-readout.accent  { color: var(--color-cyan); }
+.river-total {
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-fg-3);
+}
 .river-groove {
   background: oklch(0.15 0.01 240);
   box-shadow: inset 0 1px 3px oklch(0 0 0 / 0.5);
@@ -765,6 +784,10 @@
   );
   border-radius: var(--radius-full);
   will-change: clip-path;
+}
+.river-fill.pending {
+  opacity: 0.5;
+  animation: distPlotBreath 1.5s ease-in-out infinite;
 }
 .river-impact {
   box-shadow: 0 0 8px 2px oklch(0.75 0.18 195 / 0.6);

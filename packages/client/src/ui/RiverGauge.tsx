@@ -89,37 +89,15 @@ export default function RiverGauge({
 
   return (
     <div
-      className="flex flex-col gap-1"
-      style={{
-        minWidth: compact ? 140 : 220,
-        // Dissolve only after settled — the surge has finished its dance
-        // 300ms delay lets the impact glow register before fade begins
-        opacity: settled ? 0 : 1,
-        transition: settled ? 'opacity 500ms ease-in 300ms' : undefined,
-      }}
+      className={`flex flex-col gap-1 river-gauge${settled ? ' dissolved' : ''}`}
+      style={{ minWidth: compact ? 140 : 220 }}
     >
       {/* Readout */}
       <div className="flex items-baseline gap-2 font-mono tabular-nums">
-        <span
-          className="font-bold"
-          style={{
-            fontSize: compact ? 'var(--font-size-lg)' : 'var(--font-size-2xl)',
-            letterSpacing: '-0.02em',
-            color: accent ? 'var(--color-cyan)' : 'var(--color-fg)',
-            transition: 'color var(--t-fast)',
-          }}
-        >
+        <span className={`font-bold river-readout${compact ? ' compact' : ''}${accent ? ' accent' : ''}`}>
           {current.toLocaleString()}
         </span>
-        <span
-          style={{
-            fontSize: 'var(--font-size-xs)',
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase' as const,
-            color: 'var(--color-fg-3)',
-            opacity: 0.5,
-          }}
-        >
+        <span className="river-total">
           of {total.toLocaleString()}
         </span>
       </div>
@@ -127,12 +105,10 @@ export default function RiverGauge({
       {/* The Conduit — fill is always 100% wide, clip-path reveals it */}
       <div className="w-full river-groove" style={{ height: h }}>
         <div
-          className={`h-full river-fill${isTerminal ? ' river-impact' : ''}`}
+          className={`h-full river-fill${isTerminal ? ' river-impact' : ''}${pending ? ' pending' : ''}`}
           style={{
             clipPath: `inset(0 ${100 - displayPct}% 0 0)`,
             transition: `${clipTransition}, opacity 200ms`,
-            opacity: pending ? 0.5 : 1,
-            animation: pending ? 'distPlotBreath 1.5s ease-in-out infinite' : 'none',
           }}
         />
       </div>

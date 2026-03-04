@@ -1967,51 +1967,47 @@ export default function ParquetPreview({
         minHeight: 600,
       }}
     >
-      {/* ── Glass Canopy: The Monolithic Chassis ─────────────────────── */}
-      <div className="sticky top-0 z-50 shrink-0 glass-canopy mx-3 mt-3 px-4 pt-3 pb-4 flex flex-col gap-3">
-
-        {/* Top Tier: Identity, Watchman, and Actuators */}
+      {/* ── Glass Canopy ────────────────────────────────────────────── */}
+      <div className="sticky top-0 z-50 shrink-0 glass-canopy mx-3 mt-3 px-4 pt-3 pb-6 flex flex-col gap-5">
         <div className="grid grid-cols-3 items-center">
-          {/* Left: The True Name */}
-          <div className="flex items-baseline gap-1 justify-self-start">
+          {/* Pillar 1: Filename */}
+          <div className="min-w-0">
             {filename && (
-              <>
-                <span className="text-2xl font-bold tracking-tight text-fg">
+              <div className="flex items-baseline gap-1 min-w-0">
+                <span className="text-xl font-bold tracking-tight text-fg truncate">
                   {filename.includes('.') ? filename.slice(0, filename.lastIndexOf('.')) : filename}
                 </span>
-                <span className="text-xl font-normal text-cyan/70">
+                <span className="text-lg font-normal text-cyan/70 shrink-0">
                   {filename.includes('.') ? `.${filename.slice(filename.lastIndexOf('.') + 1)}` : ''}
                 </span>
-              </>
+              </div>
             )}
           </div>
 
-          {/* Center: The Watchman */}
-          <div className="justify-self-center">
+          {/* Pillar 2: Stepper + Status */}
+          <div className="flex flex-col items-center">
             <Stepper steps={currentSteps} active={currentActive} />
           </div>
 
-          {/* Right: The Actuators */}
-          <div className="flex items-center gap-2 justify-self-end">
-            {/* Ghost Valve */}
+          {/* Pillar 3: Command Cluster */}
+          <div className="flex justify-end items-center gap-2">
             <button
               type="button"
               onClick={handleClearAll}
-              className={`ghost flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-mono uppercase tracking-[0.15em] cursor-pointer bg-transparent border-none text-cyan/70 hover:text-cyan hover:bg-cyan/10 active:scale-95 ${
+              className={`ghost flex items-center gap-1 px-2 py-0.5 rounded font-mono uppercase tracking-widest cursor-pointer bg-transparent border-none text-cyan/70 hover:text-cyan hover:bg-cyan/10 active:scale-95 text-[10px] ${
                 hasAnyFilter ? 'awake' : ''
               }`}
             >
-              <span>Clear Filters</span>
-              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <span>Reset</span>
+              <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
-            {/* Export Valve */}
             {onExport && (
               <button
                 type="button"
                 onClick={onExport}
-                className="sigil"
+                className="flex items-center px-2 py-0.5 rounded font-mono uppercase tracking-widest cursor-pointer bg-transparent border border-line text-cyan/70 hover:text-cyan hover:bg-cyan/10 active:scale-95 text-[10px]"
               >
                 Export
               </button>
@@ -2019,7 +2015,7 @@ export default function ParquetPreview({
           </div>
         </div>
 
-        {/* Bottom Tier: The River Gauge */}
+        {/* River Base — zero-margin gauge as bottom border */}
         {totalRows > 0 && (
           <RiverGauge
             current={filteredCount}
