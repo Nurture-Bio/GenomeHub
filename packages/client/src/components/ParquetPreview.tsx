@@ -1994,7 +1994,7 @@ export default function ParquetPreview({
             <button
               type="button"
               onClick={handleClearAll}
-              className={`ghost flex items-center gap-1 px-2 py-0.5 rounded font-mono uppercase tracking-widest cursor-pointer bg-transparent border-none text-cyan/70 hover:text-cyan hover:bg-cyan/10 active:scale-95 text-[10px] ${
+              className={`ghost flex items-center gap-1 px-2 py-0.5 rounded font-mono uppercase tracking-widest cursor-pointer bg-transparent border-none text-cyan/70 hover:text-cyan hover:bg-cyan/10 active:scale-95 text-xs ${
                 hasAnyFilter ? 'awake' : ''
               }`}
             >
@@ -2007,7 +2007,7 @@ export default function ParquetPreview({
               <button
                 type="button"
                 onClick={onExport}
-                className="flex items-center px-2 py-0.5 rounded font-mono uppercase tracking-widest cursor-pointer bg-transparent border border-line text-cyan/70 hover:text-cyan hover:bg-cyan/10 active:scale-95 text-[10px]"
+                className="flex items-center px-2 py-0.5 rounded font-mono uppercase tracking-widest cursor-pointer bg-transparent border border-line text-cyan/70 hover:text-cyan hover:bg-cyan/10 active:scale-95 text-xs"
               >
                 Export
               </button>
@@ -2020,9 +2020,10 @@ export default function ParquetPreview({
           <RiverGauge
             current={filteredCount}
             total={totalRows}
-            pending={isQuerying}
+            flowState={pipeline.queryError ? 'stalled' : isQuerying ? 'pending' : 'normal'}
             accent={hasAnyFilter}
             variant="tide"
+            statusLabel={pipeline.queryError ? 'query failed' : undefined}
           />
         )}
       </div>

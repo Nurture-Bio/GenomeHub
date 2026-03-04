@@ -789,6 +789,13 @@
   opacity: 0.5;
   animation: distPlotBreath 1.5s ease-in-out infinite;
 }
+.river-fill.stalled {
+  background: linear-gradient(to right, var(--color-amber-dim), var(--color-amber));
+  animation: none;
+}
+.river-total.stalled {
+  color: var(--color-amber);
+}
 .river-impact {
   box-shadow: 0 0 8px 2px oklch(0.75 0.18 195 / 0.6);
   animation: riverImpactFlash 600ms ease-out both;

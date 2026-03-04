@@ -50,6 +50,8 @@ export interface PipelineState {
   activeStep: 0 | 1 | 2 | 3 | 4;
   status: PipelineStatus;
   error: string | null;
+  queryError: Error | string | null;
+  isQuerying: boolean;
 }
 
 export type PipelineSignal =
@@ -58,28 +60,43 @@ export type PipelineSignal =
   | { type: 'SERVER_READY' }
   | { type: 'UNAVAILABLE' }
   | { type: 'CONVERSION_FAILED' }
-  | { type: 'FATAL_ERROR'; payload: string };
+  | { type: 'FATAL_ERROR'; payload: string }
+  | { type: 'START_QUERY' }
+  | { type: 'QUERY_SUCCESS' }
+  | { type: 'QUERY_ERROR'; payload: Error | string };
 
 function pipelineReducer(state: PipelineState, signal: PipelineSignal): PipelineState {
   switch (signal.type) {
     case 'START_POLL':
-      return state.status === 'idle' ? { activeStep: 0, status: 'loading', error: null } : state;
+      return state.status === 'idle'
+        ? { activeStep: 0, status: 'loading', error: null, queryError: null, isQuerying: false }
+        : state;
 
     case 'PREFLIGHT_DATA_READY':
-      return { activeStep: 4, status: 'ready_background_work', error: null };
+      return { ...state, activeStep: 4, status: 'ready_background_work', error: null };
 
     case 'SERVER_READY':
-      return { activeStep: 4, status: 'ready', error: null };
+      return { ...state, activeStep: 4, status: 'ready', error: null };
 
     case 'UNAVAILABLE':
-      return { activeStep: 0, status: 'unavailable', error: null };
+      return { activeStep: 0, status: 'unavailable', error: null, queryError: null, isQuerying: false };
 
     case 'CONVERSION_FAILED':
-      return { activeStep: 0, status: 'failed', error: null };
+      return { activeStep: 0, status: 'failed', error: null, queryError: null, isQuerying: false };
 
     case 'FATAL_ERROR':
       if (state.status === 'ready_background_work' || state.status === 'ready') return state;
-      return { ...state, status: 'error', error: signal.payload };
+      return { ...state, status: 'error', error: signal.payload, isQuerying: false };
+
+    case 'START_QUERY':
+      return { ...state, isQuerying: true, queryError: null };
+
+    case 'QUERY_SUCCESS':
+      return { ...state, isQuerying: false, queryError: null };
+
+    case 'QUERY_ERROR':
+      if (state.status !== 'ready' && state.status !== 'ready_background_work') return state;
+      return { ...state, isQuerying: false, queryError: signal.payload };
   }
 }
 
@@ -356,8 +373,8 @@ export function useParquetPreview(
 
   // ── Pipeline reducer ──
   const initialPipeline: PipelineState = cachedEntry?.parquetUrl
-    ? { activeStep: 4, status: 'ready_background_work', error: null }
-    : { activeStep: 0, status: 'idle', error: null };
+    ? { activeStep: 4, status: 'ready_background_work', error: null, queryError: null, isQuerying: false }
+    : { activeStep: 0, status: 'idle', error: null, queryError: null, isQuerying: false };
   const [pipeline, dispatch] = useReducer(pipelineReducer, initialPipeline);
 
   // Data state
@@ -370,7 +387,7 @@ export function useParquetPreview(
     _setFilteredCount(v);
   }, []);
   const [baseProfile, setBaseProfile] = useState<DataProfile | null>(cachedProfile);
-  const [isQuerying, setIsQuerying] = useState(false);
+  const isQuerying = pipeline.isQuerying;
   const [cacheGen, setCacheGen] = useState(0);
   const fetchingCountRef = useRef(0);
   const [isFetchingRange, setIsFetchingRange] = useState(false);
@@ -611,7 +628,7 @@ export function useParquetPreview(
       fallbackRows.current.clear();
       setCacheGen((g) => g + 1);
 
-      setIsQuerying(true);
+      dispatch({ type: 'START_QUERY' });
       serverQuery(fileId, filters, sort, 0, WINDOW_SIZE, controller.signal, {
         onGod: ({ filteredCount: fc }) => {
           setFilteredCount(fc);
@@ -631,13 +648,12 @@ export function useParquetPreview(
           setConstrainedHistograms(
             Object.keys(result.dynamicHistograms).length > 0 ? result.dynamicHistograms : {},
           );
+          dispatch({ type: 'QUERY_SUCCESS' });
         })
         .catch((err) => {
           if (err instanceof DOMException && err.name === 'AbortError') return;
           console.error('[useParquetPreview] filter query error:', err);
-        })
-        .finally(() => {
-          if (!controller.signal.aborted) setIsQuerying(false);
+          dispatch({ type: 'QUERY_ERROR', payload: err });
         });
     }, 80);
 

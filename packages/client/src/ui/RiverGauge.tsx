@@ -14,15 +14,15 @@ import { useRef, useState, useEffect } from 'react';
 export default function RiverGauge({
   current,
   total,
-  pending,
   accent,
   compact,
   variant = 'tide',
   resetKey,
+  flowState = 'normal',
+  statusLabel,
 }: {
   current: number;
   total: number;
-  pending?: boolean;
   /** Highlight the readout in cyan. */
   accent?: boolean;
   compact?: boolean;
@@ -30,6 +30,10 @@ export default function RiverGauge({
   variant?: 'tide' | 'waterfall';
   /** When this changes, the waterfall resets its high-water mark. */
   resetKey?: number | string;
+  /** Visual flow state: 'normal' renders idle, 'pending' breathes, 'stalled' goes amber. */
+  flowState?: 'normal' | 'pending' | 'stalled';
+  /** Override the "of X" label (e.g. "query failed"). */
+  statusLabel?: string;
 }) {
   const pct = total > 0 ? (current / total) * 100 : 0;
   const h = compact ? 10 : 16;
@@ -97,15 +101,15 @@ export default function RiverGauge({
         <span className={`font-bold river-readout${compact ? ' compact' : ''}${accent ? ' accent' : ''}`}>
           {current.toLocaleString()}
         </span>
-        <span className="river-total">
-          of {total.toLocaleString()}
+        <span className={`river-total${flowState === 'stalled' ? ' stalled' : ''}`}>
+          {statusLabel ?? `of ${total.toLocaleString()}`}
         </span>
       </div>
 
       {/* The Conduit — fill is always 100% wide, clip-path reveals it */}
       <div className="w-full river-groove" style={{ height: h }}>
         <div
-          className={`h-full river-fill${isTerminal ? ' river-impact' : ''}${pending ? ' pending' : ''}`}
+          className={`h-full river-fill${isTerminal ? ' river-impact' : ''}${flowState === 'pending' ? ' pending' : ''}${flowState === 'stalled' ? ' stalled' : ''}`}
           style={{
             clipPath: `inset(0 ${100 - displayPct}% 0 0)`,
             transition: `${clipTransition}, opacity 200ms`,
