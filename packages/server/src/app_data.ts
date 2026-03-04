@@ -1,6 +1,16 @@
 import 'dotenv/config';
 import { DataSource } from 'typeorm';
-import { User, Organism, Technique, Collection, FileType, RelationType, Engine, EntityEdge, GenomicFile } from './entities/index.js';
+import {
+  User,
+  Organism,
+  Technique,
+  Collection,
+  FileType,
+  RelationType,
+  Engine,
+  EntityEdge,
+  GenomicFile,
+} from './entities/index.js';
 
 export function buildDatabaseUrl(raw: string | undefined): string | undefined {
   if (!raw) return undefined;
@@ -18,13 +28,21 @@ export function buildDatabaseUrl(raw: string | undefined): string | undefined {
 }
 
 export const AppDataSource = new DataSource({
-  type:     'postgres',
-  url:      buildDatabaseUrl(process.env.DATABASE_URL),
-  entities: [User, Organism, Technique, Collection, FileType, RelationType, Engine, EntityEdge, GenomicFile],
+  type: 'postgres',
+  url: buildDatabaseUrl(process.env.DATABASE_URL),
+  entities: [
+    User,
+    Organism,
+    Technique,
+    Collection,
+    FileType,
+    RelationType,
+    Engine,
+    EntityEdge,
+    GenomicFile,
+  ],
   migrations: ['dist/migrations/*.js'],
   synchronize: process.env.NODE_ENV === 'development',
-  ssl: process.env.NODE_ENV === 'production'
-    ? { rejectUnauthorized: false }
-    : false,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
   logging: process.env.NODE_ENV === 'development',
 });

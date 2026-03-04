@@ -12,9 +12,7 @@ import fs from 'node:fs/promises';
 
 export const isLocal = !process.env.S3_BUCKET;
 
-const LOCAL_ROOT = path.resolve(
-  process.env.LOCAL_STORAGE_PATH ?? 'data/storage'
-);
+const LOCAL_ROOT = path.resolve(process.env.LOCAL_STORAGE_PATH ?? 'data/storage');
 
 /** Absolute local path for a storage key. Rejects traversal. */
 export function storagePath(key: string): string {
@@ -25,7 +23,9 @@ export function storagePath(key: string): string {
 }
 
 /** Local root directory (for express.static). */
-export function localRoot(): string { return LOCAL_ROOT; }
+export function localRoot(): string {
+  return LOCAL_ROOT;
+}
 
 /** DuckDB source URI — S3 path or local filesystem path. */
 export function duckdbSrc(key: string): string {
@@ -51,19 +51,21 @@ export async function readLocalHead(key: string, bytes: number): Promise<Buffer>
     const buf = Buffer.alloc(bytes);
     const { bytesRead } = await fh.read(buf, 0, bytes, 0);
     return buf.subarray(0, bytesRead);
-  } finally { await fh.close(); }
+  } finally {
+    await fh.close();
+  }
 }
 
 /** Read byte range from a local file. */
-export async function readLocalRange(
-  key: string, start: number, bytes: number,
-): Promise<Buffer> {
+export async function readLocalRange(key: string, start: number, bytes: number): Promise<Buffer> {
   const fh = await fs.open(storagePath(key), 'r');
   try {
     const buf = Buffer.alloc(bytes);
     const { bytesRead } = await fh.read(buf, 0, bytes, start);
     return buf.subarray(0, bytesRead);
-  } finally { await fh.close(); }
+  } finally {
+    await fh.close();
+  }
 }
 
 /** Get file size (local equivalent of headObject). */
@@ -79,7 +81,9 @@ export async function deleteLocal(key: string): Promise<void> {
 
 /** Write chunks from temp parts into assembled file. */
 export async function assembleChunks(
-  fileId: string, s3Key: string, partCount: number,
+  fileId: string,
+  s3Key: string,
+  partCount: number,
 ): Promise<number> {
   const dest = storagePath(s3Key);
   await fs.mkdir(path.dirname(dest), { recursive: true });
@@ -90,7 +94,9 @@ export async function assembleChunks(
       const chunk = await fs.readFile(path.join(tmpDir, `part-${i}`));
       await fh.write(chunk);
     }
-  } finally { await fh.close(); }
+  } finally {
+    await fh.close();
+  }
   await fs.rm(tmpDir, { recursive: true, force: true });
   const stat = await fs.stat(dest);
   return stat.size;

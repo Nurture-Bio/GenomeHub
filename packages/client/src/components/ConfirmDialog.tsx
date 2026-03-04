@@ -11,7 +11,12 @@ export default function ConfirmDialog() {
   const { open, title, message, confirmLabel, destructive, respond } = useConfirmStore();
 
   return (
-    <Dialog.Root open={open} onOpenChange={(o) => { if (!o) respond(false); }}>
+    <Dialog.Root
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) respond(false);
+      }}
+    >
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/75 z-modal animate-fade-in" />
         <Dialog.Content
@@ -21,13 +26,19 @@ export default function ConfirmDialog() {
           onPointerDownOutside={() => respond(false)}
         >
           <Dialog.Title asChild>
-            <Heading level="subheading" className="mb-1">{title}</Heading>
+            <Heading level="subheading" className="mb-1">
+              {title}
+            </Heading>
           </Dialog.Title>
           <Dialog.Description asChild>
-            <Text variant="body" as="p" className="mb-3">{message}</Text>
+            <Text variant="body" as="p" className="mb-3">
+              {message}
+            </Text>
           </Dialog.Description>
           <div className="flex justify-end gap-1.5">
-            <Button intent="ghost" size="sm" onClick={() => respond(false)}>Cancel</Button>
+            <Button intent="ghost" size="sm" onClick={() => respond(false)}>
+              Cancel
+            </Button>
             <Button
               intent={destructive ? 'danger' : 'primary'}
               size="sm"

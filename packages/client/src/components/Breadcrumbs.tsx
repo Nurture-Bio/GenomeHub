@@ -16,14 +16,12 @@ const ROUTE_LABELS: Record<string, string> = {
 export default function Breadcrumbs() {
   const { pathname } = useLocation();
   const [expanded, setExpanded] = useState(false);
-  const breadcrumbLabels = useAppStore(s => s.breadcrumbLabels);
+  const breadcrumbLabels = useAppStore((s) => s.breadcrumbLabels);
   const segments = pathname.split('/').filter(Boolean);
 
   if (segments.length === 0) return null;
 
-  const crumbs: { label: string; to: string }[] = [
-    { label: 'Dashboard', to: '/' },
-  ];
+  const crumbs: { label: string; to: string }[] = [{ label: 'Dashboard', to: '/' }];
 
   let path = '';
   for (let i = 0; i < segments.length; i++) {
@@ -39,9 +37,7 @@ export default function Breadcrumbs() {
         crumbs.push({ label: resolved, to: path });
       } else {
         const prev = segments[i - 1];
-        const context = prev === 'collections' ? 'Collection'
-          : prev === 'files' ? 'File'
-          : seg;
+        const context = prev === 'collections' ? 'Collection' : prev === 'files' ? 'File' : seg;
         crumbs.push({ label: `${context} ${seg.slice(0, 8)}`, to: path });
       }
     }
@@ -62,12 +58,21 @@ export default function Breadcrumbs() {
             key={crumb.to}
             className={`flex items-center gap-1 min-w-0 ${mobileHidden ? 'hidden md:flex' : 'flex'}`}
           >
-            {i > 0 && <Text variant="dim" className={mobileHidden ? 'hidden md:inline' : ''}>&gt;</Text>}
+            {i > 0 && (
+              <Text variant="dim" className={mobileHidden ? 'hidden md:inline' : ''}>
+                &gt;
+              </Text>
+            )}
             {isLast ? (
-              <Text variant="dim" className="text-fg truncate">{crumb.label}</Text>
+              <Text variant="dim" className="text-fg truncate">
+                {crumb.label}
+              </Text>
             ) : (
               <Link to={crumb.to} className="no-underline">
-                <Text variant="dim" className="hover:text-fg transition-colors duration-fast whitespace-nowrap">
+                <Text
+                  variant="dim"
+                  className="hover:text-fg transition-colors duration-fast whitespace-nowrap"
+                >
                   {crumb.label}
                 </Text>
               </Link>

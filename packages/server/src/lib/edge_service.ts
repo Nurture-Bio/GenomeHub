@@ -70,7 +70,8 @@ export async function getLinked(
   relation: EdgeRelation,
   targetType?: EntityType,
 ): Promise<EntityEdge[]> {
-  const qb = edgeRepo().createQueryBuilder('e')
+  const qb = edgeRepo()
+    .createQueryBuilder('e')
     .where('e.source_type = :st AND e.source_id = :sid', { st: source.type, sid: source.id })
     .andWhere('e.relation = :rel', { rel: relation });
   if (targetType) qb.andWhere('e.target_type = :tt', { tt: targetType });
@@ -83,7 +84,8 @@ export async function getReverseLinked(
   relation: EdgeRelation,
   sourceType?: EntityType,
 ): Promise<EntityEdge[]> {
-  const qb = edgeRepo().createQueryBuilder('e')
+  const qb = edgeRepo()
+    .createQueryBuilder('e')
     .where('e.target_type = :tt AND e.target_id = :tid', { tt: target.type, tid: target.id })
     .andWhere('e.relation = :rel', { rel: relation });
   if (sourceType) qb.andWhere('e.source_type = :st', { st: sourceType });
@@ -92,7 +94,8 @@ export async function getReverseLinked(
 
 /** Full 1-hop neighborhood — all edges touching this entity (as source or target). */
 export async function getNeighborhood(entity: EntityRef): Promise<EntityEdge[]> {
-  return edgeRepo().createQueryBuilder('e')
+  return edgeRepo()
+    .createQueryBuilder('e')
     .where(
       '(e.source_type = :t AND e.source_id = :id) OR (e.target_type = :t AND e.target_id = :id)',
       { t: entity.type, id: entity.id },
@@ -107,16 +110,14 @@ export async function getExternalLinks(entity: EntityRef): Promise<EntityEdge[]>
 }
 
 /** Get all target IDs of a given type linked from source via any relation. */
-export async function getLinkedIds(
-  source: EntityRef,
-  targetType: EntityType,
-): Promise<string[]> {
-  const edges = await edgeRepo().createQueryBuilder('e')
+export async function getLinkedIds(source: EntityRef, targetType: EntityType): Promise<string[]> {
+  const edges = await edgeRepo()
+    .createQueryBuilder('e')
     .select('DISTINCT e.target_id', 'targetId')
     .where('e.source_type = :st AND e.source_id = :sid', { st: source.type, sid: source.id })
     .andWhere('e.target_type = :tt', { tt: targetType })
     .getRawMany<{ targetId: string }>();
-  return edges.map(e => e.targetId);
+  return edges.map((e) => e.targetId);
 }
 
 /** Get all source IDs of a given type that point to target via any relation. */
@@ -124,12 +125,13 @@ export async function getReverseLinkedIds(
   target: EntityRef,
   sourceType: EntityType,
 ): Promise<string[]> {
-  const edges = await edgeRepo().createQueryBuilder('e')
+  const edges = await edgeRepo()
+    .createQueryBuilder('e')
     .select('DISTINCT e.source_id', 'sourceId')
     .where('e.target_type = :tt AND e.target_id = :tid', { tt: target.type, tid: target.id })
     .andWhere('e.source_type = :st', { st: sourceType })
     .getRawMany<{ sourceId: string }>();
-  return edges.map(e => e.sourceId);
+  return edges.map((e) => e.sourceId);
 }
 
 /**
@@ -162,7 +164,8 @@ export async function replaceEdge(
  */
 export async function countReferences(entity: EntityRef): Promise<number> {
   const repo = edgeRepo();
-  const count = await repo.createQueryBuilder('e')
+  const count = await repo
+    .createQueryBuilder('e')
     .where(
       '(e.source_type = :t AND e.source_id = :id) OR (e.target_type = :t AND e.target_id = :id)',
       { t: entity.type, id: entity.id },

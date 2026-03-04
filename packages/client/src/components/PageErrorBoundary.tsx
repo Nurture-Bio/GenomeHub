@@ -6,7 +6,9 @@ function Fallback({ error, resetErrorBoundary }: FallbackProps) {
   return (
     <div className="flex items-center justify-center p-6">
       <Card elevated className="p-3 max-w-md">
-        <Heading level="subheading" className="mb-1">Something went wrong</Heading>
+        <Heading level="subheading" className="mb-1">
+          Something went wrong
+        </Heading>
         <Text variant="dim" as="p" className="mb-2">
           {error instanceof Error ? error.message : 'An unexpected error occurred.'}
         </Text>
@@ -19,9 +21,5 @@ function Fallback({ error, resetErrorBoundary }: FallbackProps) {
 }
 
 export default function PageErrorBoundary({ children }: { children: ReactNode }) {
-  return (
-    <ErrorBoundary FallbackComponent={Fallback}>
-      {children}
-    </ErrorBoundary>
-  );
+  return <ErrorBoundary FallbackComponent={Fallback}>{children}</ErrorBoundary>;
 }

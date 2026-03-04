@@ -340,7 +340,11 @@ export const WINDOW_SIZE = 200;
 
 // ── Hook ─────────────────────────────────────────────────
 
-export function useParquetPreview(fileId: string) {
+export function useParquetPreview(
+  fileId: string,
+  activeFilterSpecs?: FilterSpec[],
+  sortSpecs?: SortSpec[],
+) {
   const { getValidFileProfile, setFileProfile } = useAppStore();
 
   // ── Synchronous Zustand read — before first render ──
@@ -370,6 +374,18 @@ export function useParquetPreview(fileId: string) {
   const [cacheGen, setCacheGen] = useState(0);
   const fetchingCountRef = useRef(0);
   const [isFetchingRange, setIsFetchingRange] = useState(false);
+
+  // ── Constrained response state (moved from UI — the Engine owns these) ──
+  const [constrainedStats, setConstrainedStats] = useState<
+    Record<string, { min: number; max: number }>
+  >({});
+  const [constrainedHistograms, setConstrainedHistograms] = useState<
+    Record<string, number[]>
+  >({});
+
+  // ── Stable identity keys for the Declarative Sink ──
+  const filterKey = JSON.stringify(activeFilterSpecs ?? []);
+  const sortKey = JSON.stringify(sortSpecs ?? []);
 
   // Arrow table cache: window offset → raw Arrow Table (zero-copy from IPC)
   const arrowCache = useRef<Map<number, ArrowTable>>(new Map());
@@ -413,24 +429,9 @@ export function useParquetPreview(fileId: string) {
 
     // ── Fast path: Zustand has profile ──
     if (cachedEntry?.parquetUrl && cachedProfile) {
-      // We have data already — fire initial server query to populate
       serverReadyRef.current = true;
       dispatch({ type: 'SERVER_READY' });
-
-      // Fire an initial query — Arrow table replaces JSON fallback
-      serverQuery(fileId, [], [], 0, WINDOW_SIZE)
-        .then((result) => {
-          if (cancelled) return;
-          arrowCache.current.clear();
-          fallbackRows.current.clear();
-          if (result.viewportTable) arrowCache.current.set(0, result.viewportTable);
-          setFilteredCount(result.filteredCount);
-          setTotalRows(result.filteredCount);
-          setCacheGen((g) => g + 1);
-        })
-        .catch((err) => {
-          console.warn('[useParquetPreview] initial query failed:', err);
-        });
+      // The Declarative Sink fires the initial query when it sees status === 'ready'
 
       return () => {
         cancelled = true;
@@ -483,21 +484,7 @@ export function useParquetPreview(fileId: string) {
           // Server query endpoint is ready — transition to ready
           serverReadyRef.current = true;
           dispatch({ type: 'SERVER_READY' });
-
-          // Fire initial query — Arrow table replaces JSON fallback
-          serverQuery(fileId, [], [], 0, WINDOW_SIZE)
-            .then((result) => {
-              if (cancelled) return;
-              arrowCache.current.clear();
-              fallbackRows.current.clear();
-              if (result.viewportTable) arrowCache.current.set(0, result.viewportTable);
-              setFilteredCount(result.filteredCount);
-              setTotalRows(result.filteredCount);
-              setCacheGen((g) => g + 1);
-            })
-            .catch((err) => {
-              console.warn('[useParquetPreview] initial query failed:', err);
-            });
+          // The Declarative Sink fires the initial query when it sees status === 'ready'
         } else if (data.status === 'converting') {
           pollTimer = setTimeout(poll, 2000);
         } else if (data.status === 'failed') {
@@ -599,63 +586,64 @@ export function useParquetPreview(fileId: string) {
     [fileId],
   );
 
-  // ── Apply filters ───────────────────────────────────────
+  // ── The Declarative Sink ────────────────────────────────
+  // Watches filter/sort state and auto-queries. No imperative applyFilters.
+  // The UI changes the shape of the riverbed; the water conforms.
 
-  const applyFilters = useCallback(
-    async (
-      filters: FilterSpec[],
-      sort: SortSpec[],
-      _globalStats?: Record<string, ColumnStats>,
-    ): Promise<{
-      filteredCount: number;
-      constrainedStats?: Record<string, ColumnStats>;
-      constrainedHistograms?: Record<string, number[]>;
-    }> => {
-      if (!serverReadyRef.current) return { filteredCount: 0 };
+  useEffect(() => {
+    if (pipeline.status !== 'ready' && pipeline.status !== 'ready_background_work') return;
 
-      // Cancel any in-flight request
+    const filters = activeFilterSpecs ?? [];
+    const sort = sortSpecs ?? [];
+
+    // Debounce: batch rapid filter changes (drag frames, typing) into one query
+    const timer = setTimeout(() => {
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
 
+      // Sync refs for fetchRange (scroll fetches need current filters)
+      filtersRef.current = filters;
+      sortRef.current = sort;
+
+      // Clear stale data
+      arrowCache.current.clear();
+      fallbackRows.current.clear();
+      setCacheGen((g) => g + 1);
+
       setIsQuerying(true);
-      try {
-        filtersRef.current = filters;
-        sortRef.current = sort;
-        arrowCache.current.clear();
-        fallbackRows.current.clear();
-        setCacheGen((g) => g + 1);
-
-        const result = await serverQuery(fileId, filters, sort, 0, WINDOW_SIZE, controller.signal, {
-          // God Query lands first — update count before rows arrive
-          onGod: ({ filteredCount: fc }) => setFilteredCount(fc),
-          // Viewport lands second — store raw Arrow table, no materialization
-          onViewport: (table) => {
-            arrowCache.current.set(0, table);
-            setCacheGen((g) => g + 1);
-          },
+      serverQuery(fileId, filters, sort, 0, WINDOW_SIZE, controller.signal, {
+        onGod: ({ filteredCount: fc }) => {
+          setFilteredCount(fc);
+          // Unfiltered query → update totalRows too
+          if (filters.length === 0) setTotalRows(fc);
+        },
+        onViewport: (table) => {
+          arrowCache.current.set(0, table);
+          setCacheGen((g) => g + 1);
+        },
+      })
+        .then((result) => {
+          if (controller.signal.aborted) return;
+          setConstrainedStats(
+            Object.keys(result.constrainedStats).length > 0 ? result.constrainedStats : {},
+          );
+          setConstrainedHistograms(
+            Object.keys(result.dynamicHistograms).length > 0 ? result.dynamicHistograms : {},
+          );
+        })
+        .catch((err) => {
+          if (err instanceof DOMException && err.name === 'AbortError') return;
+          console.error('[useParquetPreview] filter query error:', err);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setIsQuerying(false);
         });
+    }, 80);
 
-        // Map server constrainedStats → ColumnStats
-        const constrainedStats: Record<string, ColumnStats> | undefined =
-          Object.keys(result.constrainedStats).length > 0 ? result.constrainedStats : undefined;
-
-        const constrainedHistograms: Record<string, number[]> | undefined =
-          Object.keys(result.dynamicHistograms).length > 0 ? result.dynamicHistograms : undefined;
-
-        return { filteredCount: result.filteredCount, constrainedStats, constrainedHistograms };
-      } catch (err) {
-        // Aborted requests are not errors — return last known count
-        if (err instanceof DOMException && err.name === 'AbortError') {
-          return { filteredCount: filteredCountRef.current };
-        }
-        throw err;
-      } finally {
-        setIsQuerying(false);
-      }
-    },
-    [fileId],
-  );
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fileId, pipeline.status, filterKey, sortKey]);
 
   /** Flush Arrow cache + abort in-flight requests. Call when the table drawer closes. */
   const clearCache = useCallback(() => {
@@ -674,11 +662,12 @@ export function useParquetPreview(fileId: string) {
     getCell,
     hasRow,
     fetchRange,
-    applyFilters,
     clearCache,
     isQuerying,
     isFetchingRange,
     cacheGen,
+    constrainedStats,
+    constrainedHistograms,
   };
 }
 

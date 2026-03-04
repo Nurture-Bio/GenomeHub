@@ -6,22 +6,23 @@ import { isConvertible } from '../lib/formats';
 import { Text, Badge } from '../ui';
 
 interface FilePreviewProps {
-  fileId:    string;
-  filename:  string;
+  fileId: string;
+  filename: string;
   sizeBytes: number;
+  onExport?: () => void;
 }
 
 // ── Plain text preview with infinite scroll ──────────────
 
 interface TextPreviewProps {
-  pages:              FilePreviewPage[];
+  pages: FilePreviewPage[];
   isFetchingNextPage: boolean;
-  hasNextPage:        boolean;
-  fetchNextPage:      () => void;
+  hasNextPage: boolean;
+  fetchNextPage: () => void;
 }
 
 function TextPreview({ pages, isFetchingNextPage, hasNextPage, fetchNextPage }: TextPreviewProps) {
-  const scrollRef   = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   const onIntersect = useCallback(
@@ -33,20 +34,24 @@ function TextPreview({ pages, isFetchingNextPage, hasNextPage, fetchNextPage }: 
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
-    const scroll   = scrollRef.current;
+    const scroll = scrollRef.current;
     if (!sentinel || !scroll) return;
     const observer = new IntersectionObserver(onIntersect, { root: scroll, rootMargin: '200px' });
     observer.observe(sentinel);
     return () => observer.disconnect();
   }, [onIntersect]);
 
-  const allLines = pages.flatMap(p => p.lines);
+  const allLines = pages.flatMap((p) => p.lines);
 
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-2">
         <Text variant="muted">Preview</Text>
-        {hasNextPage && <Badge variant="count" color="dim">{allLines.length} lines</Badge>}
+        {hasNextPage && (
+          <Badge variant="count" color="dim">
+            {allLines.length} lines
+          </Badge>
+        )}
       </div>
       <div
         ref={scrollRef}
@@ -71,19 +76,14 @@ function TextPreview({ pages, isFetchingNextPage, hasNextPage, fetchNextPage }: 
 
 // ── Main preview component ───────────────────────────────
 
-export default function FilePreview({ fileId, filename, sizeBytes }: FilePreviewProps) {
+export default function FilePreview({ fileId, filename, sizeBytes, onExport }: FilePreviewProps) {
   const convertible = isConvertible(filename);
 
-  const {
-    data,
-    isLoading,
-    isFetchingNextPage,
-    hasNextPage,
-    fetchNextPage,
-  } = useInfiniteFilePreview(!convertible ? fileId : undefined);
+  const { data, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage } =
+    useInfiniteFilePreview(!convertible ? fileId : undefined);
 
   if (convertible) {
-    return <ParquetPreview fileId={fileId} />;
+    return <ParquetPreview fileId={fileId} filename={filename} onExport={onExport} />;
   }
 
   if (isLoading) return <div className="skeleton h-32 rounded-md" />;

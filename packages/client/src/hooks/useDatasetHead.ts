@@ -21,22 +21,22 @@ import type { DatasetHeadScanner, ScanResult } from '../lib/scanners';
 export type DatasetHeadStatus = 'idle' | 'loading' | 'done' | 'error';
 
 export interface UseDatasetHeadResult<T = unknown> {
-  status:    DatasetHeadStatus;
-  rows:      T[];
+  status: DatasetHeadStatus;
+  rows: T[];
   truncated: boolean;
-  error:     string | null;
+  error: string | null;
 }
 
 const EMPTY_ROWS: never[] = [];
 
 export function useDatasetHead<T = unknown>(
-  url:     string | null,
+  url: string | null,
   scanner: DatasetHeadScanner<T>,
-  limit:   number = 1_000,
+  limit: number = 1_000,
 ): UseDatasetHeadResult<T> {
-  const [status,    setStatus]    = useState<DatasetHeadStatus>('idle');
-  const [result,    setResult]    = useState<ScanResult<T> | null>(null);
-  const [error,     setError]     = useState<string | null>(null);
+  const [status, setStatus] = useState<DatasetHeadStatus>('idle');
+  const [result, setResult] = useState<ScanResult<T> | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const scannerRef = useRef(scanner);
   scannerRef.current = scanner;
 
@@ -74,12 +74,14 @@ export function useDatasetHead<T = unknown>(
       }
     })();
 
-    return () => { ac.abort(); };
+    return () => {
+      ac.abort();
+    };
   }, [url, limit]);
 
   return {
     status,
-    rows:      result?.rows ?? EMPTY_ROWS,
+    rows: result?.rows ?? EMPTY_ROWS,
     truncated: result?.truncated ?? false,
     error,
   };

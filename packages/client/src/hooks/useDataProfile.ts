@@ -29,7 +29,7 @@ import type { DataProfile, EnrichableAttributes } from '@genome-hub/shared';
 // ── Polling constants ────────────────────────────────────────────────────────
 
 const POLL_INTERVAL = 1_000; // ms
-const MAX_POLLS = 30;        // give up after 30s
+const MAX_POLLS = 30; // give up after 30s
 
 // ── Module-level Promise cache for deduplication ────────────────────────────
 
@@ -59,7 +59,7 @@ function fetchProfileAttributes(
       if (r.status === 202) {
         polls++;
         if (polls >= MAX_POLLS) return data.profile as DataProfile | null;
-        await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
+        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL));
         continue;
       }
 
@@ -92,10 +92,12 @@ export function useDataProfile(
   attributes: (keyof EnrichableAttributes)[],
   baseProfile: DataProfile | null,
 ): { profile: DataProfile | null; loading: boolean } {
-  const mergeFileProfile = useAppStore(s => s.mergeFileProfile);
+  const mergeFileProfile = useAppStore((s) => s.mergeFileProfile);
 
   // Read Zustand store — may already have enriched attrs from a prior mount.
-  const storeProfile = useAppStore(s => fileId ? s.fileProfiles[fileId]?.dataProfile ?? null : null);
+  const storeProfile = useAppStore((s) =>
+    fileId ? (s.fileProfiles[fileId]?.dataProfile ?? null) : null,
+  );
 
   // Effective profile: merge base sources + server fetch patch synchronously.
   // Priority: fetchPatch > storeProfile > baseProfile.
@@ -112,7 +114,7 @@ export function useDataProfile(
 
   // Compute which requested keys are missing (=== undefined, not null)
   const missingKeys = effectiveProfile
-    ? attributes.filter(k => effectiveProfile[k] === undefined)
+    ? attributes.filter((k) => effectiveProfile[k] === undefined)
     : [];
   const missingStr = missingKeys.join(',');
 
@@ -126,7 +128,7 @@ export function useDataProfile(
     const ac = new AbortController();
 
     fetchProfileAttributes(fileId, missingKeys, ac.signal)
-      .then(serverProfile => {
+      .then((serverProfile) => {
         if (ac.signal.aborted || !serverProfile) return;
         const patch: Partial<DataProfile> = {};
         for (const key of attributes) {
@@ -137,7 +139,7 @@ export function useDataProfile(
         if (serverProfile.profiledAt) patch.profiledAt = serverProfile.profiledAt;
 
         // Merge into local patch state
-        setFetchPatch(prev => ({ ...prev, ...patch }));
+        setFetchPatch((prev) => ({ ...prev, ...patch }));
 
         // Merge into Zustand store — single source of truth
         if (fileId) mergeFileProfile(fileId, patch);
@@ -147,7 +149,7 @@ export function useDataProfile(
       });
 
     return () => ac.abort();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileId, missingStr]);
 
   return { profile: effectiveProfile, loading };

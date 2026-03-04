@@ -39,11 +39,11 @@ import queryRoutes from './routes/query.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fallbackLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,                  // limit each IP to 100 requests per windowMs
+  max: 100, // limit each IP to 100 requests per windowMs
 });
 
-const app       = express();
-const server    = createServer(app);
+const app = express();
+const server = createServer(app);
 
 app.set('trust proxy', 1);
 app.use(express.json());
@@ -63,30 +63,38 @@ app.use('/api', authRoutes);
 // storage:    DuckDB WASM fetches Parquet from a Web Worker (no auth headers)
 if (isLocal) {
   app.use('/api/uploads/local-part', localPartRouter);
-  app.use('/api/storage', (_req, res, next) => {
-    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Expose-Headers',
-      'Accept-Ranges, Content-Range, Content-Length');
-    next();
-  }, express.static(localRoot(), {
-    acceptRanges: true,
-    dotfiles: 'deny',
-  }));
+  app.use(
+    '/api/storage',
+    (_req, res, next) => {
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader(
+        'Access-Control-Expose-Headers',
+        'Accept-Ranges, Content-Range, Content-Length',
+      );
+      next();
+    },
+    express.static(localRoot(), {
+      acceptRanges: true,
+      dotfiles: 'deny',
+    }),
+  );
   console.log(`[storage] Local mode — serving files from ${localRoot()}`);
 }
 
 // ─── Auth guard ─────────────────────────────────────────────
 
 app.use('/api', (req: Request, res: Response, next: NextFunction) => {
-  resolveUser(req).then(user => {
-    if (!user) {
-      res.status(401).json({ error: 'not authenticated' });
-      return;
-    }
-    res.locals.user = user;
-    next();
-  }).catch(next);
+  resolveUser(req)
+    .then((user) => {
+      if (!user) {
+        res.status(401).json({ error: 'not authenticated' });
+        return;
+      }
+      res.locals.user = user;
+      next();
+    })
+    .catch(next);
 });
 
 // ─── Protected routes ───────────────────────────────────────
@@ -147,8 +155,9 @@ async function runSqlMigrations() {
     return;
   }
 
-  const files = fs.readdirSync(migrationsDir)
-    .filter(f => f.endsWith('.sql'))
+  const files = fs
+    .readdirSync(migrationsDir)
+    .filter((f) => f.endsWith('.sql'))
     .sort();
 
   if (!files.length) {
@@ -178,20 +187,56 @@ async function seedTechniques() {
   if (count > 0) return;
 
   const defaults: { name: string; description: string; defaultTags: string[] }[] = [
-    { name: 'ChIP-seq',      description: 'Chromatin immunoprecipitation sequencing',              defaultTags: ['fastq', 'bam'] },
-    { name: 'ATAC-seq',      description: 'Assay for transposase-accessible chromatin',            defaultTags: ['fastq', 'bam'] },
-    { name: 'RNA-seq',       description: 'Transcriptome sequencing',                              defaultTags: ['fastq', 'bam', 'counts'] },
-    { name: 'MNase-seq',     description: 'Micrococcal nuclease sequencing',                       defaultTags: ['fastq', 'bam'] },
-    { name: 'WGS',           description: 'Whole genome sequencing',                               defaultTags: ['fastq', 'bam', 'vcf'] },
-    { name: 'Tn-seq',        description: 'Transposon insertion sequencing',                       defaultTags: ['fastq', 'bam'] },
-    { name: 'Hi-C',          description: 'Chromosome conformation capture',                       defaultTags: ['fastq', 'pairs', 'cool'] },
-    { name: 'CUT&Tag',       description: 'Cleavage under targets & tagmentation',                 defaultTags: ['fastq', 'bam'] },
-    { name: 'CUT&Run',       description: 'Cleavage under targets & release using nuclease',       defaultTags: ['fastq', 'bam'] },
-    { name: 'CRISPR-screen', description: 'CRISPR genetic screen',                                 defaultTags: ['fastq', 'counts'] },
-    { name: 'Other',         description: 'Other technique',                                       defaultTags: [] },
+    {
+      name: 'ChIP-seq',
+      description: 'Chromatin immunoprecipitation sequencing',
+      defaultTags: ['fastq', 'bam'],
+    },
+    {
+      name: 'ATAC-seq',
+      description: 'Assay for transposase-accessible chromatin',
+      defaultTags: ['fastq', 'bam'],
+    },
+    {
+      name: 'RNA-seq',
+      description: 'Transcriptome sequencing',
+      defaultTags: ['fastq', 'bam', 'counts'],
+    },
+    {
+      name: 'MNase-seq',
+      description: 'Micrococcal nuclease sequencing',
+      defaultTags: ['fastq', 'bam'],
+    },
+    { name: 'WGS', description: 'Whole genome sequencing', defaultTags: ['fastq', 'bam', 'vcf'] },
+    {
+      name: 'Tn-seq',
+      description: 'Transposon insertion sequencing',
+      defaultTags: ['fastq', 'bam'],
+    },
+    {
+      name: 'Hi-C',
+      description: 'Chromosome conformation capture',
+      defaultTags: ['fastq', 'pairs', 'cool'],
+    },
+    {
+      name: 'CUT&Tag',
+      description: 'Cleavage under targets & tagmentation',
+      defaultTags: ['fastq', 'bam'],
+    },
+    {
+      name: 'CUT&Run',
+      description: 'Cleavage under targets & release using nuclease',
+      defaultTags: ['fastq', 'bam'],
+    },
+    {
+      name: 'CRISPR-screen',
+      description: 'CRISPR genetic screen',
+      defaultTags: ['fastq', 'counts'],
+    },
+    { name: 'Other', description: 'Other technique', defaultTags: [] },
   ];
 
-  await repo.save(defaults.map(d => repo.create(d)));
+  await repo.save(defaults.map((d) => repo.create(d)));
   console.log(`Seeded ${defaults.length} techniques`);
 }
 
@@ -211,7 +256,7 @@ async function backfillEngineSizes() {
   const zero = await repo.find({
     where: { sizeBytes: 0, status: 'ready' },
   });
-  const derived = zero.filter(f => f.type?.includes('derived'));
+  const derived = zero.filter((f) => f.type?.includes('derived'));
   if (!derived.length) return;
 
   console.log(`Backfilling sizes for ${derived.length} zero-byte engine result(s)...`);
@@ -222,7 +267,9 @@ async function backfillEngineSizes() {
         file.sizeBytes = head.ContentLength;
         await repo.save(file);
       }
-    } catch { /* S3 object may not exist — leave as-is */ }
+    } catch {
+      /* S3 object may not exist — leave as-is */
+    }
   }
 }
 
@@ -239,7 +286,7 @@ async function main() {
   });
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error('Failed to start:', err);
   process.exit(1);
 });

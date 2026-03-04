@@ -1,5 +1,10 @@
 import { useState } from 'react';
-import { useLinksQuery, useCreateLinkMutation, useDeleteLinkMutation, type LinkParentType } from '../hooks/useGenomicQueries';
+import {
+  useLinksQuery,
+  useCreateLinkMutation,
+  useDeleteLinkMutation,
+  type LinkParentType,
+} from '../hooks/useGenomicQueries';
 import { Input, Text } from '../ui';
 import LinkChip from './LinkChip';
 
@@ -20,14 +25,16 @@ export default function LinksList({ parentType, parentId }: LinksListProps) {
     try {
       await createLink({ parentType, parentId, url });
       setNewUrl('');
-    } catch { /* toast handles error */ }
+    } catch {
+      /* toast handles error */
+    }
   };
 
   return (
     <div className="flex flex-col gap-1.5">
       <Text variant="muted">Links</Text>
       <div className="flex items-center gap-1.5 flex-wrap">
-        {links?.map(link => (
+        {links?.map((link) => (
           <LinkChip
             key={link.id}
             url={link.url}
@@ -41,8 +48,10 @@ export default function LinksList({ parentType, parentId }: LinksListProps) {
           size="sm"
           placeholder="Paste URL + Enter"
           value={newUrl}
-          onChange={e => setNewUrl(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
+          onChange={(e) => setNewUrl(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleAdd();
+          }}
           className="w-44 border-dashed"
         />
       </div>

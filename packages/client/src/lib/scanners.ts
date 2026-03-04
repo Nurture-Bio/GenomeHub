@@ -52,22 +52,20 @@ export interface DatasetHeadScanner<T = unknown> {
 // character.  When we hit a quote, `backslashes & 1` tells us the parity.
 
 export class JsonHeadScanner implements DatasetHeadScanner<Record<string, unknown>> {
-
   async scan(
     stream: ReadableStream<string>,
-    limit:  number,
+    limit: number,
   ): Promise<ScanResult<Record<string, unknown>>> {
-
     const reader = stream.getReader();
     let buf = '';
 
     // State machine
-    let depth       = 0;     // brace/bracket nesting depth within one element
-    let inString    = false;  // inside a JSON string literal
-    let backslashes = 0;     // consecutive trailing backslashes (for parity check)
-    let elements    = 0;     // top-level elements fully closed
-    let scanning    = false; // true once we've entered the top-level '[' array
-    let endOffset   = -1;    // buffer offset just past the Nth element's closing char
+    let depth = 0; // brace/bracket nesting depth within one element
+    let inString = false; // inside a JSON string literal
+    let backslashes = 0; // consecutive trailing backslashes (for parity check)
+    let elements = 0; // top-level elements fully closed
+    let scanning = false; // true once we've entered the top-level '[' array
+    let endOffset = -1; // buffer offset just past the Nth element's closing char
 
     try {
       while (true) {
@@ -104,13 +102,15 @@ export class JsonHeadScanner implements DatasetHeadScanner<Record<string, unknow
 
           // Enter the top-level array.
           if (!scanning) {
-            if (ch === '[') { scanning = true; }
+            if (ch === '[') {
+              scanning = true;
+            }
             continue;
           }
 
           // Track nesting.
           if (ch === '"') {
-            inString    = true;
+            inString = true;
             backslashes = 0;
             continue;
           }
@@ -176,9 +176,7 @@ export class JsonHeadScanner implements DatasetHeadScanner<Record<string, unknow
     // Slice up to the boundary and hand to native JSON.parse().
     // buf[0..endOffset) contains '[' + N complete elements + commas.
     // Append ']' to make it valid JSON.
-    const json = endOffset !== -1
-      ? buf.slice(0, endOffset) + ']'
-      : buf; // entire stream was consumed (< limit elements)
+    const json = endOffset !== -1 ? buf.slice(0, endOffset) + ']' : buf; // entire stream was consumed (< limit elements)
 
     // Ensure the json starts with '['.  If the buffer starts with whitespace
     // or a BOM before '[', find the opening bracket.

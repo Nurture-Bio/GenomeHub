@@ -3,10 +3,18 @@
  */
 
 export type LinkService =
-  | 'jira' | 'confluence' | 'slack'
-  | 'google-doc' | 'google-sheet' | 'google-drive'
-  | 'github' | 'notion' | 'benchling'
-  | 'ncbi' | 'ebi' | 'protocols-io'
+  | 'jira'
+  | 'confluence'
+  | 'slack'
+  | 'google-doc'
+  | 'google-sheet'
+  | 'google-drive'
+  | 'github'
+  | 'notion'
+  | 'benchling'
+  | 'ncbi'
+  | 'ebi'
+  | 'protocols-io'
   | 'link';
 
 interface DetectionResult {
@@ -14,7 +22,11 @@ interface DetectionResult {
   label: string | null;
 }
 
-const RULES: { pattern: RegExp; service: LinkService; extractLabel?: (url: URL, match: RegExpMatchArray) => string | null }[] = [
+const RULES: {
+  pattern: RegExp;
+  service: LinkService;
+  extractLabel?: (url: URL, match: RegExpMatchArray) => string | null;
+}[] = [
   {
     pattern: /atlassian\.net\/(browse|jira)\//,
     service: 'jira',

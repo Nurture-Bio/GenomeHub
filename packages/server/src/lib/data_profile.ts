@@ -20,20 +20,17 @@
  * @module
  */
 
-import {
-  HISTOGRAM_BINS,
-  histogramBucketSql,
-} from '@genome-hub/shared';
+import { HISTOGRAM_BINS, histogramBucketSql } from '@genome-hub/shared';
 import type {
   DataProfile,
   DataProfileStats,
   DataProfileCardinality,
   DataProfileCharLengths,
   EnrichableAttributes,
-  JsonValue, JsonObject,
+  JsonValue,
+  JsonObject,
 } from '@genome-hub/shared';
 import { AppDataSource } from '../app_data.js';
-import { duckdbSetup } from './storage.js';
 import { resolveLocalParquet } from './parquet_cache.js';
 
 // ── Public API ──────────────────────────────────────────────────────────────
@@ -43,7 +40,11 @@ import { resolveLocalParquet } from './parquet_cache.js';
  * Returns only the valid keys.
  */
 const VALID_KEYS = new Set<keyof EnrichableAttributes>([
-  'columnStats', 'cardinality', 'charLengths', 'initialRows', 'histograms',
+  'columnStats',
+  'cardinality',
+  'charLengths',
+  'initialRows',
+  'histograms',
 ]);
 
 /** All enrichable attribute keys — used for eager compute at upload time. */
@@ -51,7 +52,7 @@ export const ALL_KEYS: (keyof EnrichableAttributes)[] = [...VALID_KEYS];
 
 export function validateAttributeKeys(raw: string[]): (keyof EnrichableAttributes)[] {
   return raw.filter((k): k is keyof EnrichableAttributes =>
-    VALID_KEYS.has(k as keyof EnrichableAttributes)
+    VALID_KEYS.has(k as keyof EnrichableAttributes),
   );
 }
 
@@ -59,16 +60,14 @@ export function validateAttributeKeys(raw: string[]): (keyof EnrichableAttribute
  * Extract the base profile (schema + rowCount) from Parquet footer.
  * This is free — no data scan, just metadata reads.
  */
-export async function extractBaseProfile(
-  parquetS3Key: string,
-): Promise<DataProfile> {
+export async function extractBaseProfile(parquetS3Key: string): Promise<DataProfile> {
   const { session, close } = await openDuckDbSession(parquetS3Key);
   try {
     // Use DESCRIBE (logical types) instead of parquet_schema (physical types).
     // parquet_schema returns BYTE_ARRAY/INT64/group nodes — unusable by the client.
     // DESCRIBE returns VARCHAR/BIGINT/STRUCT(...) — matches client-side WASM output.
     const schemaRows = await session.query(
-      `DESCRIBE SELECT * FROM read_parquet('${session.safeSrc}')`
+      `DESCRIBE SELECT * FROM read_parquet('${session.safeSrc}')`,
     );
     const schema = schemaRows.map((r: any) => ({
       name: r.column_name,
@@ -76,7 +75,7 @@ export async function extractBaseProfile(
     }));
 
     const countRows = await session.query(
-      `SELECT COUNT(*)::INTEGER AS n FROM read_parquet('${session.safeSrc}')`
+      `SELECT COUNT(*)::INTEGER AS n FROM read_parquet('${session.safeSrc}')`,
     );
     const rowCount = Number(countRows[0]?.n ?? 0);
 
@@ -98,16 +97,16 @@ export async function hydrateAttributes(
   existing: DataProfile | null,
   requestedKeys: (keyof EnrichableAttributes)[],
 ): Promise<DataProfile> {
-  let profile = existing ?? await extractBaseProfile(parquetS3Key);
+  let profile = existing ?? (await extractBaseProfile(parquetS3Key));
 
   // Fast path: all requested keys already present (not undefined)
-  let missing = requestedKeys.filter(k => profile[k] === undefined);
+  let missing = requestedKeys.filter((k) => profile[k] === undefined);
   if (missing.length === 0) return profile;
 
   // If another request is computing for this file, await IT and use ITS result
   if (inflight.has(fileId)) {
     profile = await inflight.get(fileId)!;
-    missing = requestedKeys.filter(k => profile[k] === undefined);
+    missing = requestedKeys.filter((k) => profile[k] === undefined);
     if (missing.length === 0) return profile;
     // Fall through — the other request computed different attributes than we need
   }
@@ -151,28 +150,44 @@ async function hydrateAttribute(
   switch (key) {
     case 'columnStats':
       if (profile.columnStats !== undefined) return;
-      try { profile.columnStats = await enrichColumnStats(session, profile); }
-      catch { profile.columnStats = null; }
+      try {
+        profile.columnStats = await enrichColumnStats(session, profile);
+      } catch {
+        profile.columnStats = null;
+      }
       return;
     case 'cardinality':
       if (profile.cardinality !== undefined) return;
-      try { profile.cardinality = await enrichCardinality(session, profile); }
-      catch { profile.cardinality = null; }
+      try {
+        profile.cardinality = await enrichCardinality(session, profile);
+      } catch {
+        profile.cardinality = null;
+      }
       return;
     case 'charLengths':
       if (profile.charLengths !== undefined) return;
-      try { profile.charLengths = await enrichCharLengths(session, profile); }
-      catch { profile.charLengths = null; }
+      try {
+        profile.charLengths = await enrichCharLengths(session, profile);
+      } catch {
+        profile.charLengths = null;
+      }
       return;
     case 'initialRows':
       if (profile.initialRows !== undefined) return;
-      try { profile.initialRows = await enrichInitialRows(session, profile); }
-      catch { profile.initialRows = null; }
+      try {
+        profile.initialRows = await enrichInitialRows(session, profile);
+      } catch {
+        profile.initialRows = null;
+      }
       return;
     case 'histograms':
       if (profile.histograms !== undefined) return;
-      try { profile.histograms = await enrichHistograms(session, profile); }
-      catch (err) { console.error('[HISTOGRAMS] enrichHistograms failed:', err); profile.histograms = null; }
+      try {
+        profile.histograms = await enrichHistograms(session, profile);
+      } catch (err) {
+        console.error('[HISTOGRAMS] enrichHistograms failed:', err);
+        profile.histograms = null;
+      }
       return;
   }
 }
@@ -195,7 +210,7 @@ async function mergeProfileToDb(
      SET data_profile = COALESCE(data_profile, '{}'::jsonb) || $1::jsonb,
          updated_at = NOW()
      WHERE id = $2`,
-    [JSON.stringify(patch), fileId]
+    [JSON.stringify(patch), fileId],
   );
 }
 
@@ -203,7 +218,7 @@ async function mergeProfileToDb(
 
 export interface DuckDbSession {
   query: (sql: string) => Promise<any[]>;
-  exec:  (sql: string) => Promise<void>;
+  exec: (sql: string) => Promise<void>;
   safeSrc: string;
 }
 
@@ -228,7 +243,9 @@ export async function openDuckDbSession(parquetS3Key: string): Promise<{
 
   return {
     session: { query, exec, safeSrc },
-    close: async () => { conn.closeSync(); },
+    close: async () => {
+      conn.closeSync();
+    },
   };
 }
 
@@ -237,9 +254,18 @@ export async function openDuckDbSession(parquetS3Key: string): Promise<{
 const LOW_CARDINALITY_MAX = 50;
 
 const NUMERIC_TYPES = new Set([
-  'TINYINT', 'SMALLINT', 'INTEGER', 'BIGINT', 'HUGEINT',
-  'UTINYINT', 'USMALLINT', 'UINTEGER', 'UBIGINT',
-  'FLOAT', 'DOUBLE', 'DECIMAL',
+  'TINYINT',
+  'SMALLINT',
+  'INTEGER',
+  'BIGINT',
+  'HUGEINT',
+  'UTINYINT',
+  'USMALLINT',
+  'UINTEGER',
+  'UBIGINT',
+  'FLOAT',
+  'DOUBLE',
+  'DECIMAL',
 ]);
 
 export function isNumeric(duckdbType: string): boolean {
@@ -254,9 +280,9 @@ export function safeName(name: string): string {
 // ── STRUCT expansion ─────────────────────────────────────────────────────────
 
 export interface FlatColumn {
-  name: string;     // e.g. "tags.offset" — used as key in results
-  type: string;     // e.g. "BIGINT"
-  sqlExpr: string;  // e.g. "tags"."offset" — used in SQL
+  name: string; // e.g. "tags.offset" — used as key in results
+  type: string; // e.g. "BIGINT"
+  sqlExpr: string; // e.g. "tags"."offset" — used in SQL
 }
 
 /** Parse STRUCT(foo VARCHAR, bar BIGINT, ...) into field list. */
@@ -264,7 +290,8 @@ function parseStructFields(structType: string): { name: string; type: string }[]
   const inner = structType.match(/^STRUCT\((.+)\)$/s)?.[1];
   if (!inner) return [];
   const fields: { name: string; type: string }[] = [];
-  let depth = 0, start = 0;
+  let depth = 0,
+    start = 0;
   for (let i = 0; i < inner.length; i++) {
     if (inner[i] === '(') depth++;
     else if (inner[i] === ')') depth--;
@@ -308,17 +335,17 @@ async function enrichColumnStats(
   profile: DataProfile,
 ): Promise<Record<string, DataProfileStats>> {
   const flatCols = expandSchema(profile.schema);
-  const numericCols = flatCols.filter(c => isNumeric(c.type));
+  const numericCols = flatCols.filter((c) => isNumeric(c.type));
   if (numericCols.length === 0 || profile.rowCount === 0) return {};
 
-  const selectParts = numericCols.flatMap(col => [
+  const selectParts = numericCols.flatMap((col) => [
     `MIN(${col.sqlExpr}) AS "min_${col.name}"`,
     `MAX(${col.sqlExpr}) AS "max_${col.name}"`,
     `SUM(CASE WHEN ${col.sqlExpr} IS NULL THEN 1 ELSE 0 END) AS "nc_${col.name}"`,
   ]);
 
   const rows = await session.query(
-    `SELECT ${selectParts.join(', ')} FROM read_parquet('${session.safeSrc}')`
+    `SELECT ${selectParts.join(', ')} FROM read_parquet('${session.safeSrc}')`,
   );
   if (rows.length === 0) return {};
 
@@ -326,8 +353,8 @@ async function enrichColumnStats(
   const result: Record<string, DataProfileStats> = {};
   for (const col of numericCols) {
     result[col.name] = {
-      min:       Number(row[`min_${col.name}`]),
-      max:       Number(row[`max_${col.name}`]),
+      min: Number(row[`min_${col.name}`]),
+      max: Number(row[`max_${col.name}`]),
       nullCount: Number(row[`nc_${col.name}`]),
     };
   }
@@ -341,12 +368,10 @@ async function enrichCardinality(
   const flatCols = expandSchema(profile.schema);
   if (flatCols.length === 0 || profile.rowCount === 0) return {};
 
-  const selectParts = flatCols.map(col =>
-    `COUNT(DISTINCT ${col.sqlExpr}) AS "cd_${col.name}"`
-  );
+  const selectParts = flatCols.map((col) => `COUNT(DISTINCT ${col.sqlExpr}) AS "cd_${col.name}"`);
 
   const rows = await session.query(
-    `SELECT ${selectParts.join(', ')} FROM read_parquet('${session.safeSrc}')`
+    `SELECT ${selectParts.join(', ')} FROM read_parquet('${session.safeSrc}')`,
   );
   if (rows.length === 0) return {};
 
@@ -357,7 +382,7 @@ async function enrichCardinality(
   }
 
   // Top values for low-cardinality columns
-  const lowCard = flatCols.filter(c => {
+  const lowCard = flatCols.filter((c) => {
     const d = result[c.name]?.distinct ?? 0;
     return d > 0 && d <= LOW_CARDINALITY_MAX;
   });
@@ -369,9 +394,9 @@ async function enrichCardinality(
        WHERE ${col.sqlExpr} IS NOT NULL
        GROUP BY ${col.sqlExpr}
        ORDER BY cnt DESC
-       LIMIT ${LOW_CARDINALITY_MAX}`
+       LIMIT ${LOW_CARDINALITY_MAX}`,
     );
-    result[col.name].topValues = topRows.map(r => ({
+    result[col.name].topValues = topRows.map((r) => ({
       value: String(r.value),
       count: Number(r.cnt),
     }));
@@ -391,10 +416,10 @@ async function enrichInitialRows(
   if (profile.rowCount === 0) return [];
   const flatCols = expandSchema(profile.schema);
   const selectList = flatCols.length
-    ? flatCols.map(c => `${c.sqlExpr} AS "${c.name}"`).join(', ')
+    ? flatCols.map((c) => `${c.sqlExpr} AS "${c.name}"`).join(', ')
     : '*';
   const rows = await session.query(
-    `SELECT ${selectList} FROM read_parquet('${session.safeSrc}') LIMIT ${INITIAL_ROWS_MAX}`
+    `SELECT ${selectList} FROM read_parquet('${session.safeSrc}') LIMIT ${INITIAL_ROWS_MAX}`,
   );
   // Coerce BigInt → Number, enforce byte budget (break at row boundary)
   const result: JsonObject[] = [];
@@ -402,7 +427,7 @@ async function enrichInitialRows(
   for (const r of rows) {
     const out: Record<string, JsonValue> = {};
     for (const [k, v] of Object.entries(r as Record<string, unknown>)) {
-      out[k] = typeof v === 'bigint' ? Number(v) : v as JsonValue;
+      out[k] = typeof v === 'bigint' ? Number(v) : (v as JsonValue);
     }
     const rowBytes = Buffer.byteLength(JSON.stringify(out), 'utf8');
     if (bytes + rowBytes + 1 > INITIAL_ROWS_BYTE_BUDGET && result.length > 0) break;
@@ -419,13 +444,13 @@ async function enrichCharLengths(
   const flatCols = expandSchema(profile.schema);
   if (flatCols.length === 0 || profile.rowCount === 0) return {};
 
-  const selectParts = flatCols.flatMap(col => [
+  const selectParts = flatCols.flatMap((col) => [
     `MIN(LENGTH(${col.sqlExpr}::VARCHAR)) AS "cmin_${col.name}"`,
     `MAX(LENGTH(${col.sqlExpr}::VARCHAR)) AS "cmax_${col.name}"`,
   ]);
 
   const rows = await session.query(
-    `SELECT ${selectParts.join(', ')} FROM read_parquet('${session.safeSrc}')`
+    `SELECT ${selectParts.join(', ')} FROM read_parquet('${session.safeSrc}')`,
   );
   if (rows.length === 0) return {};
 
@@ -450,7 +475,7 @@ async function enrichHistograms(
   if (!profile.columnStats) return {};
 
   const flatCols = expandSchema(profile.schema);
-  const numericCols = flatCols.filter(c => isNumeric(c.type));
+  const numericCols = flatCols.filter((c) => isNumeric(c.type));
   if (numericCols.length === 0 || profile.rowCount === 0) return {};
 
   const result: Record<string, number[]> = {};
@@ -464,7 +489,7 @@ async function enrichHistograms(
       `SELECT ${bucket} AS bucket, COUNT(*)::INTEGER AS cnt
        FROM read_parquet('${session.safeSrc}')
        WHERE ${col.sqlExpr} IS NOT NULL
-       GROUP BY bucket ORDER BY bucket`
+       GROUP BY bucket ORDER BY bucket`,
     );
 
     const bins = new Array<number>(HISTOGRAM_BINS).fill(0);

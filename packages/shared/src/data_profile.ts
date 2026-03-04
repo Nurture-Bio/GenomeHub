@@ -19,7 +19,9 @@
 // Interfaces are lazily evaluated by TypeScript, breaking the infinite recursion
 // that TypeORM's QueryDeepPartialEntity triggers on inline recursive type literals.
 
-export interface JsonObject { [key: string]: JsonValue; }
+export interface JsonObject {
+  [key: string]: JsonValue;
+}
 export interface JsonArray extends Array<JsonValue> {}
 export type JsonValue = string | number | boolean | null | JsonObject | JsonArray;
 
@@ -27,17 +29,17 @@ export type JsonValue = string | number | boolean | null | JsonObject | JsonArra
 
 export interface DataProfileColumn {
   name: string;
-  type: string;   // DuckDB type string, e.g. "BIGINT", "VARCHAR"
+  type: string; // DuckDB type string, e.g. "BIGINT", "VARCHAR"
 }
 
 export interface DataProfileStats {
-  min:       number;
-  max:       number;
+  min: number;
+  max: number;
   nullCount: number;
 }
 
 export interface DataProfileCardinality {
-  distinct:   number;
+  distinct: number;
   topValues?: { value: string; count: number }[];
 }
 
@@ -53,7 +55,7 @@ export interface EnrichableAttributes {
   cardinality: Record<string, DataProfileCardinality>;
   charLengths: Record<string, DataProfileCharLengths>;
   initialRows: JsonObject[];
-  histograms:  Record<string, number[]>;
+  histograms: Record<string, number[]>;
 }
 
 // ── Histogram helpers — shared between server and client DuckDB ──────────────
@@ -61,7 +63,12 @@ export interface EnrichableAttributes {
 export const HISTOGRAM_BINS = 64;
 
 /** DuckDB SQL expression: maps a value into a 0-indexed bin, clamped to [0, BINS-1]. */
-export function histogramBucketSql(col: string, min: number, max: number, bins = HISTOGRAM_BINS): string {
+export function histogramBucketSql(
+  col: string,
+  min: number,
+  max: number,
+  bins = HISTOGRAM_BINS,
+): string {
   return `LEAST(GREATEST(FLOOR((${col}::DOUBLE - ${min}::DOUBLE) / (${max}::DOUBLE - ${min}::DOUBLE) * ${bins}), 0), ${bins - 1})::INTEGER`;
 }
 
@@ -72,8 +79,8 @@ export type Lazy<T> = T | null;
 // ── DataProfile = base ∩ mapped lazy attributes ─────────────────────────────
 
 export type DataProfile = {
-  schema:      DataProfileColumn[];
-  rowCount:    number;
+  schema: DataProfileColumn[];
+  rowCount: number;
   profiledAt?: string;
 } & {
   [K in keyof EnrichableAttributes]?: Lazy<EnrichableAttributes[K]>;

@@ -20,13 +20,18 @@ export default function LinkChip({ url, label, service, onDelete }: LinkChipProp
         rel="noopener noreferrer"
         className="no-underline hover:text-fg transition-colors duration-fast truncate max-w-32"
       >
-        <Text variant="dim" className="text-fg-2">{displayLabel}</Text>
+        <Text variant="dim" className="text-fg-2">
+          {displayLabel}
+        </Text>
       </a>
       {onDelete && (
         <button
           type="button"
           aria-label="Remove link"
-          onClick={e => { e.preventDefault(); onDelete(); }}
+          onClick={(e) => {
+            e.preventDefault();
+            onDelete();
+          }}
           className="size-3.5 shrink-0 flex items-center justify-center rounded-full
                      opacity-0 group-hover/chip:opacity-100
                      transition-opacity duration-fast

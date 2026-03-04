@@ -3,33 +3,39 @@ import HashChip from './HashChip';
 import ComboBox, { type ComboBoxItem } from './ComboBox';
 
 export interface HashChipItem {
-  id:           string;
-  label:        string;
+  id: string;
+  label: string;
   description?: string;
 }
 
 interface HashChipPopoverProps {
-  items:        HashChipItem[];
-  value?:       string;
-  onSelect:     (id: string) => void;
-  trigger?:     ReactNode;
+  items: HashChipItem[];
+  value?: string;
+  onSelect: (id: string) => void;
+  trigger?: ReactNode;
   placeholder?: string;
-  onCreate?:    (label: string) => void;
-  disabled?:    boolean;
-  loading?:     boolean;
-  size?:        'sm' | 'md';
-  variant?:     'default' | 'surface';
-  className?:   string;
+  onCreate?: (label: string) => void;
+  disabled?: boolean;
+  loading?: boolean;
+  size?: 'sm' | 'md';
+  variant?: 'default' | 'surface';
+  className?: string;
 }
 
 export default function HashChipPopover({
-  items, value, onSelect, trigger, placeholder, onCreate, ...rest
+  items,
+  value,
+  onSelect,
+  trigger,
+  placeholder,
+  onCreate,
+  ...rest
 }: HashChipPopoverProps) {
-  const comboItems: ComboBoxItem[] = items.map(i => ({
-    id:          i.id,
-    label:       i.label,
+  const comboItems: ComboBoxItem[] = items.map((i) => ({
+    id: i.id,
+    label: i.label,
     description: i.description,
-    icon:        <HashChip label={i.label} />,
+    icon: <HashChip label={i.label} />,
   }));
 
   return (

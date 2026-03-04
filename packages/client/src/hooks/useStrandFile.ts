@@ -54,40 +54,40 @@ export interface SbfCardinality {
 }
 
 export interface SbfMeta {
-  recordCount:       number;
-  stride:            number;
-  indexBlockSize:    number;
-  indexByteOffset:   number;
-  dataByteOffset:    number;
-  columns:           SbfColumnDef[];
-  columnStats:       Record<string, SbfColumnStats>;
+  recordCount: number;
+  stride: number;
+  indexBlockSize: number;
+  indexByteOffset: number;
+  dataByteOffset: number;
+  columns: SbfColumnDef[];
+  columnStats: Record<string, SbfColumnStats>;
   columnCardinality: Record<string, SbfCardinality>;
 }
 
 export interface SecondaryFilters {
-  chrom?:  string; // '' = no filter
+  chrom?: string; // '' = no filter
   strand?: string; // '' = no filter
 }
 
 /** Result of planRange — no network I/O. */
 export interface RangePlan {
   byteStart: number;
-  byteEnd:   number;
-  count:     number; // exact records in this byte window (before secondary filters)
+  byteEnd: number;
+  count: number; // exact records in this byte window (before secondary filters)
 }
 
 /** One page of fetched records. `rows[i]` is null when the record was filtered by secondary filters. */
 export interface PageResult {
   /** Length exactly = min(pageSize, records remaining in file). */
-  rows:      (Record<string, unknown> | null)[];
-  fetchMs:   number;
+  rows: (Record<string, unknown> | null)[];
+  fetchMs: number;
   bytesRead: number;
 }
 
 export interface UseStrandFileReturn {
-  meta:      SbfMeta | null;
+  meta: SbfMeta | null;
   isLoading: boolean;
-  error:     string | null;
+  error: string | null;
 
   /**
    * Synchronously compute byte range + record count for a start filter [lo, hi].
@@ -102,9 +102,9 @@ export interface UseStrandFileReturn {
    */
   fetchPage: (
     byteStart: number,
-    firstIdx:  number,
-    pageSize:  number,
-    filters?:  SecondaryFilters,
+    firstIdx: number,
+    pageSize: number,
+    filters?: SecondaryFilters,
   ) => Promise<PageResult>;
 }
 
@@ -122,7 +122,7 @@ function bisectRight(index: Int32Array, blockCount: number, target: number): num
   while (lo < hi) {
     const mid = (lo + hi + 1) >>> 1;
     if (index[mid * 2] <= target) lo = mid;
-    else                          hi = mid - 1;
+    else hi = mid - 1;
   }
   return lo;
 }
@@ -134,7 +134,7 @@ function bisectLeft(index: Int32Array, blockCount: number, target: number): numb
   while (lo < hi) {
     const mid = (lo + hi) >>> 1;
     if (index[mid * 2] <= target) lo = mid + 1;
-    else                          hi = mid;
+    else hi = mid;
   }
   return lo;
 }
@@ -142,12 +142,12 @@ function bisectLeft(index: Int32Array, blockCount: number, target: number): numb
 // ── Hook ─────────────────────────────────────────────────
 
 export function useStrandFile(sbfUrl: string, metaUrl: string): UseStrandFileReturn {
-  const [meta, setMeta]         = useState<SbfMeta | null>(null);
+  const [meta, setMeta] = useState<SbfMeta | null>(null);
   const [isLoading, setLoading] = useState(true);
-  const [error, setError]       = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const indexRef = useRef<Int32Array | null>(null);
-  const metaRef  = useRef<SbfMeta | null>(null);
+  const metaRef = useRef<SbfMeta | null>(null);
 
   // ── Mount: fetch header+index + sidecar ──────────────
   useEffect(() => {
@@ -160,7 +160,7 @@ export function useStrandFile(sbfUrl: string, metaUrl: string): UseStrandFileRet
 
         const sidecarRes = await fetch(metaUrl);
         if (!sidecarRes.ok) throw new Error(`Sidecar fetch failed: ${sidecarRes.status}`);
-        const sbfMeta: SbfMeta = await sidecarRes.json() as SbfMeta;
+        const sbfMeta: SbfMeta = (await sidecarRes.json()) as SbfMeta;
 
         if (
           typeof sbfMeta.dataByteOffset !== 'number' ||
@@ -178,18 +178,18 @@ export function useStrandFile(sbfUrl: string, metaUrl: string): UseStrandFileRet
         }
 
         const headerBuf = await headerRes.arrayBuffer();
-        const headerDv  = new DataView(headerBuf);
-        const magic     = headerDv.getUint32(0, true);
+        const headerDv = new DataView(headerBuf);
+        const magic = headerDv.getUint32(0, true);
         if (magic !== MAGIC) {
           throw new Error(`Invalid magic: 0x${magic.toString(16)}`);
         }
 
-        const indexBuf  = headerBuf.slice(sbfMeta.indexByteOffset, sbfMeta.dataByteOffset);
+        const indexBuf = headerBuf.slice(sbfMeta.indexByteOffset, sbfMeta.dataByteOffset);
         const indexView = new Int32Array(indexBuf);
 
         if (cancelled) return;
         indexRef.current = indexView;
-        metaRef.current  = sbfMeta;
+        metaRef.current = sbfMeta;
         setMeta(sbfMeta);
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
@@ -199,22 +199,24 @@ export function useStrandFile(sbfUrl: string, metaUrl: string): UseStrandFileRet
     }
 
     void load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [sbfUrl, metaUrl]);
 
   // ── planRange — synchronous ───────────────────────────
   const planRange = useCallback((lo: number, hi: number): RangePlan | null => {
-    const m   = metaRef.current;
+    const m = metaRef.current;
     const idx = indexRef.current;
     if (!m || !idx) return null;
 
     const blockCount = Math.ceil(m.recordCount / m.indexBlockSize);
 
-    const iLo = Math.max(0,              bisectRight(idx, blockCount, lo) - 1);
-    const iHi = Math.min(blockCount - 1, bisectLeft(idx, blockCount, hi)  + 1);
+    const iLo = Math.max(0, bisectRight(idx, blockCount, lo) - 1);
+    const iHi = Math.min(blockCount - 1, bisectLeft(idx, blockCount, hi) + 1);
 
     const byteStart = m.dataByteOffset + iLo * m.indexBlockSize * m.stride;
-    const byteEnd   = Math.min(
+    const byteEnd = Math.min(
       m.dataByteOffset + (iHi + 1) * m.indexBlockSize * m.stride - 1,
       m.dataByteOffset + m.recordCount * m.stride - 1,
     );
@@ -224,62 +226,65 @@ export function useStrandFile(sbfUrl: string, metaUrl: string): UseStrandFileRet
   }, []); // refs are stable — no deps needed
 
   // ── fetchPage — async ─────────────────────────────────
-  const fetchPage = useCallback(async (
-    byteStart: number,
-    firstIdx:  number,
-    pageSize:  number,
-    filters:   SecondaryFilters = {},
-  ): Promise<PageResult> => {
-    const m = metaRef.current;
-    if (!m) return { rows: [], fetchMs: 0, bytesRead: 0 };
+  const fetchPage = useCallback(
+    async (
+      byteStart: number,
+      firstIdx: number,
+      pageSize: number,
+      filters: SecondaryFilters = {},
+    ): Promise<PageResult> => {
+      const m = metaRef.current;
+      if (!m) return { rows: [], fetchMs: 0, bytesRead: 0 };
 
-    const t0 = performance.now();
+      const t0 = performance.now();
 
-    const rangeStart = byteStart + firstIdx * m.stride;
-    const rangeEnd   = rangeStart + pageSize * m.stride - 1;
+      const rangeStart = byteStart + firstIdx * m.stride;
+      const rangeEnd = rangeStart + pageSize * m.stride - 1;
 
-    const res = await fetch(sbfUrl, {
-      headers: { Range: `bytes=${rangeStart}-${rangeEnd}` },
-    });
-    if (!res.ok && res.status !== 206) {
-      throw new Error(`fetchPage failed: ${res.status}`);
-    }
+      const res = await fetch(sbfUrl, {
+        headers: { Range: `bytes=${rangeStart}-${rangeEnd}` },
+      });
+      if (!res.ok && res.status !== 206) {
+        throw new Error(`fetchPage failed: ${res.status}`);
+      }
 
-    const buf = await res.arrayBuffer();
-    const dv  = new DataView(buf);
+      const buf = await res.arrayBuffer();
+      const dv = new DataView(buf);
 
-    const chromValues  = m.columnCardinality['chrom']?.values ?? [];
-    const chromFilter  = filters.chrom  ?? '';
-    const strandFilter = filters.strand ?? '';
+      const chromValues = m.columnCardinality['chrom']?.values ?? [];
+      const chromFilter = filters.chrom ?? '';
+      const strandFilter = filters.strand ?? '';
 
-    const recordsInBuf = Math.floor(buf.byteLength / m.stride);
-    // Sparse array: length = pageSize, entries are null for out-of-range or filtered records
-    const rows: (Record<string, unknown> | null)[] = new Array(pageSize).fill(null);
+      const recordsInBuf = Math.floor(buf.byteLength / m.stride);
+      // Sparse array: length = pageSize, entries are null for out-of-range or filtered records
+      const rows: (Record<string, unknown> | null)[] = new Array(pageSize).fill(null);
 
-    for (let r = 0; r < recordsInBuf; r++) {
-      const off       = r * m.stride;
-      const chromIdx  = dv.getUint8(off);
-      const strandIdx = dv.getUint8(off + 1);
-      const chrom     = chromValues[chromIdx] ?? `idx_${chromIdx}`;
-      const strand    = STRAND_CHARS[strandIdx] ?? '?';
+      for (let r = 0; r < recordsInBuf; r++) {
+        const off = r * m.stride;
+        const chromIdx = dv.getUint8(off);
+        const strandIdx = dv.getUint8(off + 1);
+        const chrom = chromValues[chromIdx] ?? `idx_${chromIdx}`;
+        const strand = STRAND_CHARS[strandIdx] ?? '?';
 
-      if (chromFilter  && chrom  !== chromFilter)  continue;
-      if (strandFilter && strand !== strandFilter) continue;
+        if (chromFilter && chrom !== chromFilter) continue;
+        if (strandFilter && strand !== strandFilter) continue;
 
-      rows[r] = {
-        chrom,
-        strand,
-        start:        dv.getInt32(  off + 4,  true),
-        end:          dv.getInt32(  off + 8,  true),
-        total_sites:  dv.getInt32(  off + 12, true),
-        off_targets:  dv.getInt32(  off + 16, true),
-        score:        dv.getFloat32(off + 20, true),
-        relative_pos: dv.getFloat32(off + 24, true),
-      };
-    }
+        rows[r] = {
+          chrom,
+          strand,
+          start: dv.getInt32(off + 4, true),
+          end: dv.getInt32(off + 8, true),
+          total_sites: dv.getInt32(off + 12, true),
+          off_targets: dv.getInt32(off + 16, true),
+          score: dv.getFloat32(off + 20, true),
+          relative_pos: dv.getFloat32(off + 24, true),
+        };
+      }
 
-    return { rows, fetchMs: performance.now() - t0, bytesRead: buf.byteLength };
-  }, [sbfUrl]);
+      return { rows, fetchMs: performance.now() - t0, bytesRead: buf.byteLength };
+    },
+    [sbfUrl],
+  );
 
   return { meta, isLoading, error, planRange, fetchPage };
 }

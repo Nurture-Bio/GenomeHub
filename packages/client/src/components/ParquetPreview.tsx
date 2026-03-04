@@ -5,7 +5,7 @@
  * Data layer: rows come from fetchWindow() → server query → Map cache.
  */
 
-import { useRef, useMemo, useState, useCallback, useEffect, useTransition, memo } from 'react';
+import { useRef, useMemo, useState, useCallback, useEffect, memo } from 'react';
 import type { CSSProperties, RefObject } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
@@ -1094,7 +1094,7 @@ const ControlCenter = memo(function ControlCenter({
   hasAnyFilter,
   constrainedStats,
   noResults,
-  pendingConstraints,
+  isQuerying,
   staticHistograms,
   constrainedHistograms,
   visibleColumns,
@@ -1114,7 +1114,7 @@ const ControlCenter = memo(function ControlCenter({
   hasAnyFilter: boolean;
   constrainedStats: Record<string, ColumnStats>;
   noResults: boolean;
-  pendingConstraints: boolean;
+  isQuerying: boolean;
   staticHistograms: Record<string, number[]>;
   constrainedHistograms: Record<string, number[]>;
   visibleColumns: Set<string>;
@@ -1224,7 +1224,7 @@ const ControlCenter = memo(function ControlCenter({
               high={rangeState[c.name]?.[1] ?? stats.max}
               constrainedMin={hasAnyFilter ? constrainedStats[c.name]?.min : undefined}
               constrainedMax={hasAnyFilter ? constrainedStats[c.name]?.max : undefined}
-              pending={pendingConstraints}
+              pending={isQuerying}
               onDrag={onRangeDrag}
               onCommit={onRangeCommit}
               staticHistogram={staticHistograms[c.name]}
@@ -1531,6 +1531,39 @@ export default function ParquetPreview({
   onExport?: () => void;
   onProgress?: (config: { steps: StepperStep[]; active: number } | null) => void;
 }) {
+  // ── Phase 1: UI State — declared before the Engine so intent flows down ──
+  const [rangeOverrides, setRangeOverrides] = useState<Record<string, [number, number]>>({});
+  const [selected, setSelected] = useState<Record<string, Set<string>>>({});
+  const [textFilters, setTextFilters] = useState<Record<string, string>>({});
+  const [sorting, setSorting] = useState<SortingState>([]);
+
+  // ── Pure Derivation — the Single Source of Truth ──
+  const sortSpecs: SortSpec[] = useMemo(
+    () =>
+      sorting.map((s) => ({
+        column: s.id,
+        direction: s.desc ? ('desc' as const) : ('asc' as const),
+      })),
+    [sorting],
+  );
+
+  const activeFilterSpecs: FilterSpec[] = useMemo(() => {
+    const specs: FilterSpec[] = [];
+    for (const [name, [lo, hi]] of Object.entries(rangeOverrides)) {
+      specs.push({ column: name, op: { type: 'between', low: lo, high: hi } });
+    }
+    for (const [name, set] of Object.entries(selected)) {
+      if (set.size === 0) continue;
+      specs.push({ column: name, op: { type: 'in', values: [...set] } });
+    }
+    for (const [name, text] of Object.entries(textFilters)) {
+      if (!text.trim()) continue;
+      specs.push({ column: name, op: { type: 'ilike', pattern: text.trim() } });
+    }
+    return specs;
+  }, [rangeOverrides, selected, textFilters]);
+
+  // ── Phase 2: The Engine — reacts to intent automatically ──
   const {
     pipeline,
     columns,
@@ -1540,12 +1573,13 @@ export default function ParquetPreview({
     getCell,
     hasRow,
     fetchRange,
-    applyFilters,
     clearCache,
     isQuerying,
     isFetchingRange,
     cacheGen,
-  } = useParquetPreview(fileId);
+    constrainedStats,
+    constrainedHistograms,
+  } = useParquetPreview(fileId, activeFilterSpecs, sortSpecs);
 
   // Demand-driven: fetch enrichable attributes from the server
   // Fires when columns are available
@@ -1584,8 +1618,6 @@ export default function ParquetPreview({
     return h ?? {};
   }, [profile?.histograms]);
 
-  const [constrainedHistograms, setConstrainedHistograms] = useState<Record<string, number[]>>({});
-
   // ── Reprofile handler ──────────────────────────────────────────────────────
   const setFileProfile = useAppStore((s) => s.setFileProfile);
   const [_reprofiling, setReprofiling] = useState(false);
@@ -1611,8 +1643,6 @@ export default function ParquetPreview({
   }, [fileId, setFileProfile]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-
-  const debRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resizingRef = useRef<{ name: string; startX: number; startW: number } | null>(null);
 
   // ── Convergence Array — derive honest step from real physics ─────────────
@@ -1660,40 +1690,16 @@ export default function ParquetPreview({
     {} as Record<string, number>,
   );
 
-  // Range state: base defaults from columnStats, user-modified overrides on top.
-  const [rangeState, setRangeOverrides] = useDerivedState(
-    (overrides: Record<string, [number, number]>) => {
-      const result: Record<string, [number, number]> = {};
-      for (const c of columns) {
-        if (!isNumericType(c.type)) continue;
-        const s = columnStats[c.name];
-        if (s) result[c.name] = overrides[c.name] ?? [s.min, s.max];
-      }
-      return result;
-    },
-    [columns, columnStats],
-    {} as Record<string, [number, number]>,
-  );
-
-  const triggerRef = useRef<() => void>(() => {});
-  const [, startTransition] = useTransition();
-  const [selected, setSelected] = useState<Record<string, Set<string>>>({});
-  const [textFilters, setTextFilters] = useState<Record<string, string>>({});
-  const [sorting, setSorting] = useState<SortingState>([]);
-
-  // ── Synchronous refs — the query reads these, not the batched state ─────────
-  // React batches setState: calling setSelected + triggerRef.current() in the
-  // same handler means triggerFilters would read the OLD selected from its
-  // closure. These refs are synced inside the updater function (synchronous)
-  // so triggerFilters always sees the present, never the past.
-  const selectedRef = useRef(selected);
-  const rangeRef = useRef(rangeState);
-  const textRef = useRef(textFilters);
-  selectedRef.current = selected;
-  rangeRef.current = rangeState;
-  textRef.current = textFilters;
-  const [constrainedStats, setConstrainedStats] = useState<Record<string, ColumnStats>>({});
-  const [pendingConstraints, setPendingConstraints] = useState(false);
+  // Range display state: merge user overrides with column defaults for slider positions.
+  const rangeState: Record<string, [number, number]> = useMemo(() => {
+    const result: Record<string, [number, number]> = {};
+    for (const c of columns) {
+      if (!isNumericType(c.type)) continue;
+      const s = columnStats[c.name];
+      if (s) result[c.name] = rangeOverrides[c.name] ?? [s.min, s.max];
+    }
+    return result;
+  }, [columns, columnStats, rangeOverrides]);
 
   // ── Drawer & column visibility state ────────────────────────────────────────
   const [isTableOpen, setIsTableOpen] = useState(false);
@@ -1742,112 +1748,17 @@ export default function ParquetPreview({
     getCoreRowModel: getCoreRowModel(),
   });
 
-  const sortSpecs: SortSpec[] = useMemo(
-    () =>
-      sorting.map((s) => ({
-        column: s.id,
-        direction: s.desc ? ('desc' as const) : ('asc' as const),
-      })),
-    [sorting],
-  );
-
-  useEffect(
-    () => () => {
-      if (debRef.current) clearTimeout(debRef.current);
-    },
-    [],
-  );
-
-  // ── The Doorbell ─────────────────────────────────────────────────────────────
-  // When the drawer opens, VirtualRows mounts and expects rows.  But if no
-  // slider has been touched, no Arrow query has ever been fired (the catch-up
-  // effect skips on first ready with no active filters).  Ring the bell: fire
-  // applyFilters so the engine wakes up and streams the viewport.
+  // ── Scroll reset — when the riverbed changes shape, start from the top ──
+  const filterKey = JSON.stringify(activeFilterSpecs);
+  const prevFilterKeyRef = useRef(filterKey);
   useEffect(() => {
-    if (!isTableOpen) return;
-    if (pipeline.status !== 'ready') return;
-    if (cacheGen > 0) return; // Arrow cache already populated
-    applyFilters([], sortSpecs);
-  }, [isTableOpen, pipeline.status, cacheGen, sortSpecs, applyFilters]);
-
-  // When the drawer closes, release constrained stats/histograms — they'll
-  // be recomputed when the drawer reopens and filters fire again.
-  const prevTableOpen = useRef(isTableOpen);
-  useEffect(() => {
-    if (prevTableOpen.current && !isTableOpen) {
-      setConstrainedStats({});
-      setConstrainedHistograms({});
+    if (prevFilterKeyRef.current !== filterKey) {
+      prevFilterKeyRef.current = filterKey;
+      if (scrollRef.current) scrollRef.current.scrollTop = 0;
     }
-    prevTableOpen.current = isTableOpen;
-  }, [isTableOpen]);
+  }, [filterKey]);
 
-  // ── Build filter specs and apply ────────────────────────────────────────────
-
-  const triggerFilters = useCallback(() => {
-    if (pipeline.status !== 'ready') return; // accumulate in state; applied when server is ready
-
-    const filters: FilterSpec[] = [];
-
-    // Read from refs — not closures — so we see the present, never the past
-    for (const [name, [lo, hi]] of Object.entries(rangeRef.current)) {
-      const stats = columnStats[name];
-      if (!stats) continue;
-      if (lo <= stats.min && hi >= stats.max) continue;
-      filters.push({ column: name, op: { type: 'between', low: lo, high: hi } });
-    }
-
-    for (const [name, set] of Object.entries(selectedRef.current)) {
-      if (set.size === 0) continue;
-      filters.push({ column: name, op: { type: 'in', values: [...set] } });
-    }
-
-    for (const [name, text] of Object.entries(textRef.current)) {
-      if (!text.trim()) continue;
-      filters.push({ column: name, op: { type: 'ilike', pattern: text.trim() } });
-    }
-
-    // Reset scroll to top — the filtered dataset starts at row 0
-    if (scrollRef.current) scrollRef.current.scrollTop = 0;
-
-    setPendingConstraints(true);
-    applyFilters(filters, sortSpecs, columnStats)
-      .then((result) => {
-        if (result.constrainedStats) setConstrainedStats(result.constrainedStats);
-        else setConstrainedStats({});
-        if (result.constrainedHistograms) setConstrainedHistograms(result.constrainedHistograms);
-        else setConstrainedHistograms({});
-        setPendingConstraints(false);
-      })
-      .catch((err) => {
-        console.error('Filter query error:', err);
-        setPendingConstraints(false);
-      });
-  }, [pipeline.status, sortSpecs, columnStats, applyFilters]);
-
-  // Keep ref synced so debounced callbacks always call the latest version
-  triggerRef.current = triggerFilters;
-
-  // Catch-up: apply accumulated filters when server becomes ready or sort changes.
-  // On the FIRST ready transition, skip the wipe unless the user actually has
-  // active filters — otherwise this destroys the pre-flight data already painted.
-  const isFirstReadyRef = useRef(true);
-  useEffect(() => {
-    if (pipeline.status === 'ready') {
-      const hasActiveFilters =
-        Object.values(textFilters).some((v) => v.trim()) ||
-        Object.keys(selected).some((k) => selected[k].size > 0) ||
-        sorting.length > 0;
-
-      if (isFirstReadyRef.current) {
-        isFirstReadyRef.current = false;
-        if (!hasActiveFilters) return;
-      }
-      triggerRef.current();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pipeline.status, sorting]);
-
-  // ── Filter handlers ──────────────────────────────────────────────────────────
+  // ── Filter handlers — pure state updaters, no engine commands ──────────────
 
   // rAF throttle: batch all onChange events within one animation frame into
   // a single setState. Prevents N re-renders per frame when dragging fast.
@@ -1864,26 +1775,26 @@ export default function ParquetPreview({
     }
   }, []);
 
-  const handleRangeCommit = useCallback((_name: string) => {
-    if (debRef.current) clearTimeout(debRef.current);
-    startTransition(() => {
-      triggerRef.current();
+  const handleRangeCommit = useCallback((name: string) => {
+    // Clean up identity ranges — if the user dragged back to [min, max], remove the override
+    setRangeOverrides((prev) => {
+      const range = prev[name];
+      if (!range) return prev;
+      const stats = columnStats[name];
+      if (stats && range[0] <= stats.min && range[1] >= stats.max) {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      }
+      return prev;
     });
-  }, [startTransition]);
+  }, [columnStats]);
 
   const handleTextChange = useCallback((name: string, value: string) => {
-    setTextFilters((prev) => {
-      const next = { ...prev, [name]: value };
-      textRef.current = next;
-      return next;
-    });
-    if (debRef.current) clearTimeout(debRef.current);
-    debRef.current = setTimeout(() => triggerRef.current(), 300);
+    setTextFilters((prev) => ({ ...prev, [name]: value }));
   }, []);
 
   const handleToggleSelect = useCallback((name: string, value: string) => {
-    // Paint the chip immediately — sync ref inside updater so the query
-    // reads the present value, not the previous render's closure
     setSelected((prev) => {
       const set = new Set(prev[name] ?? []);
       if (set.has(value)) set.delete(value);
@@ -1891,45 +1802,25 @@ export default function ParquetPreview({
       if (set.size === 0) {
         const next = { ...prev };
         delete next[name];
-        selectedRef.current = next;
         return next;
       }
-      const next = { ...prev, [name]: set };
-      selectedRef.current = next;
-      return next;
+      return { ...prev, [name]: set };
     });
-    // Defer the heavy tree reconciliation
-    startTransition(() => {
-      triggerRef.current();
-    });
-  }, [startTransition]);
+  }, []);
 
   const handleClearSelect = useCallback((name: string) => {
     setSelected((prev) => {
       const next = { ...prev };
       delete next[name];
-      selectedRef.current = next;
       return next;
     });
-    startTransition(() => {
-      triggerRef.current();
-    });
-  }, [startTransition]);
+  }, []);
 
   const handleClearAll = useCallback(() => {
     setRangeOverrides({});
     setSelected({});
     setTextFilters({});
-    selectedRef.current = {};
-    textRef.current = {};
-    setConstrainedStats({});
-    setConstrainedHistograms({});
-    setPendingConstraints(false);
-    // Defer the heavy filter clear
-    startTransition(() => {
-      applyFilters([], sortSpecs);
-    });
-  }, [columns, columnStats, sortSpecs, applyFilters, startTransition]);
+  }, []);
 
   // ── Column resize ──────────────────────────────────────────────────────────
 
@@ -1958,13 +1849,7 @@ export default function ParquetPreview({
 
   // ── Derived state ──────────────────────────────────────────────────────────
 
-  const hasAnyFilter =
-    Object.entries(rangeState).some(([name, [lo, hi]]) => {
-      const s = columnStats[name];
-      return s && (lo > s.min || hi < s.max);
-    }) ||
-    Object.keys(selected).some((k) => selected[k].size > 0) ||
-    Object.values(textFilters).some((v) => v.trim());
+  const hasAnyFilter = activeFilterSpecs.length > 0;
   const noResults = hasAnyFilter && filteredCount === 0;
 
   // Partition columns into constants (single-value), variables (filterable), and tableEligible.
@@ -2139,7 +2024,7 @@ export default function ParquetPreview({
           <RiverGauge
             current={filteredCount}
             total={totalRows}
-            pending={pendingConstraints}
+            pending={isQuerying}
             accent={hasAnyFilter}
             variant="tide"
           />
@@ -2185,7 +2070,7 @@ export default function ParquetPreview({
               hasAnyFilter={hasAnyFilter}
               constrainedStats={constrainedStats}
               noResults={noResults}
-              pendingConstraints={pendingConstraints}
+              isQuerying={isQuerying}
               staticHistograms={staticHistograms}
               constrainedHistograms={constrainedHistograms}
               visibleColumns={visibleColumns}

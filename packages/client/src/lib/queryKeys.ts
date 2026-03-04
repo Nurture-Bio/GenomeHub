@@ -27,8 +27,7 @@ export const queryKeys = {
     all: ['relationTypes'] as const,
   },
   links: {
-    list: (parentType: string, parentId: string) =>
-      ['links', parentType, parentId] as const,
+    list: (parentType: string, parentId: string) => ['links', parentType, parentId] as const,
   },
   stats: {
     storage: ['stats', 'storage'] as const,

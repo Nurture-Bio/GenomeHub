@@ -9,7 +9,10 @@ export function useCountUp(target: number, duration = 419): number {
   const rafRef = useRef(0);
 
   useEffect(() => {
-    if (target === 0) { setValue(0); return; }
+    if (target === 0) {
+      setValue(0);
+      return;
+    }
     const start = performance.now();
     const tick = (now: number) => {
       const elapsed = now - start;

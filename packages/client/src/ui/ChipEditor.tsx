@@ -3,32 +3,34 @@ import HashChip from './HashChip';
 import type { HashChipItem } from './HashChipPopover';
 
 export interface ChipEditorProps {
-  items:         HashChipItem[];
-  onAdd:         (id: string) => void;
-  onRemove:      (id: string) => void;
-  renderPicker:  (props: {
-    value:         string;
+  items: HashChipItem[];
+  onAdd: (id: string) => void;
+  onRemove: (id: string) => void;
+  renderPicker: (props: {
+    value: string;
     onValueChange: (id: string) => void;
-    trigger?:      ReactNode;
+    trigger?: ReactNode;
   }) => ReactNode;
   /** Override the label content inside a chip (e.g. to render a Link). */
-  renderLabel?:  (item: HashChipItem) => ReactNode;
-  disabled?:     boolean;
-  maxVisible?:   number;
+  renderLabel?: (item: HashChipItem) => ReactNode;
+  disabled?: boolean;
+  maxVisible?: number;
 }
 
 export default function ChipEditor({
-  items, onAdd, onRemove, renderPicker, renderLabel, disabled, maxVisible,
+  items,
+  onAdd,
+  onRemove,
+  renderPicker,
+  renderLabel,
+  disabled,
+  maxVisible,
 }: ChipEditorProps) {
-  const visible = maxVisible && items.length > maxVisible
-    ? items.slice(0, maxVisible)
-    : items;
-  const overflow = maxVisible && items.length > maxVisible
-    ? items.length - maxVisible
-    : 0;
+  const visible = maxVisible && items.length > maxVisible ? items.slice(0, maxVisible) : items;
+  const overflow = maxVisible && items.length > maxVisible ? items.length - maxVisible : 0;
 
   const handleAdd = (id: string) => {
-    if (!id || items.some(i => i.id === id)) return;
+    if (!id || items.some((i) => i.id === id)) return;
     onAdd(id);
   };
 
@@ -48,8 +50,7 @@ export default function ChipEditor({
 
   return (
     <div className="group/editor flex gap-1 flex-wrap items-center">
-
-      {visible.map(item => (
+      {visible.map((item) => (
         <HashChip
           key={item.id}
           label={renderLabel ? '' : item.label}
@@ -61,17 +62,15 @@ export default function ChipEditor({
       ))}
 
       {overflow > 0 && (
-        <span className="font-sans text-body text-fg-3 px-1 leading-none">
-          +{overflow} more
-        </span>
+        <span className="font-sans text-body text-fg-3 px-1 leading-none">+{overflow} more</span>
       )}
 
-      {!disabled && renderPicker({
-        value: '',
-        onValueChange: handleAdd,
-        trigger: addTrigger,
-      })}
-
+      {!disabled &&
+        renderPicker({
+          value: '',
+          onValueChange: handleAdd,
+          trigger: addTrigger,
+        })}
     </div>
   );
 }

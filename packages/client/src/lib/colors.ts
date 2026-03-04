@@ -16,8 +16,8 @@
  */
 
 export interface HashColor {
-  bg:    string;   // e.g. oklch(0.20 0.05 147)
-  color: string;   // e.g. oklch(0.75 0.18 147)
+  bg: string; // e.g. oklch(0.20 0.05 147)
+  color: string; // e.g. oklch(0.75 0.18 147)
 }
 
 function hashHue(s: string): number {
@@ -33,14 +33,14 @@ function hashHue(s: string): number {
   h ^= h >>> 13;
   h = Math.imul(h, 0xc2b2ae35);
   h ^= h >>> 16;
-  return ((h >>> 0) / 0xFFFFFFFF) * 360;
+  return ((h >>> 0) / 0xffffffff) * 360;
 }
 
 /** Deterministic color pair for any string label. */
 export function hashColor(label: string): HashColor {
   const hue = hashHue(label);
   return {
-    bg:    `oklch(0.20 0.05 ${hue})`,
+    bg: `oklch(0.20 0.05 ${hue})`,
     color: `oklch(0.75 0.18 ${hue})`,
   };
 }

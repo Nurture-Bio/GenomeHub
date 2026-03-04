@@ -8,5 +8,7 @@
  * DECIMAL optionally carries precision/scale: DECIMAL(10, 2).
  */
 export function isNumeric(type: string): boolean {
-  return /^(BIGINT|UBIGINT|HUGEINT|INTEGER|UINTEGER|SMALLINT|TINYINT|DOUBLE|FLOAT|REAL|DECIMAL(\(\d+,\s*\d+\))?)$/.test(type);
+  return /^(BIGINT|UBIGINT|HUGEINT|INTEGER|UINTEGER|SMALLINT|TINYINT|DOUBLE|FLOAT|REAL|DECIMAL(\(\d+,\s*\d+\))?)$/.test(
+    type,
+  );
 }

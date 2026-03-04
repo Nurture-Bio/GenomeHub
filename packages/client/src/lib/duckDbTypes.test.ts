@@ -57,11 +57,11 @@ const MUST_NOT_MATCH = [
 ];
 
 describe('isNumeric', () => {
-  it.each(SHOULD_MATCH)('accepts %s', type => {
+  it.each(SHOULD_MATCH)('accepts %s', (type) => {
     expect(isNumeric(type)).toBe(true);
   });
 
-  it.each(MUST_NOT_MATCH)('rejects %s', type => {
+  it.each(MUST_NOT_MATCH)('rejects %s', (type) => {
     expect(isNumeric(type)).toBe(false);
   });
 });

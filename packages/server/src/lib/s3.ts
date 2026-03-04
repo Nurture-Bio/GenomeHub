@@ -34,13 +34,10 @@ export const BUCKET = process.env.S3_BUCKET ?? '';
 
 // ─── Multipart initiate ────────────────────────────────────
 
-export async function initiateMultipartUpload(
-  s3Key:       string,
-  contentType: string,
-): Promise<string> {
+export async function initiateMultipartUpload(s3Key: string, contentType: string): Promise<string> {
   const cmd = new CreateMultipartUploadCommand({
-    Bucket:      BUCKET,
-    Key:         s3Key,
+    Bucket: BUCKET,
+    Key: s3Key,
     ContentType: contentType,
     // Server-side encryption — required if bucket policy enforces SSE-S3
     ServerSideEncryption: 'AES256',
@@ -53,15 +50,15 @@ export async function initiateMultipartUpload(
 // ─── Part presigned URL ────────────────────────────────────
 
 export async function presignPartUrl(
-  s3Key:      string,
-  uploadId:   string,
+  s3Key: string,
+  uploadId: string,
   partNumber: number,
   expiresIn = 3600,
 ): Promise<string> {
   const cmd = new UploadPartCommand({
-    Bucket:     BUCKET,
-    Key:        s3Key,
-    UploadId:   uploadId,
+    Bucket: BUCKET,
+    Key: s3Key,
+    UploadId: uploadId,
     PartNumber: partNumber,
   });
   return getSignedUrl(s3, cmd, { expiresIn });
@@ -70,14 +67,14 @@ export async function presignPartUrl(
 // ─── Complete multipart ────────────────────────────────────
 
 export async function completeMultipartUpload(
-  s3Key:    string,
+  s3Key: string,
   uploadId: string,
-  parts:    { PartNumber: number; ETag: string }[],
+  parts: { PartNumber: number; ETag: string }[],
 ): Promise<void> {
   const cmd = new CompleteMultipartUploadCommand({
-    Bucket:          BUCKET,
-    Key:             s3Key,
-    UploadId:        uploadId,
+    Bucket: BUCKET,
+    Key: s3Key,
+    UploadId: uploadId,
     MultipartUpload: {
       Parts: parts.sort((a, b) => a.PartNumber - b.PartNumber),
     },
@@ -87,13 +84,14 @@ export async function completeMultipartUpload(
 
 // ─── Abort ─────────────────────────────────────────────────
 
-export async function abortMultipartUpload(
-  s3Key:    string,
-  uploadId: string,
-): Promise<void> {
-  await s3.send(new AbortMultipartUploadCommand({
-    Bucket: BUCKET, Key: s3Key, UploadId: uploadId,
-  }));
+export async function abortMultipartUpload(s3Key: string, uploadId: string): Promise<void> {
+  await s3.send(
+    new AbortMultipartUploadCommand({
+      Bucket: BUCKET,
+      Key: s3Key,
+      UploadId: uploadId,
+    }),
+  );
 }
 
 // ─── Delete ────────────────────────────────────────────────
@@ -105,13 +103,13 @@ export async function deleteObject(s3Key: string): Promise<void> {
 // ─── Presigned download URL ────────────────────────────────
 
 export async function presignDownloadUrl(
-  s3Key:    string,
+  s3Key: string,
   filename: string,
   expiresIn = 3600,
 ): Promise<string> {
   const cmd = new GetObjectCommand({
-    Bucket:                     BUCKET,
-    Key:                        s3Key,
+    Bucket: BUCKET,
+    Key: s3Key,
     ResponseContentDisposition: `attachment; filename="${filename}"`,
   });
   return getSignedUrl(s3, cmd, { expiresIn });
@@ -125,14 +123,11 @@ export async function headObject(s3Key: string) {
 
 // ─── Fetch first N bytes (for preview) ─────────────────────
 
-export async function fetchS3Head(
-  s3Key: string,
-  bytes: number,
-): Promise<Buffer> {
+export async function fetchS3Head(s3Key: string, bytes: number): Promise<Buffer> {
   const cmd = new GetObjectCommand({
     Bucket: BUCKET,
-    Key:    s3Key,
-    Range:  `bytes=0-${bytes - 1}`,
+    Key: s3Key,
+    Range: `bytes=0-${bytes - 1}`,
   });
   const res = await s3.send(cmd);
   // Body is a Readable stream in Node
@@ -152,8 +147,8 @@ export async function fetchS3Range(
 ): Promise<Buffer> {
   const cmd = new GetObjectCommand({
     Bucket: BUCKET,
-    Key:    s3Key,
-    Range:  `bytes=${startByte}-${startByte + bytes - 1}`,
+    Key: s3Key,
+    Range: `bytes=${startByte}-${startByte + bytes - 1}`,
   });
   const res = await s3.send(cmd);
   const chunks: Buffer[] = [];
@@ -177,18 +172,16 @@ export async function getObject(s3Key: string): Promise<Buffer> {
 
 // ─── Put object (buffered) ──────────────────────────────────
 
-export async function putObject(
-  s3Key:       string,
-  body:        Buffer,
-  contentType: string,
-): Promise<void> {
-  await s3.send(new PutObjectCommand({
-    Bucket:               BUCKET,
-    Key:                  s3Key,
-    Body:                 body,
-    ContentType:          contentType,
-    ServerSideEncryption: 'AES256',
-  }));
+export async function putObject(s3Key: string, body: Buffer, contentType: string): Promise<void> {
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: BUCKET,
+      Key: s3Key,
+      Body: body,
+      ContentType: contentType,
+      ServerSideEncryption: 'AES256',
+    }),
+  );
 }
 
 // ─── Put object (streaming) ─────────────────────────────────
@@ -197,17 +190,17 @@ export async function putObject(
 // directly from the caller to S3.
 
 export async function putObjectStream(
-  s3Key:       string,
-  body:        Readable,
+  s3Key: string,
+  body: Readable,
   contentType: string,
 ): Promise<void> {
   const upload = new Upload({
     client: s3,
     params: {
-      Bucket:               BUCKET,
-      Key:                  s3Key,
-      Body:                 body,
-      ContentType:          contentType,
+      Bucket: BUCKET,
+      Key: s3Key,
+      Body: body,
+      ContentType: contentType,
       ServerSideEncryption: 'AES256',
     },
   });

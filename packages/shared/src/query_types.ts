@@ -5,8 +5,8 @@
 
 export type FilterOp =
   | { type: 'between'; low: number; high: number }
-  | { type: 'in';      values: string[] }
-  | { type: 'ilike';   pattern: string };
+  | { type: 'in'; values: string[] }
+  | { type: 'ilike'; pattern: string };
 
 export interface FilterSpec {
   column: string;

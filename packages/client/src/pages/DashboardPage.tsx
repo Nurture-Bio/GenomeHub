@@ -1,7 +1,10 @@
-import { Link } from 'react-router-dom';
-import { useStorageStats, useOrganismsQuery, useCollectionsQuery } from '../hooks/useGenomicQueries';
+import {
+  useStorageStats,
+  useOrganismsQuery,
+  useCollectionsQuery,
+} from '../hooks/useGenomicQueries';
 import { FORMAT_META, formatBytes } from '../lib/formats';
-import { Heading, Text, Badge, Card } from '../ui';
+import { Heading, Text } from '../ui';
 import { useCountUp } from '../hooks/useCountUp';
 
 // ── Stat card ─────────────────────────────────────────────
@@ -12,7 +15,11 @@ function StatCard({ label, value, sub }: { label: string; value: number | null; 
     <div className="stat-card-surface p-3 flex flex-col gap-0.5">
       <Text variant="muted">{label}</Text>
       <Heading level="display" className="tabular-nums">
-        {value === null ? <span className="skeleton h-[1lh] w-10 inline-block align-middle rounded-sm" /> : animated.toLocaleString()}
+        {value === null ? (
+          <span className="skeleton h-[1lh] w-10 inline-block align-middle rounded-sm" />
+        ) : (
+          animated.toLocaleString()
+        )}
       </Heading>
       {sub && <Text variant="dim">{sub}</Text>}
     </div>
@@ -25,7 +32,11 @@ function StorageStatCard({ label, bytes }: { label: string; bytes: number | null
     <div className="stat-card-surface p-3 flex flex-col gap-0.5">
       <Text variant="muted">{label}</Text>
       <Heading level="display" className="tabular-nums">
-        {bytes === null ? <span className="skeleton h-[1lh] w-16 inline-block align-middle rounded-sm" /> : formatBytes(animated)}
+        {bytes === null ? (
+          <span className="skeleton h-[1lh] w-16 inline-block align-middle rounded-sm" />
+        ) : (
+          formatBytes(animated)
+        )}
       </Heading>
     </div>
   );
@@ -39,10 +50,10 @@ function FormatBar({ items }: { items: { format: string; bytes: number }[] }) {
 
   return (
     <div className="flex h-3 rounded-full overflow-hidden gap-px">
-      {items.map(item => {
-        const fmt  = item.format as keyof typeof FORMAT_META;
+      {items.map((item) => {
+        const fmt = item.format as keyof typeof FORMAT_META;
         const meta = FORMAT_META[fmt] ?? FORMAT_META.other;
-        const pct  = (item.bytes / total) * 100;
+        const pct = (item.bytes / total) * 100;
         return (
           <div
             key={item.format}
@@ -99,24 +110,29 @@ export default function DashboardPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-1 mt-1">
             {stats.byFormat.map((item, i) => {
-              const fmt  = item.format as keyof typeof FORMAT_META;
+              const fmt = item.format as keyof typeof FORMAT_META;
               const meta = FORMAT_META[fmt] ?? FORMAT_META.other;
-              const pct  = stats.totalBytes > 0
-                ? ((item.bytes / stats.totalBytes) * 100).toFixed(1)
-                : '0';
+              const pct =
+                stats.totalBytes > 0 ? ((item.bytes / stats.totalBytes) * 100).toFixed(1) : '0';
               return (
-                <div key={item.format}
+                <div
+                  key={item.format}
                   className="flex items-center gap-1.5 p-1 bg-raised rounded-sm stagger-item"
-                  style={{ '--i': Math.min(i, 15) } as React.CSSProperties}>
-                  <div className="w-2 h-2 rounded-full shrink-0"
-                    style={{ background: meta.color }} />
+                  style={{ '--i': Math.min(i, 15) } as React.CSSProperties}
+                >
+                  <div
+                    className="w-2 h-2 rounded-full shrink-0"
+                    style={{ background: meta.color }}
+                  />
                   <div className="min-w-0 flex-1">
                     <Text variant="body">{meta.label}</Text>
                     <Text variant="dim" className="tabular-nums">
                       {formatBytes(item.bytes)} · {item.count} files
                     </Text>
                   </div>
-                  <Text variant="dim" className="shrink-0 tabular-nums">{pct}%</Text>
+                  <Text variant="dim" className="shrink-0 tabular-nums">
+                    {pct}%
+                  </Text>
                 </div>
               );
             })}

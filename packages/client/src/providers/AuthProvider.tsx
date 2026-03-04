@@ -23,9 +23,12 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     apiFetch('/api/auth/me')
-      .then(r => (r.ok ? r.json() : null))
-      .then(data => setUser(data))
-      .catch(() => { clearToken(); setUser(null); })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => setUser(data))
+      .catch(() => {
+        clearToken();
+        setUser(null);
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -46,7 +49,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
       const body = await res.json().catch(() => ({ error: 'Login failed' }));
       throw new Error(body.error ?? 'Login failed');
     }
-    const data = await res.json() as AuthUser & { token: string };
+    const data = (await res.json()) as AuthUser & { token: string };
     setToken(data.token);
     setUser({ id: data.id, email: data.email, name: data.name, picture: data.picture });
   }, []);
@@ -57,9 +60,5 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
-  return (
-    <AuthContext value={{ user, loading, login, logout }}>
-      {children}
-    </AuthContext>
-  );
+  return <AuthContext value={{ user, loading, login, logout }}>{children}</AuthContext>;
 }

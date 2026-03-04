@@ -9,10 +9,7 @@ export async function fetchApi<T>(url: string): Promise<T> {
   return res.json();
 }
 
-export async function mutateApi<T = void>(
-  url: string,
-  init?: RequestInit,
-): Promise<T> {
+export async function mutateApi<T = void>(url: string, init?: RequestInit): Promise<T> {
   const res = await apiFetch(url, init);
   if (!res.ok) {
     const body = await res.json().catch(() => null);

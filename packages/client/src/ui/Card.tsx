@@ -1,5 +1,5 @@
-import { type HTMLAttributes } from 'react';
 import { cx } from 'class-variance-authority';
+import { type HTMLAttributes } from 'react';
 import { card, type CardVariants } from './recipes';
 
 type Props = HTMLAttributes<HTMLDivElement> & CardVariants;

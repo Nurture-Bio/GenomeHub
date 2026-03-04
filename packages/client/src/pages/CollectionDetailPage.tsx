@@ -1,11 +1,15 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
-  useCollectionDetailQuery, useFilesQuery,
+  useCollectionDetailQuery,
+  useFilesQuery,
   useUpdateCollectionMutation,
-  useAddFilesToCollection, useRemoveFilesFromCollection,
-  useAddCollectionOrganism, useRemoveCollectionOrganism,
-  useAddCollectionTechnique, useRemoveCollectionTechnique,
+  useAddFilesToCollection,
+  useRemoveFilesFromCollection,
+  useAddCollectionOrganism,
+  useRemoveCollectionOrganism,
+  useAddCollectionTechnique,
+  useRemoveCollectionTechnique,
 } from '../hooks/useGenomicQueries';
 import { detectFormat, FORMAT_META, formatBytes } from '../lib/formats';
 import { Heading, Text, Badge, InlineInput, Input, ChipEditor, HashChip, iconAction } from '../ui';
@@ -17,7 +21,7 @@ export default function CollectionDetailPage() {
   const { collectionId } = useParams<{ collectionId: string }>();
   const { data: collection, isLoading } = useCollectionDetailQuery(collectionId);
   const { updateCollection } = useUpdateCollectionMutation();
-  const setBreadcrumbLabel = useAppStore(s => s.setBreadcrumbLabel);
+  const setBreadcrumbLabel = useAppStore((s) => s.setBreadcrumbLabel);
   const { addCollectionOrganism } = useAddCollectionOrganism();
   const { removeCollectionOrganism } = useRemoveCollectionOrganism();
   const { addCollectionTechnique } = useAddCollectionTechnique();
@@ -39,13 +43,17 @@ export default function CollectionDetailPage() {
   // Files available to add (not already in this collection)
   const availableFiles = useMemo(() => {
     if (!allFiles || !collection) return [];
-    const existingIds = new Set(collection.files.map(f => f.id));
+    const existingIds = new Set(collection.files.map((f) => f.id));
     const q = addSearch.toLowerCase();
     return allFiles
-      .filter(f => !existingIds.has(f.id))
-      .filter(f => !q || f.filename.toLowerCase().includes(q)
-        || f.types.some(t => t.toLowerCase().includes(q))
-        || f.organisms.some(o => o.displayName.toLowerCase().includes(q)));
+      .filter((f) => !existingIds.has(f.id))
+      .filter(
+        (f) =>
+          !q ||
+          f.filename.toLowerCase().includes(q) ||
+          f.types.some((t) => t.toLowerCase().includes(q)) ||
+          f.organisms.some((o) => o.displayName.toLowerCase().includes(q)),
+      );
   }, [allFiles, collection, addSearch]);
 
   const handleAddFiles = async () => {
@@ -92,50 +100,82 @@ export default function CollectionDetailPage() {
       <div>
         <div className="flex items-center gap-2 mb-1 flex-wrap">
           <ChipEditor
-            items={collection.techniques.map(t => ({ id: t.id, label: t.name }))}
-            onAdd={id => { if (collectionId) addCollectionTechnique(collectionId, id); }}
-            onRemove={id => { if (collectionId) removeCollectionTechnique(collectionId, id); }}
-            renderPicker={p => <TechniquePicker {...p} variant="surface" size="sm" className="w-36" />}
+            items={collection.techniques.map((t) => ({ id: t.id, label: t.name }))}
+            onAdd={(id) => {
+              if (collectionId) addCollectionTechnique(collectionId, id);
+            }}
+            onRemove={(id) => {
+              if (collectionId) removeCollectionTechnique(collectionId, id);
+            }}
+            renderPicker={(p) => (
+              <TechniquePicker {...p} variant="surface" size="sm" className="w-36" />
+            )}
           />
           <ChipEditor
-            items={collection.types.map(t => ({ id: t, label: t }))}
-            onAdd={id => { if (collectionId) updateCollection(collectionId, { types: [...collection.types, id] }); }}
-            onRemove={id => { if (collectionId) updateCollection(collectionId, { types: collection.types.filter(t => t !== id) }); }}
-            renderPicker={p => <FileTypePicker {...p} variant="surface" size="sm" className="w-28" />}
+            items={collection.types.map((t) => ({ id: t, label: t }))}
+            onAdd={(id) => {
+              if (collectionId)
+                updateCollection(collectionId, { types: [...collection.types, id] });
+            }}
+            onRemove={(id) => {
+              if (collectionId)
+                updateCollection(collectionId, { types: collection.types.filter((t) => t !== id) });
+            }}
+            renderPicker={(p) => (
+              <FileTypePicker {...p} variant="surface" size="sm" className="w-28" />
+            )}
           />
         </div>
 
         <InlineInput
           value={collection.name}
           className="text-heading font-semibold"
-          onCommit={v => { if (collectionId && v) updateCollection(collectionId, { name: v }); }}
+          onCommit={(v) => {
+            if (collectionId && v) updateCollection(collectionId, { name: v });
+          }}
         />
 
         <div className="mt-0.5">
           <InlineInput
             value={collection.description ?? ''}
             placeholder="add description"
-            onCommit={v => { if (collectionId) updateCollection(collectionId, { description: v }); }}
+            onCommit={(v) => {
+              if (collectionId) updateCollection(collectionId, { description: v });
+            }}
           />
         </div>
 
         <div className="flex items-center gap-2 mt-1 flex-wrap">
           <ChipEditor
-            items={collection.organisms.map(o => ({ id: o.id, label: o.displayName }))}
-            onAdd={id => { if (collectionId) addCollectionOrganism(collectionId, id); }}
-            onRemove={id => { if (collectionId) removeCollectionOrganism(collectionId, id); }}
-            renderPicker={p => <OrganismPicker {...p} variant="surface" size="sm" className="w-40" />}
+            items={collection.organisms.map((o) => ({ id: o.id, label: o.displayName }))}
+            onAdd={(id) => {
+              if (collectionId) addCollectionOrganism(collectionId, id);
+            }}
+            onRemove={(id) => {
+              if (collectionId) removeCollectionOrganism(collectionId, id);
+            }}
+            renderPicker={(p) => (
+              <OrganismPicker {...p} variant="surface" size="sm" className="w-40" />
+            )}
           />
-          <Badge variant="count" color="accent">{collection.fileCount} files</Badge>
+          <Badge variant="count" color="accent">
+            {collection.fileCount} files
+          </Badge>
         </div>
       </div>
 
       {/* Files (playlist contents) */}
       <div>
         <div className="flex items-center gap-2 mb-1.5">
-          <Text variant="muted" className="flex-1">Files</Text>
+          <Text variant="muted" className="flex-1">
+            Files
+          </Text>
           <button
-            onClick={() => { setShowAddPanel(!showAddPanel); setAddSelected(new Set()); setAddSearch(''); }}
+            onClick={() => {
+              setShowAddPanel(!showAddPanel);
+              setAddSelected(new Set());
+              setAddSearch('');
+            }}
             className={iconAction({ color: 'dim' })}
           >
             {showAddPanel ? '× close' : '+ add files'}
@@ -145,61 +185,72 @@ export default function CollectionDetailPage() {
         {/* Add files panel */}
         <div className="collapse-container" data-expanded={showAddPanel ? 'true' : 'false'}>
           <div className="collapse-inner">
-          <div className="border border-line rounded-md p-2.5 mb-2 bg-raised">
-            <div className="flex items-center gap-2 mb-2">
-              <Input
-                variant="surface"
-                size="sm"
-                placeholder="Search files..."
-                value={addSearch}
-                onChange={e => setAddSearch(e.target.value)}
-                className="flex-1"
-              />
-              <span className={`inline-flex items-center gap-1 transition-opacity duration-fast ${addSelected.size > 0 ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-                <button
-                  disabled={addPending}
-                  onClick={handleAddFiles}
-                  className={iconAction({ color: 'accent' })}
-                  title={`Add ${addSelected.size}`}
+            <div className="border border-line rounded-md p-2.5 mb-2 bg-raised">
+              <div className="flex items-center gap-2 mb-2">
+                <Input
+                  variant="surface"
+                  size="sm"
+                  placeholder="Search files..."
+                  value={addSearch}
+                  onChange={(e) => setAddSearch(e.target.value)}
+                  className="flex-1"
+                />
+                <span
+                  className={`inline-flex items-center gap-1 transition-opacity duration-fast ${addSelected.size > 0 ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
                 >
-                  ✓ {addSelected.size}
-                </button>
-              </span>
+                  <button
+                    disabled={addPending}
+                    onClick={handleAddFiles}
+                    className={iconAction({ color: 'accent' })}
+                    title={`Add ${addSelected.size}`}
+                  >
+                    ✓ {addSelected.size}
+                  </button>
+                </span>
+              </div>
+              <div className="max-h-48 overflow-auto flex flex-col gap-0.5">
+                {availableFiles.length === 0 ? (
+                  <Text variant="dim" className="py-2 text-center">
+                    {addSearch ? 'No matching files.' : 'No files available to add.'}
+                  </Text>
+                ) : (
+                  availableFiles.slice(0, 50).map((file) => {
+                    const fmt = detectFormat(file.filename);
+                    const meta = FORMAT_META[fmt];
+                    const checked = addSelected.has(file.id);
+                    return (
+                      <label
+                        key={file.id}
+                        className="flex items-center gap-2 px-1.5 py-1 rounded-sm cursor-pointer row-hover"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            setAddSelected((prev) => {
+                              const next = new Set(prev);
+                              e.target.checked ? next.add(file.id) : next.delete(file.id);
+                              return next;
+                            });
+                          }}
+                          className="accent-cyan shrink-0"
+                        />
+                        <HashChip label={meta.label} colorKey={fmt} />
+                        <Text variant="mono" className="truncate flex-1 min-w-0">
+                          {file.filename}
+                        </Text>
+                        {file.types.map((t) => (
+                          <HashChip key={t} label={t} />
+                        ))}
+                        <Text variant="dim" className="shrink-0">
+                          {formatBytes(file.sizeBytes)}
+                        </Text>
+                      </label>
+                    );
+                  })
+                )}
+              </div>
             </div>
-            <div className="max-h-48 overflow-auto flex flex-col gap-0.5">
-              {availableFiles.length === 0 ? (
-                <Text variant="dim" className="py-2 text-center">
-                  {addSearch ? 'No matching files.' : 'No files available to add.'}
-                </Text>
-              ) : (
-                availableFiles.slice(0, 50).map(file => {
-                  const fmt = detectFormat(file.filename);
-                  const meta = FORMAT_META[fmt];
-                  const checked = addSelected.has(file.id);
-                  return (
-                    <label key={file.id} className="flex items-center gap-2 px-1.5 py-1 rounded-sm cursor-pointer row-hover">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={e => {
-                          setAddSelected(prev => {
-                            const next = new Set(prev);
-                            e.target.checked ? next.add(file.id) : next.delete(file.id);
-                            return next;
-                          });
-                        }}
-                        className="accent-cyan shrink-0"
-                      />
-                      <HashChip label={meta.label} colorKey={fmt} />
-                      <Text variant="mono" className="truncate flex-1 min-w-0">{file.filename}</Text>
-                      {file.types.map(t => <HashChip key={t} label={t} />)}
-                      <Text variant="dim" className="shrink-0">{formatBytes(file.sizeBytes)}</Text>
-                    </label>
-                  );
-                })
-              )}
-            </div>
-          </div>
           </div>
         </div>
 
@@ -211,10 +262,18 @@ export default function CollectionDetailPage() {
             <table className="w-full border-collapse text-left">
               <thead>
                 <tr className="border-b border-line surface-header">
-                  <th className="tbl-cell"><Text variant="muted">File</Text></th>
-                  <th className="tbl-cell w-24"><Text variant="muted">Type</Text></th>
-                  <th className="tbl-cell text-right w-20"><Text variant="muted">Size</Text></th>
-                  <th className="tbl-cell w-20"><Text variant="muted">Status</Text></th>
+                  <th className="tbl-cell">
+                    <Text variant="muted">File</Text>
+                  </th>
+                  <th className="tbl-cell w-24">
+                    <Text variant="muted">Type</Text>
+                  </th>
+                  <th className="tbl-cell text-right w-20">
+                    <Text variant="muted">Size</Text>
+                  </th>
+                  <th className="tbl-cell w-20">
+                    <Text variant="muted">Status</Text>
+                  </th>
                   <th className="w-6" />
                 </tr>
               </thead>
@@ -223,13 +282,19 @@ export default function CollectionDetailPage() {
                   const fmt = detectFormat(file.filename);
                   const meta = FORMAT_META[fmt];
                   return (
-                    <tr key={file.id} className="border-b border-line group stagger-item row-hover"
-                      style={{ '--i': Math.min(i, 15) } as React.CSSProperties}>
+                    <tr
+                      key={file.id}
+                      className="border-b border-line group stagger-item row-hover"
+                      style={{ '--i': Math.min(i, 15) } as React.CSSProperties}
+                    >
                       <td className="tbl-cell">
                         <div className="flex items-center gap-2">
                           <HashChip label={meta.label} colorKey={fmt} />
                           <Link to={`/files/${file.id}`} className="no-underline">
-                            <Text variant="mono" className="truncate hover:text-cyan transition-colors duration-fast">
+                            <Text
+                              variant="mono"
+                              className="truncate hover:text-cyan transition-colors duration-fast"
+                            >
                               {file.filename}
                             </Text>
                           </Link>
@@ -237,16 +302,32 @@ export default function CollectionDetailPage() {
                       </td>
                       <td className="tbl-cell">
                         <div className="flex gap-0.5 flex-wrap">
-                          {file.types.map(t => <HashChip key={t} label={t} />)}
+                          {file.types.map((t) => (
+                            <HashChip key={t} label={t} />
+                          ))}
                         </div>
                       </td>
                       <td className="tbl-cell text-right">
-                        <Text variant="dim" className="tabular-nums">{formatBytes(file.sizeBytes)}</Text>
+                        <Text variant="dim" className="tabular-nums">
+                          {formatBytes(file.sizeBytes)}
+                        </Text>
                       </td>
                       <td className="tbl-cell">
-                        {file.status === 'ready' && <Badge variant="status" color="green">ready</Badge>}
-                        {file.status === 'pending' && <Badge variant="status" color="yellow">uploading</Badge>}
-                        {file.status === 'error' && <Badge variant="status" color="red">error</Badge>}
+                        {file.status === 'ready' && (
+                          <Badge variant="status" color="green">
+                            ready
+                          </Badge>
+                        )}
+                        {file.status === 'pending' && (
+                          <Badge variant="status" color="yellow">
+                            uploading
+                          </Badge>
+                        )}
+                        {file.status === 'error' && (
+                          <Badge variant="status" color="red">
+                            error
+                          </Badge>
+                        )}
                       </td>
                       <td className="tbl-cell-end">
                         <button

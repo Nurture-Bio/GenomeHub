@@ -17,7 +17,12 @@ export async function resolveUser(req: Request): Promise<User | null> {
   // Never set this in production.
   const devToken = process.env.DEV_AUTH_TOKEN;
   if (devToken && token === devToken) {
-    return { id: '00000000-0000-0000-0000-000000000000', email: 'dev@local', name: 'Dev User', picture: null } as unknown as User;
+    return {
+      id: '00000000-0000-0000-0000-000000000000',
+      email: 'dev@local',
+      name: 'Dev User',
+      picture: null,
+    } as unknown as User;
   }
 
   const repo = AppDataSource.getRepository(User);
@@ -26,68 +31,97 @@ export async function resolveUser(req: Request): Promise<User | null> {
 
 // ─── Auth routes (unauthenticated) ──────────────────────────
 
-router.post('/auth/google', asyncWrap(async (req, res) => {
-  const { accessToken } = req.body as { accessToken: string };
-  if (!accessToken) { res.status(400).json({ error: 'accessToken required' }); return; }
+router.post(
+  '/auth/google',
+  asyncWrap(async (req, res) => {
+    const { accessToken } = req.body as { accessToken: string };
+    if (!accessToken) {
+      res.status(400).json({ error: 'accessToken required' });
+      return;
+    }
 
-  const infoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!infoRes.ok) { res.status(401).json({ error: 'invalid token' }); return; }
-
-  const info = await infoRes.json() as {
-    sub: string; email: string; name?: string;
-    given_name?: string; family_name?: string; picture?: string; hd?: string;
-  };
-
-  if (info.hd !== 'nurture.bio') {
-    res.status(403).json({ error: 'Only nurture.bio accounts are allowed' });
-    return;
-  }
-
-  const userRepo = AppDataSource.getRepository(User);
-  const authToken = crypto.randomBytes(32).toString('hex');
-
-  let user = await userRepo.findOneBy({ googleId: info.sub });
-  if (user) {
-    user.name = info.name ?? user.name;
-    user.givenName = info.given_name ?? user.givenName;
-    user.familyName = info.family_name ?? user.familyName;
-    user.picture = info.picture ?? user.picture;
-    user.lastLoginAt = new Date();
-    user.authToken = authToken;
-    await userRepo.save(user);
-  } else {
-    user = userRepo.create({
-      googleId: info.sub,
-      email: info.email,
-      name: info.name ?? info.email,
-      givenName: info.given_name ?? null,
-      familyName: info.family_name ?? null,
-      picture: info.picture ?? null,
-      hd: info.hd ?? null,
-      lastLoginAt: new Date(),
-      authToken,
+    const infoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` },
     });
-    await userRepo.save(user);
-  }
+    if (!infoRes.ok) {
+      res.status(401).json({ error: 'invalid token' });
+      return;
+    }
 
-  res.json({ id: user.id, email: user.email, name: user.name, picture: user.picture, token: authToken });
-}));
+    const info = (await infoRes.json()) as {
+      sub: string;
+      email: string;
+      name?: string;
+      given_name?: string;
+      family_name?: string;
+      picture?: string;
+      hd?: string;
+    };
 
-router.get('/auth/me', asyncWrap(async (req, res) => {
-  const user = await resolveUser(req);
-  if (!user) { res.status(401).json({ error: 'not authenticated' }); return; }
-  res.json({ id: user.id, email: user.email, name: user.name, picture: user.picture });
-}));
+    if (info.hd !== 'nurture.bio') {
+      res.status(403).json({ error: 'Only nurture.bio accounts are allowed' });
+      return;
+    }
 
-router.post('/auth/logout', asyncWrap(async (req, res) => {
-  const user = await resolveUser(req);
-  if (user) {
-    user.authToken = null;
-    await AppDataSource.getRepository(User).save(user);
-  }
-  res.json({ ok: true });
-}));
+    const userRepo = AppDataSource.getRepository(User);
+    const authToken = crypto.randomBytes(32).toString('hex');
+
+    let user = await userRepo.findOneBy({ googleId: info.sub });
+    if (user) {
+      user.name = info.name ?? user.name;
+      user.givenName = info.given_name ?? user.givenName;
+      user.familyName = info.family_name ?? user.familyName;
+      user.picture = info.picture ?? user.picture;
+      user.lastLoginAt = new Date();
+      user.authToken = authToken;
+      await userRepo.save(user);
+    } else {
+      user = userRepo.create({
+        googleId: info.sub,
+        email: info.email,
+        name: info.name ?? info.email,
+        givenName: info.given_name ?? null,
+        familyName: info.family_name ?? null,
+        picture: info.picture ?? null,
+        hd: info.hd ?? null,
+        lastLoginAt: new Date(),
+        authToken,
+      });
+      await userRepo.save(user);
+    }
+
+    res.json({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      picture: user.picture,
+      token: authToken,
+    });
+  }),
+);
+
+router.get(
+  '/auth/me',
+  asyncWrap(async (req, res) => {
+    const user = await resolveUser(req);
+    if (!user) {
+      res.status(401).json({ error: 'not authenticated' });
+      return;
+    }
+    res.json({ id: user.id, email: user.email, name: user.name, picture: user.picture });
+  }),
+);
+
+router.post(
+  '/auth/logout',
+  asyncWrap(async (req, res) => {
+    const user = await resolveUser(req);
+    if (user) {
+      user.authToken = null;
+      await AppDataSource.getRepository(User).save(user);
+    }
+    res.json({ ok: true });
+  }),
+);
 
 export default router;

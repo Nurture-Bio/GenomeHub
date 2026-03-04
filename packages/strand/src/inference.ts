@@ -38,9 +38,9 @@ import type { FieldType } from '../../../vendor/strand/src/types';
  */
 export interface FieldDef {
   /** Column name — last path segment, or fully-qualified (underscored) on collision. */
-  name:     string;
+  name: string;
   /** Strand field type selected by the inference engine. */
-  type:     FieldType;
+  type: FieldType;
   /** Dot-notation extraction path into the source JSON record (e.g. "tags.score"). */
   jsonPath: string;
 }
@@ -81,27 +81,27 @@ type ObservedKind = 'i32' | 'f64' | 'bool8' | 'utf8' | 'json' | 'null';
 
 interface FieldAccum {
   /** Set of kinds observed for this path across the sample. */
-  kinds:    Set<ObservedKind>;
+  kinds: Set<ObservedKind>;
   /**
    * Collected distinct string values — only populated while size ≤ cardMax.
    * Used for the utf8 → utf8_ref promotion decision.
    */
   distinct: Set<string>;
   /** Total non-null observations for this path. */
-  seen:     number;
+  seen: number;
   /** Insertion order index — ensures stable output ordering. */
-  order:    number;
+  order: number;
 }
 
 // ── Value classifier ──────────────────────────────────────────────────────────
 
 function classifyScalar(v: unknown): ObservedKind {
   if (v === null || v === undefined) return 'null';
-  if (typeof v === 'boolean')        return 'bool8';
-  if (typeof v === 'bigint')         return 'f64';     // coerced to double at write time
+  if (typeof v === 'boolean') return 'bool8';
+  if (typeof v === 'bigint') return 'f64'; // coerced to double at write time
   if (typeof v === 'number') {
-    if (!isFinite(v))                              return 'f64';
-    if (!Number.isInteger(v))                     return 'f64';
+    if (!isFinite(v)) return 'f64';
+    if (!Number.isInteger(v)) return 'f64';
     if (v < -2_147_483_648 || v > 2_147_483_647) return 'f64'; // out of i32 range
     return 'i32';
   }
@@ -113,29 +113,17 @@ function classifyScalar(v: unknown): ObservedKind {
 // ── Accumulator update (recursive) ───────────────────────────────────────────
 
 function observe(
-  path:     string,
-  value:    unknown,
-  depth:    number,
-  accums:   Map<string, FieldAccum>,
-  cardMax:  number,
+  path: string,
+  value: unknown,
+  depth: number,
+  accums: Map<string, FieldAccum>,
+  cardMax: number,
   maxDepth: number,
 ): void {
   // Recurse into plain objects (not arrays) up to maxDepth.
-  if (
-    depth < maxDepth &&
-    value !== null &&
-    typeof value === 'object' &&
-    !Array.isArray(value)
-  ) {
+  if (depth < maxDepth && value !== null && typeof value === 'object' && !Array.isArray(value)) {
     for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-      observe(
-        path ? `${path}.${key}` : key,
-        child,
-        depth + 1,
-        accums,
-        cardMax,
-        maxDepth,
-      );
+      observe(path ? `${path}.${key}` : key, child, depth + 1, accums, cardMax, maxDepth);
     }
     return; // don't register the object itself — only its leaf fields
   }
@@ -164,7 +152,9 @@ function resolveType(acc: FieldAccum, cardMax: number, cardRatio: number): Field
   const { kinds, distinct, seen } = acc;
 
   // Filter out null — it only tells us the field is optional.
-  const concrete = new Set([...kinds].filter((k): k is Exclude<ObservedKind, 'null'> => k !== 'null'));
+  const concrete = new Set(
+    [...kinds].filter((k): k is Exclude<ObservedKind, 'null'> => k !== 'null'),
+  );
 
   // All-null field: safe fallback so the SAB slot still exists.
   if (concrete.size === 0) return 'utf8';
@@ -177,9 +167,9 @@ function resolveType(acc: FieldAccum, cardMax: number, cardRatio: number): Field
   // The worker writes String(raw) → intern handle, same as any utf8_ref field.
   if (concrete.size === 1 && concrete.has('bool8')) return 'utf8_ref';
 
-  const hasNum  = concrete.has('i32') || concrete.has('f64');
+  const hasNum = concrete.has('i32') || concrete.has('f64');
   const hasBool = concrete.has('bool8');
-  const hasStr  = concrete.has('utf8');
+  const hasStr = concrete.has('utf8');
 
   if (hasNum && !hasStr) {
     // bool coerced alongside numbers → widen to f64 (0.0 / 1.0).
@@ -222,7 +212,7 @@ function buildNames(paths: string[]): Map<string, string> {
   const result = new Map<string, string>();
   for (const path of paths) {
     const leaf = path.split('.').pop()!;
-    result.set(path, (leafCount.get(leaf)! > 1) ? path.replace(/\./g, '_') : leaf);
+    result.set(path, leafCount.get(leaf)! > 1 ? path.replace(/\./g, '_') : leaf);
   }
   return result;
 }
@@ -242,17 +232,14 @@ function buildNames(paths: string[]): Map<string, string> {
  *   // [{ name: 'chrom', type: 'utf8_ref', jsonPath: 'chrom' }, ...]
  *   worker.postMessage({ type: 'scan', url, fields });
  */
-export function inferFields(
-  records:  unknown[],
-  options:  InferOptions = {},
-): FieldDef[] {
+export function inferFields(records: unknown[], options: InferOptions = {}): FieldDef[] {
   const sampleSize = options.sampleSize ?? 500;
-  const cardMax    = options.cardMax    ?? 100;
-  const cardRatio  = options.cardRatio  ?? 0.5;
-  const maxDepth   = options.maxDepth   ?? 5;
+  const cardMax = options.cardMax ?? 100;
+  const cardRatio = options.cardRatio ?? 0.5;
+  const maxDepth = options.maxDepth ?? 5;
 
   const accums = new Map<string, FieldAccum>();
-  const limit  = Math.min(records.length, sampleSize);
+  const limit = Math.min(records.length, sampleSize);
 
   for (let i = 0; i < limit; i++) {
     const rec = records[i];
@@ -264,12 +251,12 @@ export function inferFields(
 
   // Sort paths by insertion order to preserve first-seen stability.
   const sorted = [...accums.entries()].sort((a, b) => a[1].order - b[1].order);
-  const paths  = sorted.map(([path]) => path);
-  const names  = buildNames(paths);
+  const paths = sorted.map(([path]) => path);
+  const names = buildNames(paths);
 
   return sorted.map(([path, acc]) => ({
-    name:     names.get(path)!,
-    type:     resolveType(acc, cardMax, cardRatio),
+    name: names.get(path)!,
+    type: resolveType(acc, cardMax, cardRatio),
     jsonPath: path,
   }));
 }

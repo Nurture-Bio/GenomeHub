@@ -15,11 +15,13 @@ export default function ErrorsPage() {
       <div className="shrink-0">
         <Heading level="title">Pipeline Errors</Heading>
         <Text variant="dim">
-          {data
-            ? `${count} failed conversion${count !== 1 ? 's' : ''}`
-            : isError
-              ? '—'
-              : <span className="skeleton h-[1lh] w-16 inline-block align-middle rounded-sm" />}
+          {data ? (
+            `${count} failed conversion${count !== 1 ? 's' : ''}`
+          ) : isError ? (
+            '—'
+          ) : (
+            <span className="skeleton h-[1lh] w-16 inline-block align-middle rounded-sm" />
+          )}
         </Text>
       </div>
 
@@ -27,7 +29,10 @@ export default function ErrorsPage() {
       <div className="flex flex-col flex-1 min-h-0 border border-line rounded-md bg-base overflow-hidden">
         {/* Header row */}
         <div className="shrink-0 border-b border-line bg-raised tbl-row">
-          <div className="grid items-center" style={{ gridTemplateColumns: '1fr 80px 100px 100px', gap: '0 12px' }}>
+          <div
+            className="grid items-center"
+            style={{ gridTemplateColumns: '1fr 80px 100px 100px', gap: '0 12px' }}
+          >
             <Text variant="muted">File</Text>
             <Text variant="muted">Size</Text>
             <Text variant="muted">Failed</Text>
@@ -40,8 +45,11 @@ export default function ErrorsPage() {
           skeleton={
             <div className="flex-1 overflow-auto min-h-0">
               {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="grid items-center border-b border-line tbl-row"
-                  style={{ gridTemplateColumns: '1fr 80px 100px 100px', gap: '0 12px' }}>
+                <div
+                  key={i}
+                  className="grid items-center border-b border-line tbl-row"
+                  style={{ gridTemplateColumns: '1fr 80px 100px 100px', gap: '0 12px' }}
+                >
                   <div className="skeleton h-[1lh] w-3/4" />
                   <div className="skeleton h-[1lh] w-12" />
                   <div className="skeleton h-[1lh] w-16" />
@@ -53,7 +61,9 @@ export default function ErrorsPage() {
         >
           {count === 0 ? (
             <div className="flex-1 flex items-center justify-center">
-              <Text variant="body" className="text-fg-3 animate-fade-up">No pipeline errors.</Text>
+              <Text variant="body" className="text-fg-3 animate-fade-up">
+                No pipeline errors.
+              </Text>
             </div>
           ) : (
             <div className="flex-1 overflow-auto min-h-0" style={{ scrollbarGutter: 'stable' }}>
@@ -64,8 +74,10 @@ export default function ErrorsPage() {
                   style={{ '--i': Math.min(i, 15) } as React.CSSProperties}
                 >
                   {/* Summary row */}
-                  <div className="grid items-center tbl-row"
-                    style={{ gridTemplateColumns: '1fr 80px 100px 100px', gap: '0 12px' }}>
+                  <div
+                    className="grid items-center tbl-row"
+                    style={{ gridTemplateColumns: '1fr 80px 100px 100px', gap: '0 12px' }}
+                  >
                     <div className="min-w-0">
                       <Link to={`/files/${f.id}`} className="no-underline">
                         <span className="font-mono text-sm truncate block hover:text-cyan transition-colors duration-fast tabular-nums">
@@ -75,7 +87,9 @@ export default function ErrorsPage() {
                     </div>
                     <Text variant="dim">{formatBytes(f.sizeBytes)}</Text>
                     <Text variant="dim">{formatRelativeTime(f.updatedAt)}</Text>
-                    <Badge variant="status" color="red">failed</Badge>
+                    <Badge variant="status" color="red">
+                      failed
+                    </Badge>
                   </div>
 
                   {/* Error detail */}

@@ -76,13 +76,15 @@ export async function resolveLocalParquet(s3Key: string): Promise<string> {
     inflight.set(s3Key, promise);
     promise
       .catch((err) => {
-        console.error(JSON.stringify({
-          tag: '[PARQUET_CACHE]',
-          action: 'download_failed',
-          s3Key,
-          error: err instanceof Error ? err.message : String(err),
-          timestamp: new Date().toISOString(),
-        }));
+        console.error(
+          JSON.stringify({
+            tag: '[PARQUET_CACHE]',
+            action: 'download_failed',
+            s3Key,
+            error: err instanceof Error ? err.message : String(err),
+            timestamp: new Date().toISOString(),
+          }),
+        );
       })
       .finally(() => {
         inflight.delete(s3Key);
@@ -108,14 +110,16 @@ async function download(s3Key: string, dest: string): Promise<string> {
   await fsp.rename(tmp, dest);
 
   const stat = await fsp.stat(dest);
-  console.log(JSON.stringify({
-    tag: '[PARQUET_CACHE]',
-    action: 'downloaded',
-    s3Key,
-    sizeBytes: stat.size,
-    cachePath: dest,
-    timestamp: new Date().toISOString(),
-  }));
+  console.log(
+    JSON.stringify({
+      tag: '[PARQUET_CACHE]',
+      action: 'downloaded',
+      s3Key,
+      sizeBytes: stat.size,
+      cachePath: dest,
+      timestamp: new Date().toISOString(),
+    }),
+  );
 
   return dest;
 }
@@ -132,17 +136,23 @@ async function reap(): Promise<void> {
         const stat = await fsp.stat(fp);
         if (now - stat.mtimeMs > MAX_AGE_MS) {
           await fsp.rm(fp, { force: true });
-          console.log(JSON.stringify({
-            tag: '[PARQUET_CACHE]',
-            action: 'reaped',
-            file: entry,
-            ageMs: Math.round(now - stat.mtimeMs),
-            timestamp: new Date().toISOString(),
-          }));
+          console.log(
+            JSON.stringify({
+              tag: '[PARQUET_CACHE]',
+              action: 'reaped',
+              file: entry,
+              ageMs: Math.round(now - stat.mtimeMs),
+              timestamp: new Date().toISOString(),
+            }),
+          );
         }
-      } catch { /* file may have been deleted concurrently */ }
+      } catch {
+        /* file may have been deleted concurrently */
+      }
     }
-  } catch { /* cache dir may not exist yet */ }
+  } catch {
+    /* cache dir may not exist yet */
+  }
 }
 
 // Start the janitor (only in S3 mode)

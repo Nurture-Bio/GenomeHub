@@ -13,8 +13,6 @@ import { duckdbSrc, ensureDir, isLocal } from './storage.js';
 const MAX_CONVERSION_BYTES = 1.5 * 1024 * 1024 * 1024;
 const MAX_RETRIES = 3;
 const BACKOFF_BASE_MS = 1000;
-const CONVERSION_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
-
 interface ConversionContext {
   fileId: string;
   s3Key: string;
@@ -67,13 +65,15 @@ export async function convertToParquet(
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
       await runDuckDbS3Conversion(ctx);
-      console.log(JSON.stringify({
-        tag: '[DUCKDB_CONVERSION_OK]',
-        fileId: ctx.fileId,
-        s3Key: ctx.s3Key,
-        fileSizeBytes: ctx.fileSizeBytes ?? null,
-        timestamp: new Date().toISOString(),
-      }));
+      console.log(
+        JSON.stringify({
+          tag: '[DUCKDB_CONVERSION_OK]',
+          fileId: ctx.fileId,
+          s3Key: ctx.s3Key,
+          fileSizeBytes: ctx.fileSizeBytes ?? null,
+          timestamp: new Date().toISOString(),
+        }),
+      );
       return;
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
@@ -83,7 +83,7 @@ export async function convertToParquet(
       });
       if (attempt < MAX_RETRIES - 1) {
         const delay = BACKOFF_BASE_MS * Math.pow(4, attempt);
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
   }

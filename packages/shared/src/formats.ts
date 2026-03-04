@@ -3,7 +3,6 @@
  * No hardcoded registry. The extension IS the format.
  */
 
-
 /**
  * Extract the file format (extension) from a filename.
  * Strips .gz to get the meaningful extension underneath.
@@ -22,9 +21,7 @@ export function detectFormat(filename: string): string {
  * Formats that can be converted to Parquet sidecars by the server.
  * DuckDB reads these via read_json_auto or read_csv_auto.
  */
-const CONVERTIBLE_FORMATS = new Set([
-  'json', 'csv', 'tsv', 'bed', 'vcf', 'gff', 'gtf',
-]);
+const CONVERTIBLE_FORMATS = new Set(['json', 'csv', 'tsv', 'bed', 'vcf', 'gff', 'gtf']);
 
 /**
  * True when the file's format can be server-converted to a Parquet sidecar

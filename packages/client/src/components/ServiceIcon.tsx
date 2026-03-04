@@ -57,7 +57,13 @@ export default function ServiceIcon({ service, size = 16 }: { service: string; s
   const icon = ICONS[service] ?? ICONS.link;
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className="shrink-0">
-      <path d={icon.path} stroke={icon.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d={icon.path}
+        stroke={icon.color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }

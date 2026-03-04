@@ -14,7 +14,7 @@ import App from './App';
 if (import.meta.env.DEV) {
   document.fonts.addEventListener('loadingdone', (e) => {
     const ev = e as FontFaceSetLoadEvent;
-    const names = ev.fontfaces.map(f => `${f.family} ${f.weight} ${f.style}`);
+    const names = ev.fontfaces.map((f) => `${f.family} ${f.weight} ${f.style}`);
     console.log('[FONT] loadingdone', performance.now().toFixed(1) + 'ms', names);
   });
   document.fonts.ready.then(() => {
@@ -24,26 +24,39 @@ if (import.meta.env.DEV) {
   // Track ALL text-rendering properties on both heading and body elements
   const tracked = new Map<string, string>();
   const PROPS = [
-    'fontFamily', 'fontWeight', 'fontSize', 'letterSpacing',
-    'fontKerning', 'fontVariationSettings', 'textRendering',
-    'webkitFontSmoothing', 'fontSmooth', 'fontOpticalSizing',
+    'fontFamily',
+    'fontWeight',
+    'fontSize',
+    'letterSpacing',
+    'fontKerning',
+    'fontVariationSettings',
+    'textRendering',
+    'webkitFontSmoothing',
+    'fontSmooth',
+    'fontOpticalSizing',
   ] as const;
 
   const snapshot = (label: string, el: Element) => {
     const cs = getComputedStyle(el);
-    const sig = PROPS.map(p => (cs as any)[p]).join('|');
+    const sig = PROPS.map((p) => (cs as any)[p]).join('|');
     const prev = tracked.get(label);
     if (sig !== prev) {
       tracked.set(label, sig);
       const detail: Record<string, string> = {};
-      PROPS.forEach(p => { detail[p] = (cs as any)[p]; });
+      PROPS.forEach((p) => {
+        detail[p] = (cs as any)[p];
+      });
       // Check for GPU compositing clues
       detail['willChange'] = cs.willChange;
       detail['transform'] = cs.transform;
       detail['opacity'] = cs.opacity;
       detail['backfaceVisibility'] = cs.backfaceVisibility;
       detail['animation'] = cs.animationName + ' ' + cs.animationPlayState;
-      console.log(`[FONT:${prev ? 'SHIFT' : 'INIT'}] ${label}`, performance.now().toFixed(1) + 'ms', detail);
+      console.log(
+        `[FONT:${prev ? 'SHIFT' : 'INIT'}] ${label}`,
+        performance.now().toFixed(1) + 'ms',
+        detail,
+      );
     }
   };
 
@@ -62,12 +75,18 @@ if (import.meta.env.DEV) {
   const lo = new PerformanceObserver((list) => {
     for (const entry of list.getEntries()) {
       if ((entry as any).value > 0.001) {
-        console.log('[LAYOUT:SHIFT]', performance.now().toFixed(1) + 'ms',
-          'score:', (entry as any).value.toFixed(4));
+        console.log(
+          '[LAYOUT:SHIFT]',
+          performance.now().toFixed(1) + 'ms',
+          'score:',
+          (entry as any).value.toFixed(4),
+        );
       }
     }
   });
-  try { lo.observe({ type: 'layout-shift', buffered: true }); } catch {}
+  try {
+    lo.observe({ type: 'layout-shift', buffered: true });
+  } catch {}
 }
 
 const queryClient = new QueryClient({
@@ -103,5 +122,5 @@ createRoot(document.getElementById('root')!).render(
         <ReactQueryDevtools initialIsOpen={false} />
       </QueryClientProvider>
     </BrowserRouter>
-  </StrictMode>
+  </StrictMode>,
 );

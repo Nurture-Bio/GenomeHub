@@ -1,14 +1,22 @@
 import { useState, useCallback, useRef } from 'react';
 import { cx } from 'class-variance-authority';
 import {
-  useTechniquesQuery, useCreateTechniqueMutation,
-  useUpdateTechniqueMutation, useDeleteTechniqueMutation,
-  useRelationTypesQuery, useCreateRelationTypeMutation,
-  useUpdateRelationTypeMutation, useDeleteRelationTypeMutation,
-  useFileTypesQuery, useCreateFileTypeMutation,
-  useUpdateFileTypeMutation, useDeleteFileTypeMutation,
-  useEnginesQuery, useCreateEngineMutation,
-  useUpdateEngineMutation, useDeleteEngineMutation,
+  useTechniquesQuery,
+  useCreateTechniqueMutation,
+  useUpdateTechniqueMutation,
+  useDeleteTechniqueMutation,
+  useRelationTypesQuery,
+  useCreateRelationTypeMutation,
+  useUpdateRelationTypeMutation,
+  useDeleteRelationTypeMutation,
+  useFileTypesQuery,
+  useCreateFileTypeMutation,
+  useUpdateFileTypeMutation,
+  useDeleteFileTypeMutation,
+  useEnginesQuery,
+  useCreateEngineMutation,
+  useUpdateEngineMutation,
+  useDeleteEngineMutation,
 } from '../hooks/useGenomicQueries';
 import { useConfirmDelete } from '../hooks/useConfirmDelete';
 import { Heading, Text, InlineInput, inlineInput, iconAction } from '../ui';
@@ -27,17 +35,34 @@ interface EditableRowProps {
 
 function EditableRow({ id, index, name, description, onSave, onDelete }: EditableRowProps) {
   return (
-    <tr className="border-b border-line group stagger-item row-hover"
-      style={{ '--i': Math.min(index ?? 0, 15) } as React.CSSProperties}>
+    <tr
+      className="border-b border-line group stagger-item row-hover"
+      style={{ '--i': Math.min(index ?? 0, 15) } as React.CSSProperties}
+    >
       <td className="tbl-cell overflow-hidden">
-        <InlineInput value={name} fullWidth className="font-semibold" onCommit={val => onSave(id, { name: val })} />
+        <InlineInput
+          value={name}
+          fullWidth
+          className="font-semibold"
+          onCommit={(val) => onSave(id, { name: val })}
+        />
       </td>
       <td className="tbl-cell overflow-hidden">
-        <InlineInput value={description ?? ''} placeholder="add description" fullWidth onCommit={val => onSave(id, { description: val })} />
+        <InlineInput
+          value={description ?? ''}
+          placeholder="add description"
+          fullWidth
+          onCommit={(val) => onSave(id, { description: val })}
+        />
       </td>
       <td className="tbl-cell-end w-8">
-        <button onClick={() => onDelete(id, name)}
-          className={iconAction({ color: 'danger', reveal: true })} title="Delete">×</button>
+        <button
+          onClick={() => onDelete(id, name)}
+          className={iconAction({ color: 'danger', reveal: true })}
+          title="Delete"
+        >
+          ×
+        </button>
       </td>
     </tr>
   );
@@ -45,7 +70,13 @@ function EditableRow({ id, index, name, description, onSave, onDelete }: Editabl
 
 // ── Add row (table row) ─────────────────────────────────
 
-function AddRow({ placeholder, onAdd }: { placeholder: string; onAdd: (name: string, description: string) => Promise<void> }) {
+function AddRow({
+  placeholder,
+  onAdd,
+}: {
+  placeholder: string;
+  onAdd: (name: string, description: string) => Promise<void>;
+}) {
   const [name, setName] = useState('');
   const [desc, setDesc] = useState('');
   const [pending, setPending] = useState(false);
@@ -56,9 +87,12 @@ function AddRow({ placeholder, onAdd }: { placeholder: string; onAdd: (name: str
     setPending(true);
     try {
       await onAdd(name.trim(), desc.trim());
-      setName(''); setDesc('');
+      setName('');
+      setDesc('');
       nameRef.current?.focus();
-    } finally { setPending(false); }
+    } finally {
+      setPending(false);
+    }
   };
 
   const hasInput = name.trim().length > 0;
@@ -66,23 +100,50 @@ function AddRow({ placeholder, onAdd }: { placeholder: string; onAdd: (name: str
   return (
     <tr className="text-fg-3">
       <td className="tbl-cell overflow-hidden">
-        <input ref={nameRef} value={name} onChange={e => setName(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') commit(); }}
+        <input
+          ref={nameRef}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commit();
+          }}
           placeholder={placeholder}
-          className={cx(inlineInput({ font: 'body' }), 'font-semibold w-full')} />
+          className={cx(inlineInput({ font: 'body' }), 'font-semibold w-full')}
+        />
       </td>
       <td className="tbl-cell overflow-hidden">
-        <input value={desc} onChange={e => setDesc(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') commit(); }}
+        <input
+          value={desc}
+          onChange={(e) => setDesc(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commit();
+          }}
           placeholder="description"
-          className={cx(inlineInput({ font: 'body' }), 'w-full')} />
+          className={cx(inlineInput({ font: 'body' }), 'w-full')}
+        />
       </td>
       <td className="tbl-cell-end w-8">
-        <span className={`inline-flex items-center gap-1 transition-opacity duration-fast ${hasInput ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-          <button disabled={pending} onClick={commit}
-            className={iconAction({ color: 'accent' })} title="Add">✓</button>
-          <button onClick={() => { setName(''); setDesc(''); }}
-            className={iconAction({ color: 'dim' })} title="Cancel">×</button>
+        <span
+          className={`inline-flex items-center gap-1 transition-opacity duration-fast ${hasInput ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        >
+          <button
+            disabled={pending}
+            onClick={commit}
+            className={iconAction({ color: 'accent' })}
+            title="Add"
+          >
+            ✓
+          </button>
+          <button
+            onClick={() => {
+              setName('');
+              setDesc('');
+            }}
+            className={iconAction({ color: 'dim' })}
+            title="Cancel"
+          >
+            ×
+          </button>
         </span>
       </td>
     </tr>
@@ -91,7 +152,15 @@ function AddRow({ placeholder, onAdd }: { placeholder: string; onAdd: (name: str
 
 // ── Section table wrapper ───────────────────────────────
 
-function SectionTable({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
+function SectionTable({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="flex flex-col gap-1.5">
       <div>
@@ -102,8 +171,12 @@ function SectionTable({ title, subtitle, children }: { title: string; subtitle: 
         <table className="w-full border-collapse text-left table-fixed">
           <thead>
             <tr className="border-b border-line surface-header">
-              <th className="tbl-cell w-44"><Text variant="muted">Name</Text></th>
-              <th className="tbl-cell"><Text variant="muted">Description</Text></th>
+              <th className="tbl-cell w-44">
+                <Text variant="muted">Name</Text>
+              </th>
+              <th className="tbl-cell">
+                <Text variant="muted">Description</Text>
+              </th>
               <th className="w-8" />
             </tr>
           </thead>
@@ -128,20 +201,37 @@ interface EngineRowProps {
 
 function EngineRow({ id, index, name, url, status, onSave, onDelete }: EngineRowProps) {
   return (
-    <tr className="border-b border-line group stagger-item row-hover"
-      style={{ '--i': Math.min(index ?? 0, 15) } as React.CSSProperties}>
+    <tr
+      className="border-b border-line group stagger-item row-hover"
+      style={{ '--i': Math.min(index ?? 0, 15) } as React.CSSProperties}
+    >
       <td className="tbl-cell overflow-hidden">
         <div className="flex items-center gap-1.5">
-          <div className={statusDot({ status: status === 'ok' ? 'connected' : 'disconnected', size: 'sm' })} />
-          <InlineInput value={name} fullWidth className="font-semibold" onCommit={val => onSave(id, { name: val })} />
+          <div
+            className={statusDot({
+              status: status === 'ok' ? 'connected' : 'disconnected',
+              size: 'sm',
+            })}
+          />
+          <InlineInput
+            value={name}
+            fullWidth
+            className="font-semibold"
+            onCommit={(val) => onSave(id, { name: val })}
+          />
         </div>
       </td>
       <td className="tbl-cell overflow-hidden">
-        <InlineInput value={url} fullWidth onCommit={val => onSave(id, { url: val })} />
+        <InlineInput value={url} fullWidth onCommit={(val) => onSave(id, { url: val })} />
       </td>
       <td className="tbl-cell-end w-8">
-        <button onClick={() => onDelete(id, name)}
-          className={iconAction({ color: 'danger', reveal: true })} title="Delete">×</button>
+        <button
+          onClick={() => onDelete(id, name)}
+          className={iconAction({ color: 'danger', reveal: true })}
+          title="Delete"
+        >
+          ×
+        </button>
       </td>
     </tr>
   );
@@ -158,9 +248,12 @@ function EngineAddRow({ onAdd }: { onAdd: (name: string, url: string) => Promise
     setPending(true);
     try {
       await onAdd(name.trim(), url.trim());
-      setName(''); setUrl('');
+      setName('');
+      setUrl('');
       nameRef.current?.focus();
-    } finally { setPending(false); }
+    } finally {
+      setPending(false);
+    }
   };
 
   const hasInput = name.trim().length > 0 && url.trim().length > 0;
@@ -168,23 +261,50 @@ function EngineAddRow({ onAdd }: { onAdd: (name: string, url: string) => Promise
   return (
     <tr className="text-fg-3">
       <td className="tbl-cell overflow-hidden">
-        <input ref={nameRef} value={name} onChange={e => setName(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') commit(); }}
+        <input
+          ref={nameRef}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commit();
+          }}
           placeholder="+ new engine"
-          className={cx(inlineInput({ font: 'body' }), 'font-semibold w-full')} />
+          className={cx(inlineInput({ font: 'body' }), 'font-semibold w-full')}
+        />
       </td>
       <td className="tbl-cell overflow-hidden">
-        <input value={url} onChange={e => setUrl(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') commit(); }}
+        <input
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commit();
+          }}
           placeholder="http://localhost:8001"
-          className={cx(inlineInput({ font: 'body' }), 'w-full')} />
+          className={cx(inlineInput({ font: 'body' }), 'w-full')}
+        />
       </td>
       <td className="tbl-cell-end w-8">
-        <span className={`inline-flex items-center gap-1 transition-opacity duration-fast ${hasInput ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-          <button disabled={pending} onClick={commit}
-            className={iconAction({ color: 'accent' })} title="Add">✓</button>
-          <button onClick={() => { setName(''); setUrl(''); }}
-            className={iconAction({ color: 'dim' })} title="Cancel">×</button>
+        <span
+          className={`inline-flex items-center gap-1 transition-opacity duration-fast ${hasInput ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        >
+          <button
+            disabled={pending}
+            onClick={commit}
+            className={iconAction({ color: 'accent' })}
+            title="Add"
+          >
+            ✓
+          </button>
+          <button
+            onClick={() => {
+              setName('');
+              setUrl('');
+            }}
+            className={iconAction({ color: 'dim' })}
+            title="Cancel"
+          >
+            ×
+          </button>
         </span>
       </td>
     </tr>
@@ -202,8 +322,12 @@ function EngineTable({ children }: { children: React.ReactNode }) {
         <table className="w-full border-collapse text-left table-fixed">
           <thead>
             <tr className="border-b border-line surface-header">
-              <th className="tbl-cell w-44"><Text variant="muted">Name</Text></th>
-              <th className="tbl-cell"><Text variant="muted">URL</Text></th>
+              <th className="tbl-cell w-44">
+                <Text variant="muted">Name</Text>
+              </th>
+              <th className="tbl-cell">
+                <Text variant="muted">URL</Text>
+              </th>
               <th className="w-8" />
             </tr>
           </thead>
@@ -222,15 +346,24 @@ export default function SettingsPage() {
   const { createRelationType } = useCreateRelationTypeMutation();
   const { updateRelationType } = useUpdateRelationTypeMutation();
   const { deleteRelationType } = useDeleteRelationTypeMutation();
-  const { confirmDelete: confirmDeleteRelation } = useConfirmDelete(deleteRelationType, 'relation type');
+  const { confirmDelete: confirmDeleteRelation } = useConfirmDelete(
+    deleteRelationType,
+    'relation type',
+  );
 
-  const saveRelation = useCallback(async (id: string, patch: { name?: string; description?: string }) => {
-    await updateRelationType({ id, patch });
-  }, [updateRelationType]);
+  const saveRelation = useCallback(
+    async (id: string, patch: { name?: string; description?: string }) => {
+      await updateRelationType({ id, patch });
+    },
+    [updateRelationType],
+  );
 
-  const addRelation = useCallback(async (name: string, description: string) => {
-    await createRelationType({ name, description: description || undefined });
-  }, [createRelationType]);
+  const addRelation = useCallback(
+    async (name: string, description: string) => {
+      await createRelationType({ name, description: description || undefined });
+    },
+    [createRelationType],
+  );
 
   // File types
   const { data: fileTypes } = useFileTypesQuery();
@@ -239,13 +372,19 @@ export default function SettingsPage() {
   const { deleteFileType } = useDeleteFileTypeMutation();
   const { confirmDelete: confirmDeleteType } = useConfirmDelete(deleteFileType, 'file type');
 
-  const saveType = useCallback(async (id: string, patch: { name?: string; description?: string }) => {
-    await updateFileType({ id, patch });
-  }, [updateFileType]);
+  const saveType = useCallback(
+    async (id: string, patch: { name?: string; description?: string }) => {
+      await updateFileType({ id, patch });
+    },
+    [updateFileType],
+  );
 
-  const addType = useCallback(async (name: string, description: string) => {
-    await createFileType({ name, description: description || undefined });
-  }, [createFileType]);
+  const addType = useCallback(
+    async (name: string, description: string) => {
+      await createFileType({ name, description: description || undefined });
+    },
+    [createFileType],
+  );
 
   // Techniques
   const { data: techniques } = useTechniquesQuery();
@@ -254,13 +393,19 @@ export default function SettingsPage() {
   const { deleteTechnique } = useDeleteTechniqueMutation();
   const { confirmDelete: confirmDeleteTechnique } = useConfirmDelete(deleteTechnique, 'technique');
 
-  const saveTechnique = useCallback(async (id: string, patch: { name?: string; description?: string }) => {
-    await updateTechnique({ id, patch });
-  }, [updateTechnique]);
+  const saveTechnique = useCallback(
+    async (id: string, patch: { name?: string; description?: string }) => {
+      await updateTechnique({ id, patch });
+    },
+    [updateTechnique],
+  );
 
-  const addTechnique = useCallback(async (name: string, description: string) => {
-    await createTechnique({ name, description: description || undefined });
-  }, [createTechnique]);
+  const addTechnique = useCallback(
+    async (name: string, description: string) => {
+      await createTechnique({ name, description: description || undefined });
+    },
+    [createTechnique],
+  );
 
   // Engines
   const { data: engines } = useEnginesQuery();
@@ -269,13 +414,19 @@ export default function SettingsPage() {
   const { deleteEngine } = useDeleteEngineMutation();
   const { confirmDelete: confirmDeleteEngine } = useConfirmDelete(deleteEngine, 'engine');
 
-  const saveEngine = useCallback(async (id: string, patch: { name?: string; url?: string }) => {
-    await updateEngine({ id, patch });
-  }, [updateEngine]);
+  const saveEngine = useCallback(
+    async (id: string, patch: { name?: string; url?: string }) => {
+      await updateEngine({ id, patch });
+    },
+    [updateEngine],
+  );
 
-  const addEngine = useCallback(async (name: string, url: string) => {
-    await createEngine({ name, url });
-  }, [createEngine]);
+  const addEngine = useCallback(
+    async (name: string, url: string) => {
+      await createEngine({ name, url });
+    },
+    [createEngine],
+  );
 
   return (
     <div className="flex flex-col gap-4 md:gap-5 p-2 md:p-5 max-w-2xl mx-auto w-full animate-page-enter">
@@ -286,30 +437,61 @@ export default function SettingsPage() {
 
       <EngineTable>
         {(engines ?? []).map((e, i) => (
-          <EngineRow key={e.id} id={e.id} index={i} name={e.name} url={e.url} status={e.status}
-            onSave={saveEngine} onDelete={confirmDeleteEngine} />
+          <EngineRow
+            key={e.id}
+            id={e.id}
+            index={i}
+            name={e.name}
+            url={e.url}
+            status={e.status}
+            onSave={saveEngine}
+            onDelete={confirmDeleteEngine}
+          />
         ))}
         <EngineAddRow onAdd={addEngine} />
       </EngineTable>
 
       <SectionTable title="Relation Types" subtitle="Define how files can be linked to each other">
         {(relationTypes ?? []).map((rt, i) => (
-          <EditableRow key={rt.id} id={rt.id} index={i} name={rt.name} description={rt.description} onSave={saveRelation} onDelete={confirmDeleteRelation} />
+          <EditableRow
+            key={rt.id}
+            id={rt.id}
+            index={i}
+            name={rt.name}
+            description={rt.description}
+            onSave={saveRelation}
+            onDelete={confirmDeleteRelation}
+          />
         ))}
         <AddRow placeholder="+ new relation type" onAdd={addRelation} />
       </SectionTable>
 
       <SectionTable title="File Types" subtitle="Classify files by their biological meaning">
         {(fileTypes ?? []).map((ft, i) => (
-          <EditableRow key={ft.id} id={ft.id} index={i} name={ft.name} description={ft.description} onSave={saveType} onDelete={confirmDeleteType} />
+          <EditableRow
+            key={ft.id}
+            id={ft.id}
+            index={i}
+            name={ft.name}
+            description={ft.description}
+            onSave={saveType}
+            onDelete={confirmDeleteType}
+          />
         ))}
         <AddRow placeholder="+ new file type" onAdd={addType} />
       </SectionTable>
 
       <SectionTable title="Techniques" subtitle="Sequencing techniques linked to collections">
         {(techniques ?? []).map((t, i) => (
-          <EditableRow key={t.id} id={t.id} index={i} name={t.name} description={t.description}
-            onSave={saveTechnique} onDelete={confirmDeleteTechnique} />
+          <EditableRow
+            key={t.id}
+            id={t.id}
+            index={i}
+            name={t.name}
+            description={t.description}
+            onSave={saveTechnique}
+            onDelete={confirmDeleteTechnique}
+          />
         ))}
         <AddRow placeholder="+ new technique" onAdd={addTechnique} />
       </SectionTable>
