@@ -733,9 +733,10 @@
 
 /* ── The Glass Canopy — frosted void ─────────────────── */
 .glass-canopy {
+  --_glass-blur: blur(12px);
   background: oklch(from var(--color-void) l c h / 0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: var(--_glass-blur);
+  backdrop-filter: var(--_glass-blur);
   border: 1px solid oklch(1 0 0 / 0.10);
   border-radius: var(--radius-lg);
   contain: layout style paint;

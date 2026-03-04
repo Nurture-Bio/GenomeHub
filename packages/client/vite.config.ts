@@ -11,6 +11,16 @@ const apiTarget = useProdApi
 export default defineConfig({
   envDir: '../..',
   plugins: [react(), tailwind()],
+  css: {
+    transformer: 'lightningcss',
+    lightningcss: {
+      targets: {
+        safari: (13 << 16),
+        chrome: (80 << 16),
+        firefox: (103 << 16),
+      },
+    },
+  },
   resolve: {
     alias: {
       '@strand/core':      path.resolve(__dirname, '../..', 'vendor/strand/src/index.ts'),
@@ -37,6 +47,7 @@ export default defineConfig({
   build: {
     outDir: '../../dist/client',
     emptyOutDir: true,
+    cssMinify: 'lightningcss',
     rollupOptions: {
       output: {
         manualChunks: {
