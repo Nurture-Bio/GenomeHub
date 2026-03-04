@@ -1413,6 +1413,18 @@ export default function ParquetPreview({ fileId, onProgress }: {
 
   useEffect(() => () => { if (debRef.current) clearTimeout(debRef.current); }, []);
 
+  // ── The Doorbell ─────────────────────────────────────────────────────────────
+  // When the drawer opens, VirtualRows mounts and expects rows.  But if no
+  // slider has been touched, no Arrow query has ever been fired (the catch-up
+  // effect skips on first ready with no active filters).  Ring the bell: fire
+  // applyFilters so the engine wakes up and streams the viewport.
+  useEffect(() => {
+    if (!isTableOpen) return;
+    if (pipeline.status !== 'ready') return;
+    if (cacheGen > 0) return; // Arrow cache already populated
+    applyFilters([], sortSpecs);
+  }, [isTableOpen, pipeline.status, cacheGen, sortSpecs, applyFilters]);
+
   // ── Build filter specs and apply ────────────────────────────────────────────
 
   const triggerFilters = useCallback(() => {
