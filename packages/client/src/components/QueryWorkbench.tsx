@@ -633,6 +633,9 @@ function sliderReducer(state: SliderState, action: SliderAction): SliderState {
     case 'PENDING_START':
       return state.phase === 'dropped' ? { ...state, phase: 'querying' } : state;
     case 'SETTLE':
+      if (state.phase === 'idle' && state.seal === null &&
+          state.retainedConMin === action.conMin && state.retainedConMax === action.conMax)
+        return state;
       return { phase: 'idle', seal: null, retainedConMin: action.conMin, retainedConMax: action.conMax };
     case 'FULL_RANGE':
       return { ...state, seal: null, retainedConMin: undefined, retainedConMax: undefined };
@@ -792,9 +795,10 @@ function RangeSlider({
   // ── Layout effect — phase bookkeeping + non-actor sync ────────────────────
   useLayoutEffect(() => {
     if (pending && phase === 'dropped') dispatch({ type: 'PENDING_START' });
-    else if (!pending && phase === 'querying') dispatch({ type: 'SETTLE', conMin: constrainedMin, conMax: constrainedMax });
 
     if (isActor) return;
+
+    dispatch({ type: 'SETTLE', conMin: constrainedMin, conMax: constrainedMax });
 
     syncTrack(low, high, axis, sealed);
     syncBounds(axis);
