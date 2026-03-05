@@ -7,6 +7,7 @@
  * Handler naming convention: intent, not gesture.
  *   setRangeVisual — transient paint (drag in progress, never persisted)
  *   commitRange    — durable write to the committed ledger
+ *   setRangeExact  — durable write (exact-match numeric, bypasses drag)
  *   setTextFilter  — durable write
  *   toggleCategory — durable write
  *   clearCategory  — durable write
@@ -43,6 +44,7 @@ export interface FilterState {
   // Mutators — intent, not gesture
   setRangeVisual: (name: string, lo: number, hi: number) => void;
   commitRange: (name: string) => void;
+  setRangeExact: (name: string, value: number | null) => void;
   setTextFilter: (name: string, value: string) => void;
   toggleCategory: (name: string, value: string) => void;
   clearCategory: (name: string) => void;
@@ -125,6 +127,20 @@ export function useFilterState(columnStats: Record<string, ColumnStats>): Filter
     });
   }, [columnStats]);
 
+  const setRangeExact = useCallback(
+    (name: string, value: number | null) => {
+      setRangeOverrides((ro) => {
+        if (value === null) {
+          const next = { ...ro };
+          delete next[name];
+          return next;
+        }
+        return { ...ro, [name]: [value, value] };
+      });
+    },
+    [],
+  );
+
   const setTextFilter = useCallback((name: string, value: string) => {
     setTextFilters((prev) => ({ ...prev, [name]: value }));
   }, []);
@@ -169,6 +185,7 @@ export function useFilterState(columnStats: Record<string, ColumnStats>): Filter
     setSorting,
     setRangeVisual,
     commitRange,
+    setRangeExact,
     setTextFilter,
     toggleCategory,
     clearCategory,
