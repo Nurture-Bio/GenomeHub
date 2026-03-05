@@ -7,7 +7,7 @@ const meta = {
 } satisfies Meta<typeof HashChip>;
 
 export default meta;
-type Story = StoryObj<typeof meta>;
+type Story = StoryObj;
 
 export const Single: Story = {
   args: { label: 'parquet' },

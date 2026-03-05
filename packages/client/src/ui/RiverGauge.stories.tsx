@@ -8,7 +8,7 @@ const meta = {
 } satisfies Meta<typeof RiverGauge>;
 
 export default meta;
-type Story = StoryObj<typeof meta>;
+type Story = StoryObj;
 
 export const Tide: Story = {
   render: () => {
@@ -33,7 +33,7 @@ export const Waterfall: Story = {
   render: () => {
     const [current, setCurrent] = useState(0);
     const [key, setKey] = useState(0);
-    const interval = useRef<ReturnType<typeof setInterval>>();
+    const interval = useRef<ReturnType<typeof setInterval>>(undefined);
 
     const start = () => {
       setCurrent(0);
