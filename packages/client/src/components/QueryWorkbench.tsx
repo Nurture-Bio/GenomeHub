@@ -1,35 +1,34 @@
 /**
- * ParquetPreview — server-side DuckDB over Parquet via POST /api/files/:id/query.
+ * QueryWorkbench — server-side DuckDB over Parquet via POST /api/files/:id/query.
  *
- * UI reuses filter sidebar + virtualizer patterns from the preview component family.
- * Data layer: rows come from fetchWindow() → server query → Map cache.
+ * UI: filter sidebar + virtualizer over streaming Arrow IPC.
+ * Data layer: useFileQuery manages lifecycle, useFilterState manages constraints.
  */
 
-import { useRef, useMemo, useState, useCallback, useEffect, memo } from 'react';
-import type { CSSProperties, RefObject } from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
-import {
-  useReactTable,
-  getCoreRowModel,
-  type SortingState,
-  type ColumnDef,
-} from '@tanstack/react-table';
 import * as Popover from '@radix-ui/react-popover';
-import { Text, Stepper, RiverGauge } from '../ui';
-import type { StepperStep } from '../ui';
-import { useParquetPreview, isNumericType, DROPDOWN_MAX, WINDOW_SIZE } from '../hooks/useParquetPreview';
+import {
+    getCoreRowModel,
+    useReactTable,
+    type ColumnDef,
+} from '@tanstack/react-table';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import type { CSSProperties, RefObject } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDataProfile } from '../hooks/useDataProfile';
 import { useDerivedState } from '../hooks/useDerivedState';
+import { useFilterState } from '../hooks/useFilterState';
+import type {
+    ColumnCardinality,
+    ColumnInfo,
+    ColumnStats,
+    QueryPhase,
+    QuerySnapshot,
+} from '../hooks/useFileQuery';
+import { DROPDOWN_MAX, isNumericType, useFileQuery, WINDOW_SIZE } from '../hooks/useFileQuery';
 import { apiFetch } from '../lib/api';
 import { useAppStore } from '../stores/useAppStore';
-import type {
-  ColumnInfo,
-  ColumnStats,
-  ColumnCardinality,
-  FilterSpec,
-  SortSpec,
-  PipelineStatus,
-} from '../hooks/useParquetPreview';
+import type { StepperStep } from '../ui';
+import { RiverGauge, Stepper, Text } from '../ui';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -143,12 +142,12 @@ const CONVERGENCE_STEPS: StepperStep[] = [
 ];
 
 function deriveConvergenceStep(
-  status: PipelineStatus,
+  phase: QueryPhase,
   isQuerying: boolean,
   isFetchingRange: boolean,
   cacheGen: number,
 ): number {
-  switch (status) {
+  switch (phase) {
     case 'idle':
       return 0;
     case 'loading':
@@ -164,6 +163,52 @@ function deriveConvergenceStep(
     default:
       return 0;
   }
+}
+
+// ── The View — where internal state meets the observer's eye ──────────────────
+
+interface ViewState {
+  convergenceStep: number;
+  convergenceSteps: StepperStep[];
+  isReady: boolean;
+  isTerminal: boolean;
+  flowState: 'normal' | 'pending' | 'stalled';
+  flowLabel: string | undefined;
+  isPending: boolean;
+  hasFilter: boolean;
+  noResults: boolean;
+  showSkeleton: boolean;
+}
+
+function deriveViewState(
+  lifecycle: { phase: QueryPhase; error: string | null; queryError: Error | string | null; isQuerying: boolean },
+  snapshot: QuerySnapshot,
+  isFetchingRange: boolean,
+  cacheGen: number,
+  filterCount: number,
+): ViewState {
+  const { phase, error, queryError, isQuerying } = lifecycle;
+
+  const convergenceStep = deriveConvergenceStep(phase, isQuerying, isFetchingRange, cacheGen);
+
+  const isTerminal = phase === 'error' || phase === 'failed' || phase === 'unavailable';
+  const isReady = phase === 'ready' || phase === 'ready_background_work';
+
+  const displayError = isTerminal ? error : undefined;
+  const convergenceSteps: StepperStep[] = displayError
+    ? CONVERGENCE_STEPS.map((s, i) => (i === convergenceStep ? { ...s, error: displayError } : s))
+    : [...CONVERGENCE_STEPS];
+
+  const flowState: ViewState['flowState'] = queryError ? 'stalled' : isQuerying ? 'pending' : 'normal';
+  const flowLabel = queryError ? 'query failed' : undefined;
+
+  const isPending = isQuerying || isFetchingRange;
+  const hasFilter = filterCount > 0;
+  const noResults = hasFilter && snapshot.count === 0;
+
+  const showSkeleton = convergenceStep < 2 || (convergenceStep === 2 && cacheGen === 0);
+
+  return { convergenceStep, convergenceSteps, isReady, isTerminal, flowState, flowLabel, isPending, hasFilter, noResults, showSkeleton };
 }
 
 // ── useRetainedState — bridges network gaps with a single law ─────────────────
@@ -1347,7 +1392,7 @@ const VirtualRows = memo(function VirtualRows({
   columnStats,
   colWidths,
   totalWidth,
-  pipelineStatus,
+  pulseStatus,
   cacheGen: _cacheGen,
 }: {
   scrollRef: RefObject<HTMLDivElement | null>;
@@ -1359,7 +1404,7 @@ const VirtualRows = memo(function VirtualRows({
   columnStats: Record<string, ColumnStats>;
   colWidths: Record<string, number>;
   totalWidth: number;
-  pipelineStatus: PipelineStatus;
+  pulseStatus: QueryPhase;
   cacheGen: number; // prop change triggers re-render when Arrow data arrives
 }) {
   const virtualizer = useVirtualizer({
@@ -1382,7 +1427,7 @@ const VirtualRows = memo(function VirtualRows({
 
   useEffect(() => {
     if (start < 0) return;
-    if (pipelineStatus !== 'ready' && pipelineStatus !== 'ready_background_work') return;
+    if (pulseStatus !== 'ready' && pulseStatus !== 'ready_background_work') return;
 
     // Collect window starts that need fetching
     const windowStarts: number[] = [];
@@ -1417,7 +1462,7 @@ const VirtualRows = memo(function VirtualRows({
       clearTimeout(timerRef.current);
       abortRef.current?.abort();
     };
-  }, [start, end, fetchRange, hasRow, pipelineStatus, _cacheGen]);
+  }, [start, end, fetchRange, hasRow, pulseStatus, _cacheGen]);
 
   return (
     <>
@@ -1518,9 +1563,9 @@ const VirtualRows = memo(function VirtualRows({
   );
 });
 
-// ── ParquetPreview ─────────────────────────────────────────────────────────────
+// ── QueryWorkbench ────────────────────────────────────────────────────────────
 
-export default function ParquetPreview({
+export default function QueryWorkbench({
   fileId,
   filename,
   onExport,
@@ -1531,65 +1576,17 @@ export default function ParquetPreview({
   onExport?: () => void;
   onProgress?: (config: { steps: StepperStep[]; active: number } | null) => void;
 }) {
-  // ── Phase 1: UI State — declared before the Engine so intent flows down ──
-  const [rangeOverrides, setRangeOverrides] = useState<Record<string, [number, number]>>({});
-  const [selected, setSelected] = useState<Record<string, Set<string>>>({});
-  const [textFilters, setTextFilters] = useState<Record<string, string>>({});
-  const [sorting, setSorting] = useState<SortingState>([]);
-
-  // ── Pure Derivation — the Single Source of Truth ──
-  const sortSpecs: SortSpec[] = useMemo(
-    () =>
-      sorting.map((s) => ({
-        column: s.id,
-        direction: s.desc ? ('desc' as const) : ('asc' as const),
-      })),
-    [sorting],
+  // ── Profile enrichment — early access for filter state ──
+  const cachedProfile = useAppStore((s) =>
+    s.fileProfiles[fileId]?.dataProfile ?? null,
   );
 
-  const activeFilterSpecs: FilterSpec[] = useMemo(() => {
-    const specs: FilterSpec[] = [];
-    for (const [name, [lo, hi]] of Object.entries(rangeOverrides)) {
-      specs.push({ column: name, op: { type: 'between', low: lo, high: hi } });
-    }
-    for (const [name, set] of Object.entries(selected)) {
-      if (set.size === 0) continue;
-      specs.push({ column: name, op: { type: 'in', values: [...set] } });
-    }
-    for (const [name, text] of Object.entries(textFilters)) {
-      if (!text.trim()) continue;
-      specs.push({ column: name, op: { type: 'ilike', pattern: text.trim() } });
-    }
-    return specs;
-  }, [rangeOverrides, selected, textFilters]);
-
-  // ── Phase 2: The Engine — reacts to intent automatically ──
-  const {
-    pipeline,
-    columns,
-    totalRows,
-    filteredCount,
-    baseProfile,
-    getCell,
-    hasRow,
-    fetchRange,
-    clearCache,
-    isQuerying,
-    isFetchingRange,
-    cacheGen,
-    constrainedStats,
-    constrainedHistograms,
-  } = useParquetPreview(fileId, activeFilterSpecs, sortSpecs);
-
-  // Demand-driven: fetch enrichable attributes from the server
-  // Fires when columns are available
   const { profile } = useDataProfile(
-    columns.length > 0 ? fileId : null,
+    cachedProfile?.schema?.length ? fileId : null,
     ['columnStats', 'cardinality', 'charLengths', 'initialRows', 'histograms'],
-    baseProfile,
+    cachedProfile,
   );
 
-  // Derive stats and cardinality from server profile, handling null (negative cache)
   const columnStats: Record<string, ColumnStats> = useMemo(() => {
     const raw = profile?.columnStats;
     if (!raw) return {};
@@ -1618,6 +1615,19 @@ export default function ParquetPreview({
     return h ?? {};
   }, [profile?.histograms]);
 
+  // ── Filter state ──
+  const filters = useFilterState(columnStats);
+
+  // ── Query engine — reacts to filter intent automatically ──
+  const { lifecycle, snapshot, store } = useFileQuery(fileId, filters.specs, filters.sortSpecs);
+  const { columns, baseProfile, getCell, hasRow, fetchRange, clearCache, isFetchingRange, cacheGen } = store;
+
+  // ── View derivation ────────────────────────────────────────────────────────
+  const viewState = useMemo(
+    () => deriveViewState(lifecycle, snapshot, isFetchingRange, cacheGen, filters.specs.length),
+    [lifecycle.phase, lifecycle.error, lifecycle.queryError, lifecycle.isQuerying, isFetchingRange, cacheGen, filters.specs.length, snapshot.count],
+  );
+
   // ── Reprofile handler ──────────────────────────────────────────────────────
   const setFileProfile = useAppStore((s) => s.setFileProfile);
   const [_reprofiling, setReprofiling] = useState(false);
@@ -1645,27 +1655,14 @@ export default function ParquetPreview({
   const scrollRef = useRef<HTMLDivElement>(null);
   const resizingRef = useRef<{ name: string; startX: number; startW: number } | null>(null);
 
-  // ── Convergence Array — derive honest step from real physics ─────────────
-  const currentActive = deriveConvergenceStep(pipeline.status, isQuerying, isFetchingRange, cacheGen);
-
-  // ── Broadcast pipeline state to parent via onProgress ──────────────────────
-  const isError =
-    pipeline.status === 'error' ||
-    pipeline.status === 'failed' ||
-    pipeline.status === 'unavailable';
-  const displayError = isError ? pipeline.error : undefined;
-  const currentSteps: StepperStep[] =
-    isError && displayError
-      ? CONVERGENCE_STEPS.map((s, i) => (i === currentActive ? { ...s, error: displayError } : s))
-      : [...CONVERGENCE_STEPS];
-
+  // ── Broadcast pulse state to parent via onProgress ─────────────────────────
   useEffect(() => {
-    if (pipeline.status === 'unavailable' || pipeline.status === 'failed') {
+    if (lifecycle.phase === 'unavailable' || lifecycle.phase === 'failed') {
       onProgress?.(null);
       return;
     }
-    onProgress?.({ steps: currentSteps, active: currentActive });
-  }, [currentActive, isError, displayError]);
+    onProgress?.({ steps: viewState.convergenceSteps, active: viewState.convergenceStep });
+  }, [viewState.convergenceStep, viewState.isTerminal, viewState.convergenceSteps]);
 
   // Cleanup: clear stepper when unmounting
   useEffect(() => {
@@ -1690,16 +1687,17 @@ export default function ParquetPreview({
     {} as Record<string, number>,
   );
 
-  // Range display state: merge user overrides with column defaults for slider positions.
+  // Range display state: drag visuals take priority over committed ledger.
+  // The Basin only sees rangeOverrides. The UI sees dragVisuals first.
   const rangeState: Record<string, [number, number]> = useMemo(() => {
     const result: Record<string, [number, number]> = {};
     for (const c of columns) {
       if (!isNumericType(c.type)) continue;
       const s = columnStats[c.name];
-      if (s) result[c.name] = rangeOverrides[c.name] ?? [s.min, s.max];
+      if (s) result[c.name] = filters.dragVisuals[c.name] ?? filters.rangeOverrides[c.name] ?? [s.min, s.max];
     }
     return result;
-  }, [columns, columnStats, rangeOverrides]);
+  }, [columns, columnStats, filters.dragVisuals, filters.rangeOverrides]);
 
   // ── Drawer & column visibility state ────────────────────────────────────────
   const [isTableOpen, setIsTableOpen] = useState(false);
@@ -1741,15 +1739,15 @@ export default function ParquetPreview({
   const table = useReactTable({
     data: [],
     columns: columnDefs,
-    state: { sorting },
-    onSortingChange: setSorting,
+    state: { sorting: filters.sorting },
+    onSortingChange: filters.setSorting,
     manualSorting: true,
     enableMultiSort: true,
     getCoreRowModel: getCoreRowModel(),
   });
 
   // ── Scroll reset — when the riverbed changes shape, start from the top ──
-  const filterKey = JSON.stringify(activeFilterSpecs);
+  const filterKey = JSON.stringify(filters.specs);
   const prevFilterKeyRef = useRef(filterKey);
   useEffect(() => {
     if (prevFilterKeyRef.current !== filterKey) {
@@ -1757,70 +1755,6 @@ export default function ParquetPreview({
       if (scrollRef.current) scrollRef.current.scrollTop = 0;
     }
   }, [filterKey]);
-
-  // ── Filter handlers — pure state updaters, no engine commands ──────────────
-
-  // rAF throttle: batch all onChange events within one animation frame into
-  // a single setState. Prevents N re-renders per frame when dragging fast.
-  const rafRef = useRef<number | null>(null);
-  const pendingDrag = useRef<{ name: string; lo: number; hi: number } | null>(null);
-  const handleRangeDrag = useCallback((name: string, lo: number, hi: number) => {
-    pendingDrag.current = { name, lo, hi };
-    if (rafRef.current === null) {
-      rafRef.current = requestAnimationFrame(() => {
-        rafRef.current = null;
-        const p = pendingDrag.current;
-        if (p) setRangeOverrides((prev) => ({ ...prev, [p.name]: [p.lo, p.hi] }));
-      });
-    }
-  }, []);
-
-  const handleRangeCommit = useCallback((name: string) => {
-    // Clean up identity ranges — if the user dragged back to [min, max], remove the override
-    setRangeOverrides((prev) => {
-      const range = prev[name];
-      if (!range) return prev;
-      const stats = columnStats[name];
-      if (stats && range[0] <= stats.min && range[1] >= stats.max) {
-        const next = { ...prev };
-        delete next[name];
-        return next;
-      }
-      return prev;
-    });
-  }, [columnStats]);
-
-  const handleTextChange = useCallback((name: string, value: string) => {
-    setTextFilters((prev) => ({ ...prev, [name]: value }));
-  }, []);
-
-  const handleToggleSelect = useCallback((name: string, value: string) => {
-    setSelected((prev) => {
-      const set = new Set(prev[name] ?? []);
-      if (set.has(value)) set.delete(value);
-      else set.add(value);
-      if (set.size === 0) {
-        const next = { ...prev };
-        delete next[name];
-        return next;
-      }
-      return { ...prev, [name]: set };
-    });
-  }, []);
-
-  const handleClearSelect = useCallback((name: string) => {
-    setSelected((prev) => {
-      const next = { ...prev };
-      delete next[name];
-      return next;
-    });
-  }, []);
-
-  const handleClearAll = useCallback(() => {
-    setRangeOverrides({});
-    setSelected({});
-    setTextFilters({});
-  }, []);
 
   // ── Column resize ──────────────────────────────────────────────────────────
 
@@ -1848,9 +1782,6 @@ export default function ParquetPreview({
   }, []);
 
   // ── Derived state ──────────────────────────────────────────────────────────
-
-  const hasAnyFilter = activeFilterSpecs.length > 0;
-  const noResults = hasAnyFilter && filteredCount === 0;
 
   // Partition columns into constants (single-value), variables (filterable), and tableEligible.
   // Low-cardinality categoricals (≤5 distinct) appear in the ControlCenter as chips
@@ -1930,7 +1861,6 @@ export default function ParquetPreview({
   }, [skelData]);
 
   // Memoize the entire skeleton overlay
-  const skelVisible = currentActive < 2 || (currentActive === 2 && cacheGen === 0);
   const skeletonOverlay = useMemo(
     () => (
       <div
@@ -1939,25 +1869,19 @@ export default function ParquetPreview({
           inset: 0,
           zIndex: 10,
           background: 'var(--color-void)',
-          opacity: skelVisible ? 1 : 0,
-          pointerEvents: skelVisible ? 'auto' : 'none',
+          opacity: viewState.showSkeleton ? 1 : 0,
+          pointerEvents: viewState.showSkeleton ? 'auto' : 'none',
         }}
       >
         {skeletonGrid}
       </div>
     ),
-    [skelVisible, skeletonGrid],
+    [viewState.showSkeleton, skeletonGrid],
   );
 
   // ── Loading / error states ─────────────────────────────────────────────────
 
-  if (pipeline.status === 'unavailable' || pipeline.status === 'failed') return null;
-
-  if (isError) return null;
-
-  // ── Render ─────────────────────────────────────────────────────────────────
-
-  const isReady = pipeline.status === 'ready' || pipeline.status === 'ready_background_work';
+  if (viewState.isTerminal) return null;
 
   return (
     <div
@@ -1968,7 +1892,7 @@ export default function ParquetPreview({
       }}
     >
       {/* ── Glass Canopy ────────────────────────────────────────────── */}
-      <div className="sticky top-0 z-50 shrink-0 glass-canopy mx-3 mt-3 px-4 pt-3 pb-6 flex flex-col gap-5">
+      <div className="sticky top-0 z-50 shrink-0 glass-canopy mx-3 mt-3 px-4 pt-3 pb-6 flex flex-col gap-1">
         <div className="grid grid-cols-3 items-center">
           {/* Pillar 1: Filename */}
           <div className="min-w-0">
@@ -1986,16 +1910,16 @@ export default function ParquetPreview({
 
           {/* Pillar 2: Stepper + Status */}
           <div className="flex flex-col items-center">
-            <Stepper steps={currentSteps} active={currentActive} />
+            <Stepper steps={viewState.convergenceSteps} active={viewState.convergenceStep} />
           </div>
 
           {/* Pillar 3: Command Cluster */}
           <div className="flex justify-end items-center gap-2">
             <button
               type="button"
-              onClick={handleClearAll}
+              onClick={filters.resetFilters}
               className={`ghost flex items-center gap-1 px-2 py-0.5 rounded font-mono uppercase tracking-widest cursor-pointer bg-transparent border-none text-cyan/70 hover:text-cyan hover:bg-cyan/10 active:scale-95 text-xs ${
-                hasAnyFilter ? 'awake' : ''
+                viewState.hasFilter ? 'awake' : ''
               }`}
             >
               <span>Reset</span>
@@ -2016,14 +1940,14 @@ export default function ParquetPreview({
         </div>
 
         {/* River Base — zero-margin gauge as bottom border */}
-        {totalRows > 0 && (
+        {snapshot.total > 0 && (
           <RiverGauge
-            current={filteredCount}
-            total={totalRows}
-            flowState={pipeline.queryError ? 'stalled' : isQuerying ? 'pending' : 'normal'}
-            accent={hasAnyFilter}
+            current={snapshot.count}
+            total={snapshot.total}
+            flowState={viewState.flowState}
+            accent={viewState.hasFilter}
             variant="tide"
-            statusLabel={pipeline.queryError ? 'query failed' : undefined}
+            statusLabel={viewState.flowLabel}
           />
         )}
       </div>
@@ -2057,19 +1981,19 @@ export default function ParquetPreview({
               columnStats={columnStats}
               columnCardinality={columnCardinality}
               rangeState={rangeState}
-              selected={selected}
-              textFilters={textFilters}
-              onRangeDrag={handleRangeDrag}
-              onRangeCommit={handleRangeCommit}
-              onToggleSelect={handleToggleSelect}
-              onClearSelect={handleClearSelect}
-              onTextChange={handleTextChange}
-              hasAnyFilter={hasAnyFilter}
-              constrainedStats={constrainedStats}
-              noResults={noResults}
-              isQuerying={isQuerying}
+              selected={filters.selected}
+              textFilters={filters.textFilters}
+              onRangeDrag={filters.setRangeVisual}
+              onRangeCommit={filters.commitRange}
+              onToggleSelect={filters.toggleCategory}
+              onClearSelect={filters.clearCategory}
+              onTextChange={filters.setTextFilter}
+              hasAnyFilter={viewState.hasFilter}
+              constrainedStats={snapshot.stats}
+              noResults={viewState.noResults}
+              isQuerying={lifecycle.isQuerying}
               staticHistograms={staticHistograms}
-              constrainedHistograms={constrainedHistograms}
+              constrainedHistograms={snapshot.histograms}
               visibleColumns={visibleColumns}
               onToggleVisible={handleToggleVisible}
             />
@@ -2171,7 +2095,7 @@ export default function ParquetPreview({
         {/* Table header — sticky within unified scroll container */}
 
         <div
-          className="shrink-0 font-mono mt-[1lh]"
+          className="shrink-0 font-mono pt-[1lh]"
           style={{
             position: 'sticky',
             top: 0,
@@ -2200,7 +2124,7 @@ export default function ParquetPreview({
                     const w = colWidths[c.name] ?? colW(c.type);
                     const sorted = header.column.getIsSorted();
                     const sortIdx = header.column.getSortIndex();
-                    const multiSort = sorting.length > 1;
+                    const multiSort = filters.sorting.length > 1;
 
                     return (
                       <div
@@ -2257,10 +2181,10 @@ export default function ParquetPreview({
         <div className="flex-1 min-w-0" style={{ position: 'relative' }}>
           {skeletonOverlay}
 
-          {isReady && filteredCount > 0 && isTableOpen && (
+          {viewState.isReady && snapshot.count > 0 && isTableOpen && (
             <VirtualRows
               scrollRef={scrollRef}
-              rowCount={filteredCount}
+              rowCount={snapshot.count}
               fetchRange={fetchRange}
               getCell={getCell}
               hasRow={hasRow}
@@ -2268,12 +2192,12 @@ export default function ParquetPreview({
               columnStats={columnStats}
               colWidths={colWidths}
               totalWidth={activeTotalWidth}
-              pipelineStatus={pipeline.status}
+              pulseStatus={lifecycle.phase}
               cacheGen={cacheGen}
             />
           )}
 
-          {isReady && filteredCount === 0 && (
+          {viewState.isReady && snapshot.count === 0 && (
             <div
               className="flex flex-col items-center justify-center gap-3"
               style={{ height: '100%', minHeight: 200 }}
@@ -2293,7 +2217,7 @@ export default function ParquetPreview({
               </svg>
               <Text variant="dim">No records match the current filters</Text>
               <button
-                onClick={handleClearAll}
+                onClick={filters.resetFilters}
                 className="cursor-pointer bg-transparent border-none transition-colors hover:text-fg"
                 style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-fg-3)' }}
               >

@@ -13,7 +13,7 @@ import {
   useRemoveFileOrganism,
 } from '../hooks/useGenomicQueries';
 import { useConfirm } from '../hooks/useConfirm';
-import { prefetchParquetUrl } from '../hooks/useParquetPreview';
+import { prefetchFileQuery } from '../hooks/useFileQuery';
 import { detectFormat, FORMAT_META, formatBytes, formatRelativeTime } from '../lib/formats';
 import {
   Button,
@@ -157,7 +157,7 @@ function FileRow({
           <Link
             to={`/files/${id}`}
             className="no-underline"
-            onMouseEnter={() => prefetchParquetUrl(id)}
+            onMouseEnter={() => prefetchFileQuery(id)}
           >
             <span className="font-mono text-sm truncate block hover:text-cyan transition-colors duration-fast tabular-nums">
               {filename}
@@ -282,7 +282,7 @@ function FileCard({ file, loading = false, onDownload, selected, onSelect }: Fil
           <Link
             to={`/files/${file.id}`}
             className="no-underline flex-1 min-w-0"
-            onMouseEnter={() => prefetchParquetUrl(file.id)}
+            onMouseEnter={() => prefetchFileQuery(file.id)}
           >
             <span className="font-mono text-sm truncate block hover:text-cyan transition-colors duration-fast tabular-nums">
               {file.filename}

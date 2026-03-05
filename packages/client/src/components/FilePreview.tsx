@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import { useInfiniteFilePreview } from '../hooks/useGenomicQueries';
 import type { FilePreviewPage } from '../hooks/useGenomicQueries';
-import ParquetPreview from './ParquetPreview';
+import QueryWorkbench from './QueryWorkbench';
 import { isConvertible } from '../lib/formats';
 import { Text, Badge } from '../ui';
 
@@ -83,7 +83,7 @@ export default function FilePreview({ fileId, filename, sizeBytes, onExport }: F
     useInfiniteFilePreview(!convertible ? fileId : undefined);
 
   if (convertible) {
-    return <ParquetPreview fileId={fileId} filename={filename} onExport={onExport} />;
+    return <QueryWorkbench fileId={fileId} filename={filename} onExport={onExport} />;
   }
 
   if (isLoading) return <div className="skeleton h-32 rounded-md" />;

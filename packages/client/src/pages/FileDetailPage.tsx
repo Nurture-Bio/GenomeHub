@@ -36,7 +36,7 @@ import {
 import { CollectionPicker, OrganismPicker, FileTypePicker, RelationPicker } from '../ui';
 import LinksList from '../components/LinksList';
 import FilePreview from '../components/FilePreview';
-import ParquetPreview from '../components/ParquetPreview';
+import QueryWorkbench from '../components/QueryWorkbench';
 import { useAppStore } from '../stores/useAppStore';
 
 const RELATION_LABELS: Record<string, string> = {
@@ -162,11 +162,11 @@ export default function FileDetailPage() {
 
   return (
     <div className="flex flex-col gap-3 md:gap-4 p-2 md:p-5 animate-page-enter">
-      {/* File preview — ParquetPreview owns its own header, stepper, and gauge. */}
+      {/* File preview — QueryWorkbench owns its own header, stepper, and gauge. */}
       {file && !isConvertible(file.filename) && detectFormat(file.filename) !== 'parquet' ? (
         <FilePreview fileId={fileId!} filename={file.filename} sizeBytes={file.sizeBytes} onExport={handleDownload} />
       ) : (
-        <ParquetPreview
+        <QueryWorkbench
           fileId={fileId!}
           filename={file?.filename}
           onExport={file ? handleDownload : undefined}

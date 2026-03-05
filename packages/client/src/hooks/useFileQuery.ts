@@ -1,10 +1,10 @@
 /**
- * useParquetPreview — Thin Glass state machine over the server-side query endpoint.
+ * useFileQuery — Streaming query engine over server-side DuckDB/Parquet.
  *
  * All DuckDB computation happens server-side via POST /api/files/:id/query.
- * The hook manages UI state (filters, sort, pagination) and synchronizes
- * with the server. Slider drags are debounced; stale responses are discarded
- * via AbortController.
+ * The hook manages query lifecycle (polling, streaming Arrow IPC, caching)
+ * and synchronizes with the server. Stale responses are discarded via
+ * AbortController.
  *
  * @module
  */
@@ -35,9 +35,9 @@ export interface ColumnCardinality {
   values: string[];
 }
 
-// ── Pipeline State Machine ───────────────────────────────
+// ── Query State Machine ──────────────────────────────────
 
-export type PipelineStatus =
+export type QueryPhase =
   | 'idle'
   | 'loading'
   | 'ready_background_work' // data visible, server still hydrating profile
@@ -46,15 +46,23 @@ export type PipelineStatus =
   | 'failed'
   | 'error';
 
-export interface PipelineState {
+export interface QuerySnapshot {
+  count: number;
+  total: number;
+  stats: Record<string, { min: number; max: number }>;
+  histograms: Record<string, number[]>;
+}
+
+export interface QueryState {
   activeStep: 0 | 1 | 2 | 3 | 4;
-  status: PipelineStatus;
+  phase: QueryPhase;
   error: string | null;
   queryError: Error | string | null;
   isQuerying: boolean;
+  snapshot: QuerySnapshot;
 }
 
-export type PipelineSignal =
+export type QueryAction =
   | { type: 'START_POLL' }
   | { type: 'PREFLIGHT_DATA_READY' }
   | { type: 'SERVER_READY' }
@@ -62,40 +70,46 @@ export type PipelineSignal =
   | { type: 'CONVERSION_FAILED' }
   | { type: 'FATAL_ERROR'; payload: string }
   | { type: 'START_QUERY' }
-  | { type: 'QUERY_SUCCESS' }
+  | { type: 'QUERY_DATA'; payload: Partial<QuerySnapshot> & { done?: boolean } }
   | { type: 'QUERY_ERROR'; payload: Error | string };
 
-function pipelineReducer(state: PipelineState, signal: PipelineSignal): PipelineState {
+function queryReducer(state: QueryState, signal: QueryAction): QueryState {
   switch (signal.type) {
     case 'START_POLL':
-      return state.status === 'idle'
-        ? { activeStep: 0, status: 'loading', error: null, queryError: null, isQuerying: false }
+      return state.phase === 'idle'
+        ? { activeStep: 0, phase: 'loading', error: null, queryError: null, isQuerying: false, snapshot: state.snapshot }
         : state;
 
     case 'PREFLIGHT_DATA_READY':
-      return { ...state, activeStep: 4, status: 'ready_background_work', error: null };
+      return { ...state, activeStep: 4, phase: 'ready_background_work', error: null };
 
     case 'SERVER_READY':
-      return { ...state, activeStep: 4, status: 'ready', error: null };
+      return { ...state, activeStep: 4, phase: 'ready', error: null };
 
     case 'UNAVAILABLE':
-      return { activeStep: 0, status: 'unavailable', error: null, queryError: null, isQuerying: false };
+      return { activeStep: 0, phase: 'unavailable', error: null, queryError: null, isQuerying: false, snapshot: state.snapshot };
 
     case 'CONVERSION_FAILED':
-      return { activeStep: 0, status: 'failed', error: null, queryError: null, isQuerying: false };
+      return { activeStep: 0, phase: 'failed', error: null, queryError: null, isQuerying: false, snapshot: state.snapshot };
 
     case 'FATAL_ERROR':
-      if (state.status === 'ready_background_work' || state.status === 'ready') return state;
-      return { ...state, status: 'error', error: signal.payload, isQuerying: false };
+      if (state.phase === 'ready_background_work' || state.phase === 'ready') return state;
+      return { ...state, phase: 'error', error: signal.payload, isQuerying: false };
 
     case 'START_QUERY':
       return { ...state, isQuerying: true, queryError: null };
 
-    case 'QUERY_SUCCESS':
-      return { ...state, isQuerying: false, queryError: null };
+    case 'QUERY_DATA': {
+      const { done, ...snapshotData } = signal.payload;
+      return {
+        ...state,
+        snapshot: { ...state.snapshot, ...snapshotData },
+        ...(done ? { isQuerying: false, queryError: null } : {}),
+      };
+    }
 
     case 'QUERY_ERROR':
-      if (state.status !== 'ready' && state.status !== 'ready_background_work') return state;
+      if (state.phase !== 'ready' && state.phase !== 'ready_background_work') return state;
       return { ...state, isQuerying: false, queryError: signal.payload };
   }
 }
@@ -357,7 +371,7 @@ export const WINDOW_SIZE = 200;
 
 // ── Hook ─────────────────────────────────────────────────
 
-export function useParquetPreview(
+export function useFileQuery(
   fileId: string,
   activeFilterSpecs?: FilterSpec[],
   sortSpecs?: SortSpec[],
@@ -371,36 +385,26 @@ export function useParquetPreview(
     ? expandColumns(cachedProfile.schema.map((c) => ({ name: c.name, type: c.type || 'VARCHAR' })))
     : null;
 
-  // ── Pipeline reducer ──
-  const initialPipeline: PipelineState = cachedEntry?.parquetUrl
-    ? { activeStep: 4, status: 'ready_background_work', error: null, queryError: null, isQuerying: false }
-    : { activeStep: 0, status: 'idle', error: null, queryError: null, isQuerying: false };
-  const [pipeline, dispatch] = useReducer(pipelineReducer, initialPipeline);
+  // ── Query reducer ──
+  const initialSnapshot: QuerySnapshot = {
+    count: cachedProfile?.rowCount ?? 0,
+    total: cachedProfile?.rowCount ?? 0,
+    stats: {},
+    histograms: {},
+  };
+  const initialState: QueryState = cachedEntry?.parquetUrl
+    ? { activeStep: 4, phase: 'ready_background_work', error: null, queryError: null, isQuerying: false, snapshot: initialSnapshot }
+    : { activeStep: 0, phase: 'idle', error: null, queryError: null, isQuerying: false, snapshot: initialSnapshot };
+  const [state, dispatch] = useReducer(queryReducer, initialState);
 
   // Data state
   const [columns, setColumns] = useState<ColumnInfo[]>(cachedCols ?? []);
-  const [totalRows, setTotalRows] = useState(cachedProfile?.rowCount ?? 0);
-  const filteredCountRef = useRef(cachedProfile?.rowCount ?? 0);
-  const [filteredCount, _setFilteredCount] = useState(cachedProfile?.rowCount ?? 0);
-  const setFilteredCount = useCallback((v: number) => {
-    filteredCountRef.current = v;
-    _setFilteredCount(v);
-  }, []);
   const [baseProfile, setBaseProfile] = useState<DataProfile | null>(cachedProfile);
-  const isQuerying = pipeline.isQuerying;
   const [cacheGen, setCacheGen] = useState(0);
   const fetchingCountRef = useRef(0);
   const [isFetchingRange, setIsFetchingRange] = useState(false);
 
-  // ── Constrained response state (moved from UI — the Engine owns these) ──
-  const [constrainedStats, setConstrainedStats] = useState<
-    Record<string, { min: number; max: number }>
-  >({});
-  const [constrainedHistograms, setConstrainedHistograms] = useState<
-    Record<string, number[]>
-  >({});
-
-  // ── Stable identity keys for the Declarative Sink ──
+  // ── Stable identity keys for the Basin ──
   const filterKey = JSON.stringify(activeFilterSpecs ?? []);
   const sortKey = JSON.stringify(sortSpecs ?? []);
 
@@ -439,8 +443,7 @@ export function useParquetPreview(
       if (profile.schema?.length) {
         const cols = expandColumns(profile.schema.map((c) => ({ name: c.name, type: c.type })));
         setColumns(cols);
-        setTotalRows(profile.rowCount);
-        setFilteredCount(profile.rowCount);
+        dispatch({ type: 'QUERY_DATA', payload: { count: profile.rowCount, total: profile.rowCount } });
       }
     }
 
@@ -448,7 +451,7 @@ export function useParquetPreview(
     if (cachedEntry?.parquetUrl && cachedProfile) {
       serverReadyRef.current = true;
       dispatch({ type: 'SERVER_READY' });
-      // The Declarative Sink fires the initial query when it sees status === 'ready'
+      // The Basin fires the initial query when it sees status === 'ready'
 
       return () => {
         cancelled = true;
@@ -482,8 +485,7 @@ export function useParquetPreview(
               fallbackRows.current.set(i, serverRows[i]);
             }
             const total = serverProfile?.rowCount ?? serverRows.length;
-            setTotalRows(total);
-            setFilteredCount(total);
+            dispatch({ type: 'QUERY_DATA', payload: { count: total, total } });
             dispatch({ type: 'PREFLIGHT_DATA_READY' });
           }
 
@@ -501,7 +503,7 @@ export function useParquetPreview(
           // Server query endpoint is ready — transition to ready
           serverReadyRef.current = true;
           dispatch({ type: 'SERVER_READY' });
-          // The Declarative Sink fires the initial query when it sees status === 'ready'
+          // The Basin fires the initial query when it sees status === 'ready'
         } else if (data.status === 'converting') {
           pollTimer = setTimeout(poll, 2000);
         } else if (data.status === 'failed') {
@@ -603,12 +605,12 @@ export function useParquetPreview(
     [fileId],
   );
 
-  // ── The Declarative Sink ────────────────────────────────
+  // ── The Basin ────────────────────────────────
   // Watches filter/sort state and auto-queries. No imperative applyFilters.
   // The UI changes the shape of the riverbed; the water conforms.
 
   useEffect(() => {
-    if (pipeline.status !== 'ready' && pipeline.status !== 'ready_background_work') return;
+    if (state.phase !== 'ready' && state.phase !== 'ready_background_work') return;
 
     const filters = activeFilterSpecs ?? [];
     const sort = sortSpecs ?? [];
@@ -631,9 +633,7 @@ export function useParquetPreview(
       dispatch({ type: 'START_QUERY' });
       serverQuery(fileId, filters, sort, 0, WINDOW_SIZE, controller.signal, {
         onGod: ({ filteredCount: fc }) => {
-          setFilteredCount(fc);
-          // Unfiltered query → update totalRows too
-          if (filters.length === 0) setTotalRows(fc);
+          dispatch({ type: 'QUERY_DATA', payload: { count: fc, ...(filters.length === 0 ? { total: fc } : {}) } });
         },
         onViewport: (table) => {
           arrowCache.current.set(0, table);
@@ -642,24 +642,22 @@ export function useParquetPreview(
       })
         .then((result) => {
           if (controller.signal.aborted) return;
-          setConstrainedStats(
-            Object.keys(result.constrainedStats).length > 0 ? result.constrainedStats : {},
-          );
-          setConstrainedHistograms(
-            Object.keys(result.dynamicHistograms).length > 0 ? result.dynamicHistograms : {},
-          );
-          dispatch({ type: 'QUERY_SUCCESS' });
+          dispatch({ type: 'QUERY_DATA', payload: {
+            stats: Object.keys(result.constrainedStats).length > 0 ? result.constrainedStats : {},
+            histograms: Object.keys(result.dynamicHistograms).length > 0 ? result.dynamicHistograms : {},
+            done: true,
+          } });
         })
         .catch((err) => {
           if (err instanceof DOMException && err.name === 'AbortError') return;
-          console.error('[useParquetPreview] filter query error:', err);
+          console.error('[useFileQuery] filter query error:', err);
           dispatch({ type: 'QUERY_ERROR', payload: err });
         });
     }, 80);
 
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fileId, pipeline.status, filterKey, sortKey]);
+  }, [fileId, state.phase, filterKey, sortKey]);
 
   /** Flush Arrow cache + abort in-flight requests. Call when the table drawer closes. */
   const clearCache = useCallback(() => {
@@ -670,20 +668,9 @@ export function useParquetPreview(
   }, []);
 
   return {
-    pipeline,
-    columns,
-    totalRows,
-    filteredCount,
-    baseProfile,
-    getCell,
-    hasRow,
-    fetchRange,
-    clearCache,
-    isQuerying,
-    isFetchingRange,
-    cacheGen,
-    constrainedStats,
-    constrainedHistograms,
+    lifecycle: { phase: state.phase, isQuerying: state.isQuerying, error: state.error, queryError: state.queryError },
+    snapshot: state.snapshot,
+    store: { columns, baseProfile, getCell, hasRow, fetchRange, clearCache, isFetchingRange, cacheGen },
   };
 }
 
@@ -695,7 +682,7 @@ const _prefetching = new Set<string>();
  * Fire-and-forget prefetch of the parquet-url endpoint.
  * Warms Zustand cache (profile + parquetUrl + initialRows).
  */
-export function prefetchParquetUrl(fileId: string): void {
+export function prefetchFileQuery(fileId: string): void {
   const { getValidFileProfile, setFileProfile } = useAppStore.getState();
 
   if (getValidFileProfile(fileId) || _prefetching.has(fileId)) return;

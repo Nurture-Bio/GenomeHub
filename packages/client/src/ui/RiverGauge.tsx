@@ -98,7 +98,7 @@ export default function RiverGauge({
     >
       {/* Readout */}
       <div className="flex items-baseline gap-2 font-mono tabular-nums">
-        <span className={`font-bold river-readout${compact ? ' compact' : ''}${accent ? ' accent' : ''}`}>
+        <span className={`font-bold river-readout${compact ? ' compact' : ''}${current === 0 ? ' empty' : accent ? ' accent' : ''}`}>
           {current.toLocaleString()}
         </span>
         <span className={`river-total${flowState === 'stalled' ? ' stalled' : ''}`}>
