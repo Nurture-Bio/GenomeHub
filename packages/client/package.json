@@ -6,10 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build -o storybook-static"
   },
   "dependencies": {
-    "apache-arrow": "^17.0.0",
     "@genome-hub/shared": "*",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-popover": "^1.1.15",
@@ -19,6 +20,7 @@
     "@tanstack/react-query-devtools": "^5.91.3",
     "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.13.19",
+    "apache-arrow": "^17.0.0",
     "class-variance-authority": "^0.7.0",
     "cmdk": "^1.1.1",
     "motion": "^12.34.3",
@@ -30,11 +32,17 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@storybook/addon-a11y": "^10.2.15",
+    "@storybook/addon-docs": "^10.2.15",
+    "@storybook/react-vite": "^10.2.15",
     "@tailwindcss/vite": "^4.0.0",
     "@types/google.accounts": "^0.0.18",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
+    "msw": "^2.12.10",
+    "msw-storybook-addon": "^2.0.6",
+    "storybook": "^10.2.15",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.2",
     "vite": "^6.0.5"

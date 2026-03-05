@@ -33,3 +33,6 @@ data/
 
 # Original extracted directory
 genome-hub-fixed/
+
+# Storybook
+storybook-static/
