@@ -1,0 +1,149 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Foundation/Materials" />
+
+# Materials
+
+CSS-only classes that define the visual language. These are not React components — they are
+applied directly as class names. All defined in `index.css`.
+
+## Surfaces
+
+<div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginTop: '1rem' }}>
+  <div>
+    <div
+      className="glass-canopy"
+      style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8 }}
+    >
+      <span className="font-mono text-body text-fg-3">.glass-canopy</span>
+    </div>
+    <p style={{ color: 'var(--color-fg-3)', fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-xs)', marginTop: 8 }}>
+      Translucent void + backdrop-blur. Sticky header panels.
+    </p>
+  </div>
+  <div>
+    <div
+      className="vault-door"
+      style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8 }}
+    >
+      <span className="font-mono text-body text-fg-3">.vault-door</span>
+    </div>
+    <p style={{ color: 'var(--color-fg-3)', fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-xs)', marginTop: 8 }}>
+      Dark overlay with hover brightening. Collapsible drawer toggles.
+    </p>
+  </div>
+  <div>
+    <div
+      className="sidebar-surface"
+      style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8 }}
+    >
+      <span className="font-mono text-body text-fg-3">.sidebar-surface</span>
+    </div>
+    <p style={{ color: 'var(--color-fg-3)', fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-xs)', marginTop: 8 }}>
+      Sidebar background with right seam border.
+    </p>
+  </div>
+</div>
+
+## Controls
+
+<div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', marginTop: '1rem', alignItems: 'center' }}>
+  <div style={{ textAlign: 'center' }}>
+    <button className="sigil">Sigil</button>
+    <p style={{ color: 'var(--color-fg-3)', fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-xs)', marginTop: 8 }}>.sigil</p>
+  </div>
+  <div style={{ textAlign: 'center' }}>
+    <button className="sigil active">Active</button>
+    <p style={{ color: 'var(--color-fg-3)', fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-xs)', marginTop: 8 }}>.sigil.active</p>
+  </div>
+  <div style={{ textAlign: 'center' }}>
+    <button className="sigil sigil-sm">Small</button>
+    <p style={{ color: 'var(--color-fg-3)', fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-xs)', marginTop: 8 }}>.sigil-sm</p>
+  </div>
+  <div style={{ textAlign: 'center', padding: '0 1rem' }}>
+    <div style={{ position: 'relative', width: 60, height: 32 }}>
+      <button className="ghost" style={{ position: 'absolute', inset: 0 }}>Ghost</button>
+    </div>
+    <p style={{ color: 'var(--color-fg-3)', fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-xs)', marginTop: 8 }}>.ghost</p>
+  </div>
+  <div style={{ textAlign: 'center', padding: '0 1rem' }}>
+    <div style={{ position: 'relative', width: 60, height: 32 }}>
+      <button className="ghost awake" style={{ position: 'absolute', inset: 0 }}>Awake</button>
+    </div>
+    <p style={{ color: 'var(--color-fg-3)', fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-xs)', marginTop: 8 }}>.ghost.awake</p>
+  </div>
+</div>
+
+## Tracks
+
+<div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginTop: '1rem', maxWidth: 400 }}>
+  <div>
+    <div className="river-groove" style={{ height: 16 }}>
+      <div className="river-fill" style={{ height: '100%', clipPath: 'inset(0 35% 0 0)' }} />
+    </div>
+    <p style={{ color: 'var(--color-fg-3)', fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-xs)', marginTop: 8 }}>
+      .river-groove + .river-fill (65%)
+    </p>
+  </div>
+  <div>
+    <div className="range-track" style={{ height: 8, borderRadius: 4 }} />
+    <p style={{ color: 'var(--color-fg-3)', fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-xs)', marginTop: 8 }}>
+      .range-track
+    </p>
+  </div>
+</div>
+
+## Cyan Spectrum
+
+<div style={{ display: 'flex', gap: '1.5rem', marginTop: '1rem', alignItems: 'flex-end' }}>
+  {[
+    { label: '100%', style: { color: 'var(--color-cyan)' } },
+    { label: '70%', style: { color: 'oklch(0.75 0.14 195 / 0.7)' } },
+    { label: '30%', style: { color: 'oklch(0.75 0.14 195 / 0.3)' } },
+    { label: '10%', style: { color: 'oklch(0.75 0.14 195 / 0.1)' } },
+  ].map(({ label, style }) => (
+    <div key={label} style={{ textAlign: 'center' }}>
+      <div
+        style={{
+          width: 64,
+          height: 64,
+          borderRadius: 8,
+          background: style.color,
+        }}
+      />
+      <p style={{ color: 'var(--color-fg-3)', fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-xs)', marginTop: 8 }}>
+        cyan/{label}
+      </p>
+    </div>
+  ))}
+</div>
+
+## Animations
+
+<div style={{ display: 'flex', flexWrap: 'wrap', gap: '2rem', marginTop: '1rem' }}>
+  <div style={{ textAlign: 'center' }}>
+    <div
+      className="animate-fade-in"
+      style={{ width: 80, height: 40, background: 'var(--color-cyan)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+    >
+      <span className="font-mono text-body" style={{ color: 'var(--color-void)' }}>191ms</span>
+    </div>
+    <p style={{ color: 'var(--color-fg-3)', fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-xs)', marginTop: 8 }}>
+      .animate-fade-in
+    </p>
+  </div>
+</div>
+
+## Timing Constants
+
+| Token | Value | Derivation |
+|-------|-------|------------|
+| `--t-phi` | 382ms | 1000 / phi squared |
+| `--t-phi-half` | 191ms | 382 / 2 |
+| `--ease-phi` | cubic-bezier(0.382, 0, 0.618, 1) | Control points at 1/phi squared and 1/phi |
+| `--ease-out` | cubic-bezier(0.16, 1, 0.3, 1) | Standard decelerate curve |
+| `--ease-move` | cubic-bezier(0.22, 1, 0.36, 1) | Layout motion |
+| `--t-fast` | 99ms | phi-scaled base timing |
+| `--t-base` | 160ms | Base duration |
+| `--t-slow` | 419ms | phi * base |
+| `--t-drift` | 678ms | phi squared * base |
