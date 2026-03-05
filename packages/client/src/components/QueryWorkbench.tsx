@@ -1022,7 +1022,7 @@ function RangeSlider({
           min={min}
           max={high}
           isFloat={isFloat}
-          color={!isActor && hasLiveCon && low < activeConMin! - epsilon ? 'var(--color-amber)' : full ? 'var(--color-fg-3)' : 'var(--color-fg-2)'}
+          color={hasLiveCon && low < activeConMin! - epsilon ? 'var(--color-amber)' : full ? 'var(--color-fg-3)' : 'var(--color-fg-2)'}
           onCommit={(v) => {
             onDrag(name, v, high);
             onCommit(name, v, high);
@@ -1033,7 +1033,7 @@ function RangeSlider({
           min={low}
           max={max}
           isFloat={isFloat}
-          color={!isActor && hasLiveCon && high > activeConMax! + epsilon ? 'var(--color-amber)' : full ? 'var(--color-fg-3)' : 'var(--color-fg-2)'}
+          color={hasLiveCon && high > activeConMax! + epsilon ? 'var(--color-amber)' : full ? 'var(--color-fg-3)' : 'var(--color-fg-2)'}
           onCommit={(v) => {
             onDrag(name, low, v);
             onCommit(name, low, v);
