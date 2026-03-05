@@ -2199,11 +2199,60 @@ export default function QueryWorkbench({
                           <ColName name={c.name} />
                           <SortChevron dir={sorted || null} index={multiSort ? sortIdx : -1} />
                         </div>
-                        <span
-                          style={{ fontSize: 'calc(var(--font-size-xs) - 1px)', opacity: 0.35 }}
-                        >
-                          {c.type}
-                        </span>
+                        {isNumericType(c.type) ? (
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            className="w-full bg-transparent font-mono text-fg-2 placeholder:text-fg-3 focus:outline-none"
+                            style={{
+                              fontSize: 'calc(var(--font-size-xs) - 1px)',
+                              padding: '1px 0',
+                              border: 'none',
+                              borderBottom: `1px solid ${
+                                (() => {
+                                  const r = filters.rangeOverrides[c.name];
+                                  return r && r[0] === r[1];
+                                })()
+                                  ? 'var(--color-cyan)'
+                                  : 'var(--color-line)'
+                              }`,
+                            }}
+                            placeholder="="
+                            value={(() => {
+                              const r = filters.rangeOverrides[c.name];
+                              return r && r[0] === r[1] ? String(r[0]) : '';
+                            })()}
+                            onChange={(e) => {
+                              const v = e.target.value.trim();
+                              if (v === '') {
+                                filters.setRangeExact(c.name, null);
+                              } else {
+                                const n = Number(v);
+                                if (!Number.isNaN(n)) filters.setRangeExact(c.name, n);
+                              }
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        ) : (
+                          <input
+                            type="text"
+                            className="w-full bg-transparent font-mono text-fg-2 placeholder:text-fg-3 focus:outline-none"
+                            style={{
+                              fontSize: 'calc(var(--font-size-xs) - 1px)',
+                              padding: '1px 0',
+                              border: 'none',
+                              borderBottom: `1px solid ${
+                                filters.textFilters[c.name]?.trim()
+                                  ? 'var(--color-cyan)'
+                                  : 'var(--color-line)'
+                              }`,
+                            }}
+                            placeholder="search"
+                            value={filters.textFilters[c.name] ?? ''}
+                            onChange={(e) => filters.setTextFilter(c.name, e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        )}
                         <div
                           className="absolute top-0 right-0 bottom-0 opacity-0 group-hover:opacity-100"
                           style={{
