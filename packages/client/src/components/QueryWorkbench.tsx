@@ -1126,13 +1126,7 @@ function partitionColumns(
       constants.push({ col: c, value: card.values[0] });
     } else {
       variables.push(c);
-      // Low-cardinality categoricals (≤6 distinct) are chip-only — never in the table.
-      // Six chips fit across the 280px grid columns. Numeric columns and
-      // high-cardinality categoricals are table-eligible.
-      const isLowCard = !isNum && card && card.distinct >= 1 && card.distinct <= 6;
-      if (!isLowCard) {
-        tableEligible.push(c);
-      }
+      tableEligible.push(c);
     }
   }
   return { constants, variables, tableEligible };
@@ -1685,6 +1679,7 @@ export default function QueryWorkbench({
   }, [fileId, setFileProfile]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
   const resizingRef = useRef<{ name: string; startX: number; startW: number } | null>(null);
 
   // ── Broadcast pulse state to parent via onProgress ─────────────────────────
@@ -1913,6 +1908,15 @@ export default function QueryWorkbench({
     [viewState.showSkeleton, skeletonGrid],
   );
 
+  // ── Extension pop-out ────────────────────────────────────────────────────
+  const [showExt, setShowExt] = useState(true);
+  const extensionRef = useCallback((n: HTMLDivElement | null) => {
+    if (n) new ResizeObserver(() => setShowExt(n.scrollWidth <= n.clientWidth)).observe(n);
+  }, []);
+  const dotIdx = filename?.lastIndexOf('.') ?? -1;
+  const stem = dotIdx > 0 ? filename!.slice(0, dotIdx) : (filename ?? '');
+  const ext = dotIdx > 0 ? `.${filename!.slice(dotIdx + 1)}` : '';
+
   // ── Loading / error states ─────────────────────────────────────────────────
 
   if (viewState.isTerminal) return null;
@@ -1929,21 +1933,24 @@ export default function QueryWorkbench({
       <div className="sticky top-0 z-50 shrink-0 glass-canopy mx-3 mt-3 px-4 pt-3 pb-6 flex flex-col gap-1">
         <div className="grid grid-cols-3 items-center">
           {/* Pillar 1: Filename */}
-          <div className="min-w-0">
+          <div className="min-w-0 relative">
             {filename && (
-              <div className="flex items-baseline gap-1 min-w-0">
-                <span
-                  className="text-xl font-bold tracking-tight text-fg truncate"
-                  title={filename}
+              <>
+                {/* Measurement ghost — always renders both, drives showExt */}
+                <div
+                  ref={extensionRef}
+                  className="invisible absolute inset-x-0 flex items-baseline gap-1 overflow-hidden whitespace-nowrap"
+                  aria-hidden="true"
                 >
-                  {filename.includes('.') ? filename.slice(0, filename.lastIndexOf('.')) : filename}
-                </span>
-                <span className="text-lg font-normal text-cyan/70 shrink-0">
-                  {filename.includes('.')
-                    ? `.${filename.slice(filename.lastIndexOf('.') + 1)}`
-                    : ''}
-                </span>
-              </div>
+                  <span className="text-lg font-bold tracking-tight">{stem}</span>
+                  <span className="text-lg font-normal shrink-0">{ext}</span>
+                </div>
+                {/* Visible */}
+                <div className="flex items-baseline gap-1 min-w-0">
+                  <span className="text-lg font-bold tracking-tight text-fg truncate" title={filename}>{stem}</span>
+                  <span className={`text-lg font-normal text-cyan/70 overflow-hidden transition-[opacity,max-width] duration-300 ease-[cubic-bezier(0.382,0,0.618,1)] ${showExt ? 'opacity-100 max-w-40' : 'opacity-0 max-w-0'}`}>{ext}</span>
+                </div>
+              </>
             )}
           </div>
 
@@ -2126,27 +2133,16 @@ export default function QueryWorkbench({
       </div>
 
       {/* ── Table Drawer ───────────────────────────────────────────────────── */}
+
+      {/* Table header — outside scroll container, syncs horizontal scroll */}
       <div
-        ref={scrollRef}
-        className="overflow-auto flex flex-col shrink-0 mx-3"
+        ref={headerRef}
+        className="shrink-0 font-mono mx-3 overflow-hidden"
         style={{
-          height: isTableOpen ? '40vh' : '0px',
-          transition: 'height 300ms ease-out',
-          scrollbarGutter: 'stable',
+          background: 'var(--color-void)',
+          ...(activeColumns.length === 0 ? { borderBottom: '2px solid var(--color-line)' } : {}),
         }}
       >
-        {/* Table header — sticky within unified scroll container */}
-
-        <div
-          className="shrink-0 font-mono pt-[1lh]"
-          style={{
-            position: 'sticky',
-            top: 0,
-            zIndex: 10,
-            background: 'var(--color-void)',
-            ...(activeColumns.length === 0 ? { borderBottom: '2px solid var(--color-line)' } : {}),
-          }}
-        >
           {activeColumns.length > 0 &&
             (() => {
               const headerGroup = table.getHeaderGroups()[0];
@@ -2220,7 +2216,19 @@ export default function QueryWorkbench({
             })()}
         </div>
 
-        {/* Table body */}
+      {/* Table body — scrollbar only covers data rows */}
+      <div
+        ref={scrollRef}
+        className="overflow-auto shrink-0 mx-3"
+        style={{
+          height: isTableOpen ? '40vh' : '0px',
+          transition: 'height 300ms ease-out',
+          scrollbarGutter: 'stable',
+        }}
+        onScroll={(e) => {
+          if (headerRef.current) headerRef.current.scrollLeft = e.currentTarget.scrollLeft;
+        }}
+      >
         <div className="flex-1 min-w-0" style={{ position: 'relative' }}>
           {skeletonOverlay}
 
