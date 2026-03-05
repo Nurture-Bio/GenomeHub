@@ -632,11 +632,14 @@ function sliderReducer(state: SliderState, action: SliderAction): SliderState {
       return { phase: 'idle', seal: null, retainedConMin: undefined, retainedConMax: undefined };
     case 'PENDING_START':
       return state.phase === 'dropped' ? { ...state, phase: 'querying' } : state;
-    case 'SETTLE':
+    case 'SETTLE': {
+      const nextMin = action.conMin ?? state.retainedConMin;
+      const nextMax = action.conMax ?? state.retainedConMax;
       if (state.phase === 'idle' && state.seal === null &&
-          state.retainedConMin === action.conMin && state.retainedConMax === action.conMax)
+          state.retainedConMin === nextMin && state.retainedConMax === nextMax)
         return state;
-      return { phase: 'idle', seal: null, retainedConMin: action.conMin, retainedConMax: action.conMax };
+      return { phase: 'idle', seal: null, retainedConMin: nextMin, retainedConMax: nextMax };
+    }
     case 'FULL_RANGE':
       return { ...state, seal: null, retainedConMin: undefined, retainedConMax: undefined };
     default:
@@ -662,6 +665,7 @@ function RangeSlider({
   constrainedMin,
   constrainedMax,
   pending,
+  hasAnyFilter,
   staticHistogram,
   dynamicHistogram,
 }: {
@@ -675,6 +679,7 @@ function RangeSlider({
   constrainedMin?: number;
   constrainedMax?: number;
   pending?: boolean;
+  hasAnyFilter?: boolean;
   staticHistogram?: number[];
   dynamicHistogram?: number[];
 }) {
@@ -712,8 +717,8 @@ function RangeSlider({
 
   // ── The Axis — live D from the state machine ─────────────────────────────
   const full = low <= min && high >= max;
-  const activeConMin = full ? undefined : retainedConMin;
-  const activeConMax = full ? undefined : retainedConMax;
+  const activeConMin = (full && !hasAnyFilter) ? undefined : retainedConMin;
+  const activeConMax = (full && !hasAnyFilter) ? undefined : retainedConMax;
   const axis = createAxis(min, max, activeConMin, activeConMax);
   // Ref mirror so drag closures always read the latest axis
   const axisRef = useRef(axis);
@@ -1484,6 +1489,7 @@ const ControlCenter = memo(function ControlCenter({
               constrainedMin={hasAnyFilter ? constrainedStats[c.name]?.min : undefined}
               constrainedMax={hasAnyFilter ? constrainedStats[c.name]?.max : undefined}
               pending={isQuerying}
+              hasAnyFilter={hasAnyFilter}
               onDrag={onRangeDrag}
               onCommit={onRangeCommit}
               staticHistogram={staticHistograms[c.name]}
