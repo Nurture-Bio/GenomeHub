@@ -97,13 +97,12 @@ function queryReducer(state: QueryState, signal: QueryAction): QueryState {
       return { ...state, phase: 'error', error: signal.payload, isQuerying: false };
 
     case 'START_QUERY':
-      // Clear stale constrained data — prevents old histograms/stats from
-      // leaking into the next query cycle while isQuerying is true.
+      // Stale-while-revalidate: preserve previous stats and histograms.
+      // Consumers show stale D with a loading indicator until fresh arrives via QUERY_DATA.
       return {
         ...state,
         isQuerying: true,
         queryError: null,
-        snapshot: { ...state.snapshot, stats: {}, histograms: {} },
       };
 
     case 'QUERY_DATA': {

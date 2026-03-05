@@ -608,40 +608,26 @@ type SliderPhase = 'idle' | 'dragging' | 'dropped' | 'querying';
 interface SliderState {
   phase: SliderPhase;
   seal: SealedAxis | null;
-  retainedConMin: number | undefined;
-  retainedConMax: number | undefined;
 }
 
 type SliderAction =
-  | { type: 'DRAG_START'; seal: SealedAxis; conMin: number | undefined; conMax: number | undefined }
+  | { type: 'DRAG_START'; seal: SealedAxis }
   | { type: 'DRAG_END' }
   | { type: 'VOID_SKIP' }
-  | { type: 'PENDING_START' }
-  | { type: 'SETTLE'; conMin: number | undefined; conMax: number | undefined }
-  | { type: 'FULL_RANGE' };
+  | { type: 'PENDING_START' };
 
-const SLIDER_INIT: SliderState = { phase: 'idle', seal: null, retainedConMin: undefined, retainedConMax: undefined };
+const SLIDER_INIT: SliderState = { phase: 'idle', seal: null };
 
 function sliderReducer(state: SliderState, action: SliderAction): SliderState {
   switch (action.type) {
     case 'DRAG_START':
-      return { phase: 'dragging', seal: action.seal, retainedConMin: action.conMin, retainedConMax: action.conMax };
+      return { phase: 'dragging', seal: action.seal };
     case 'DRAG_END':
       return { ...state, phase: 'dropped' };
     case 'VOID_SKIP':
-      return { phase: 'idle', seal: null, retainedConMin: undefined, retainedConMax: undefined };
+      return { phase: 'idle', seal: null };
     case 'PENDING_START':
       return state.phase === 'dropped' ? { ...state, phase: 'querying' } : state;
-    case 'SETTLE': {
-      const nextMin = action.conMin ?? state.retainedConMin;
-      const nextMax = action.conMax ?? state.retainedConMax;
-      if (state.phase === 'idle' && state.seal === null &&
-          state.retainedConMin === nextMin && state.retainedConMax === nextMax)
-        return state;
-      return { phase: 'idle', seal: null, retainedConMin: nextMin, retainedConMax: nextMax };
-    }
-    case 'FULL_RANGE':
-      return { ...state, seal: null, retainedConMin: undefined, retainedConMax: undefined };
     default:
       return state;
   }
@@ -687,7 +673,7 @@ function RangeSlider({
   //  idle ──DRAG_START──► dragging ──DRAG_END──► dropped ──PENDING_START──► querying ──SETTLE──► idle
   //                                  └──VOID_SKIP──► idle
   const [sm, dispatch] = useReducer(sliderReducer, SLIDER_INIT);
-  const { phase, seal: sealed, retainedConMin, retainedConMax } = sm;
+  const { phase, seal: sealed } = sm;
   const [isPanning, setIsPanning] = useState(false);
 
   // ── Refs ──────────────────────────────────────────────────────────────────
@@ -715,10 +701,10 @@ function RangeSlider({
   const settled    = !isActor && !isSpectator;
   const isDragging = effectivePhase === 'dragging';
 
-  // ── The Axis — live D from the state machine ─────────────────────────────
+  // ── The Axis — live D from props (stale-while-revalidate in data layer) ──
   const full = low <= min && high >= max;
-  const activeConMin = (full && !hasAnyFilter) ? undefined : retainedConMin;
-  const activeConMax = (full && !hasAnyFilter) ? undefined : retainedConMax;
+  const activeConMin = (full && !hasAnyFilter) ? undefined : constrainedMin;
+  const activeConMax = (full && !hasAnyFilter) ? undefined : constrainedMax;
   const axis = createAxis(min, max, activeConMin, activeConMax);
   // Ref mirror so drag closures always read the latest axis
   const axisRef = useRef(axis);
@@ -803,8 +789,6 @@ function RangeSlider({
 
     if (isActor) return;
 
-    dispatch({ type: 'SETTLE', conMin: constrainedMin, conMax: constrainedMax });
-
     syncTrack(low, high, axis, sealed);
     syncBounds(axis);
 
@@ -814,8 +798,7 @@ function RangeSlider({
     }
   }, [low, high, isActor, isSpectator, pending, phase, axis, sealed,
       syncTrack, syncBounds, syncHistogram,
-      projectedHistogram, dynamicHistogram, staticHistogram,
-      constrainedMin, constrainedMax]);
+      projectedHistogram, dynamicHistogram, staticHistogram]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -831,7 +814,7 @@ function RangeSlider({
     const hi = highRef.current;
     const newSeal = axisRef.current.seal(lo, hi);
     sealedRef.current = newSeal;
-    dispatch({ type: 'DRAG_START', seal: newSeal, conMin: activeConMin, conMax: activeConMax });
+    dispatch({ type: 'DRAG_START', seal: newSeal });
   };
 
   const handleDragEnd = () => {
@@ -873,7 +856,7 @@ function RangeSlider({
       panStartRef.current = { x: e.clientX, lo, hi, trackW };
       const newSeal = ax.seal(lo, hi);
       sealedRef.current = newSeal;
-      dispatch({ type: 'DRAG_START', seal: newSeal, conMin: ax.conMin, conMax: ax.conMax });
+      dispatch({ type: 'DRAG_START', seal: newSeal });
       setIsPanning(true);
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
       const capturedTarget = e.target as HTMLElement;
