@@ -1,4 +1,5 @@
 <p align="center">
+  <a href="https://nurture-bio.github.io/GenomeHub/"><img src="https://img.shields.io/badge/Component_Catalog-Storybook-FF4785?style=flat&logo=storybook&logoColor=white" alt="Storybook" /></a>
   <img src="https://img.shields.io/badge/AWS-CDK-FF9900?style=flat&logo=amazonaws" alt="AWS CDK" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat&logo=react" alt="React 19" />
   <img src="https://img.shields.io/badge/PostgreSQL-16-4169E1?style=flat&logo=postgresql&logoColor=white" alt="PostgreSQL" />

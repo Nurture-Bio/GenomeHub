@@ -16,6 +16,7 @@ const REPO = path.resolve(CLIENT, '../..');
 
 const config: StorybookConfig = {
   stories: ['../src/ui/**/*.stories.@(ts|tsx)', '../src/ui/**/*.mdx'],
+  staticDirs: ['../public'],
   addons: [
     getAbsolutePath('@storybook/addon-docs'),
     getAbsolutePath('@storybook/addon-a11y'),

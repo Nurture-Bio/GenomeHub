@@ -6,25 +6,21 @@
  */
 
 import * as Popover from '@radix-ui/react-popover';
-import {
-    getCoreRowModel,
-    useReactTable,
-    type ColumnDef,
-} from '@tanstack/react-table';
+import { getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { CSSProperties, RefObject } from 'react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDataProfile } from '../hooks/useDataProfile';
 import { useDerivedState } from '../hooks/useDerivedState';
-import { useFilterState } from '../hooks/useFilterState';
 import type {
-    ColumnCardinality,
-    ColumnInfo,
-    ColumnStats,
-    QueryPhase,
-    QuerySnapshot,
+  ColumnCardinality,
+  ColumnInfo,
+  ColumnStats,
+  QueryPhase,
+  QuerySnapshot,
 } from '../hooks/useFileQuery';
 import { DROPDOWN_MAX, isNumericType, useFileQuery, WINDOW_SIZE } from '../hooks/useFileQuery';
+import { useFilterState } from '../hooks/useFilterState';
 import { apiFetch } from '../lib/api';
 import { useAppStore } from '../stores/useAppStore';
 import type { StepperStep } from '../ui';
@@ -136,9 +132,9 @@ function ColName({ name }: { name: string }) {
 
 const CONVERGENCE_STEPS: StepperStep[] = [
   { key: 'connect', label: 'Connecting' },
-  { key: 'scan',    label: 'Scanning' },
-  { key: 'query',   label: 'Querying' },
-  { key: 'ready',   label: 'Ready' },
+  { key: 'scan', label: 'Scanning' },
+  { key: 'query', label: 'Querying' },
+  { key: 'ready', label: 'Ready' },
 ];
 
 function deriveConvergenceStep(
@@ -181,7 +177,12 @@ interface ViewState {
 }
 
 function deriveViewState(
-  lifecycle: { phase: QueryPhase; error: string | null; queryError: Error | string | null; isQuerying: boolean },
+  lifecycle: {
+    phase: QueryPhase;
+    error: string | null;
+    queryError: Error | string | null;
+    isQuerying: boolean;
+  },
   snapshot: QuerySnapshot,
   isFetchingRange: boolean,
   cacheGen: number,
@@ -199,7 +200,11 @@ function deriveViewState(
     ? CONVERGENCE_STEPS.map((s, i) => (i === convergenceStep ? { ...s, error: displayError } : s))
     : [...CONVERGENCE_STEPS];
 
-  const flowState: ViewState['flowState'] = queryError ? 'stalled' : isQuerying ? 'pending' : 'normal';
+  const flowState: ViewState['flowState'] = queryError
+    ? 'stalled'
+    : isQuerying
+      ? 'pending'
+      : 'normal';
   const flowLabel = queryError ? 'query failed' : undefined;
 
   const isPending = isQuerying || isFetchingRange;
@@ -208,7 +213,18 @@ function deriveViewState(
 
   const showSkeleton = convergenceStep < 2 || (convergenceStep === 2 && cacheGen === 0);
 
-  return { convergenceStep, convergenceSteps, isReady, isTerminal, flowState, flowLabel, isPending, hasFilter, noResults, showSkeleton };
+  return {
+    convergenceStep,
+    convergenceSteps,
+    isReady,
+    isTerminal,
+    flowState,
+    flowLabel,
+    isPending,
+    hasFilter,
+    noResults,
+    showSkeleton,
+  };
 }
 
 // ── useRetainedState — bridges network gaps with a single law ─────────────────
@@ -1577,9 +1593,7 @@ export default function QueryWorkbench({
   onProgress?: (config: { steps: StepperStep[]; active: number } | null) => void;
 }) {
   // ── Profile enrichment — early access for filter state ──
-  const cachedProfile = useAppStore((s) =>
-    s.fileProfiles[fileId]?.dataProfile ?? null,
-  );
+  const cachedProfile = useAppStore((s) => s.fileProfiles[fileId]?.dataProfile ?? null);
 
   const { profile } = useDataProfile(
     cachedProfile?.schema?.length ? fileId : null,
@@ -1620,12 +1634,30 @@ export default function QueryWorkbench({
 
   // ── Query engine — reacts to filter intent automatically ──
   const { lifecycle, snapshot, store } = useFileQuery(fileId, filters.specs, filters.sortSpecs);
-  const { columns, baseProfile, getCell, hasRow, fetchRange, clearCache, isFetchingRange, cacheGen } = store;
+  const {
+    columns,
+    baseProfile,
+    getCell,
+    hasRow,
+    fetchRange,
+    clearCache,
+    isFetchingRange,
+    cacheGen,
+  } = store;
 
   // ── View derivation ────────────────────────────────────────────────────────
   const viewState = useMemo(
     () => deriveViewState(lifecycle, snapshot, isFetchingRange, cacheGen, filters.specs.length),
-    [lifecycle.phase, lifecycle.error, lifecycle.queryError, lifecycle.isQuerying, isFetchingRange, cacheGen, filters.specs.length, snapshot.count],
+    [
+      lifecycle.phase,
+      lifecycle.error,
+      lifecycle.queryError,
+      lifecycle.isQuerying,
+      isFetchingRange,
+      cacheGen,
+      filters.specs.length,
+      snapshot.count,
+    ],
   );
 
   // ── Reprofile handler ──────────────────────────────────────────────────────
@@ -1694,7 +1726,9 @@ export default function QueryWorkbench({
     for (const c of columns) {
       if (!isNumericType(c.type)) continue;
       const s = columnStats[c.name];
-      if (s) result[c.name] = filters.dragVisuals[c.name] ?? filters.rangeOverrides[c.name] ?? [s.min, s.max];
+      if (s)
+        result[c.name] = filters.dragVisuals[c.name] ??
+          filters.rangeOverrides[c.name] ?? [s.min, s.max];
     }
     return result;
   }, [columns, columnStats, filters.dragVisuals, filters.rangeOverrides]);
@@ -1898,11 +1932,16 @@ export default function QueryWorkbench({
           <div className="min-w-0">
             {filename && (
               <div className="flex items-baseline gap-1 min-w-0">
-                <span className="text-xl font-bold tracking-tight text-fg truncate">
+                <span
+                  className="text-xl font-bold tracking-tight text-fg truncate"
+                  title={filename}
+                >
                   {filename.includes('.') ? filename.slice(0, filename.lastIndexOf('.')) : filename}
                 </span>
                 <span className="text-lg font-normal text-cyan/70 shrink-0">
-                  {filename.includes('.') ? `.${filename.slice(filename.lastIndexOf('.') + 1)}` : ''}
+                  {filename.includes('.')
+                    ? `.${filename.slice(filename.lastIndexOf('.') + 1)}`
+                    : ''}
                 </span>
               </div>
             )}
@@ -1923,7 +1962,13 @@ export default function QueryWorkbench({
               }`}
             >
               <span>Reset</span>
-              <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg
+                className="w-2.5 h-2.5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
@@ -2058,9 +2103,7 @@ export default function QueryWorkbench({
                   className="cursor-pointer border-none bg-transparent select-none font-mono text-xs uppercase tracking-[0.1em] px-2 py-1 rounded transition-colors"
                   style={{
                     color: allOn ? 'var(--color-cyan)' : 'var(--color-fg-3)',
-                    borderBottom: allOn
-                      ? '1px solid var(--color-cyan)'
-                      : '1px solid transparent',
+                    borderBottom: allOn ? '1px solid var(--color-cyan)' : '1px solid transparent',
                   }}
                   onClick={() => {
                     setVisibleColumns((prev) => {

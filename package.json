@@ -28,5 +28,10 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "prettier": "^3.8.1",
     "typescript-eslint": "^8.56.1"
+  },
+  "msw": {
+    "workerDirectory": [
+      "packages/client/public"
+    ]
   }
 }
