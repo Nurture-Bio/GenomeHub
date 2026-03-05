@@ -651,7 +651,7 @@ function RangeSlider({
   // every pixel is moved by CSS-variable writes on the container DOM node.
 
   const syncTrack = useCallback(
-    (loVal: number, hiVal: number, optimistic: boolean) => {
+    (loVal: number, hiVal: number, amberLo: boolean, amberHi: boolean) => {
       const el = trackRef.current;
       if (!el) return;
       const loPct = ((loVal - min) / range) * 100;
@@ -660,10 +660,10 @@ function RangeSlider({
       el.style.setProperty('--hi', String(hiPct));
 
       // OOB detection — syncTrack is the single owner of --oob-lo/--oob-hi.
-      // `optimistic` = caller knows bounds are stale (any in-flight state).
-      // Amber fires only when settled (optimistic=false) with confirmed fresh server bounds.
-      const oobLo = !optimistic && hasConData && loVal < activeConMin! - epsilon;
-      const oobHi = !optimistic && hasConData && hiVal > activeConMax! + epsilon;
+      // amberLo/amberHi = caller has determined whether this side should show amber.
+      // Same dragStartRef predicate as the histogram projection.
+      const oobLo = amberLo && hasConData && loVal < activeConMin! - epsilon;
+      const oobHi = amberHi && hasConData && hiVal > activeConMax! + epsilon;
       el.style.setProperty('--oob-lo', oobLo ? '0.5' : '0');
       el.style.setProperty('--oob-hi', oobHi ? '0.5' : '0');
 
@@ -690,11 +690,12 @@ function RangeSlider({
   );
 
   // Sync CSS vars + uncontrolled inputs from React props.
-  // Ghost (optimistic=true) in all in-flight states; amber only when settled.
+  // Amber persists through dropped→querying if it was visible at drag start.
+  // Amber shows on settle if OOB against fresh bounds.
   useEffect(() => {
     if (isDragging) return; // 60fps loop owns it during active drag
-    syncTrack(low, high, !settled);
-  }, [low, high, isDragging, settled, syncTrack]);
+    syncTrack(low, high, hadAmberLo || settled, hadAmberHi || settled);
+  }, [low, high, isDragging, hadAmberLo, hadAmberHi, settled, syncTrack]);
 
   // Phase transitions driven by pending prop.
   // dropped→querying: pending arrived, our query is in flight.
@@ -735,7 +736,7 @@ function RangeSlider({
     // Hard sync — refs, CSS vars, and inputs all agree before anything else
     lowRef.current = actualLo;
     highRef.current = actualHi;
-    syncTrack(actualLo, actualHi, true);
+    syncTrack(actualLo, actualHi, hadAmberLo, hadAmberHi);
 
     setPhase('dropped');
     // Void detector: if the drag delta swept only through empty bins, skip the query
@@ -790,7 +791,7 @@ function RangeSlider({
         }
         lowRef.current = newLo;
         highRef.current = newHi;
-        syncTrack(newLo, newHi, true);
+        syncTrack(newLo, newHi, hadAmberLo, hadAmberHi);
         onDrag(name, newLo, newHi);
       };
 
@@ -941,15 +942,15 @@ function RangeSlider({
           className="absolute top-1/2 -translate-y-1/2 rounded-full"
           style={
             {
-              left: hasConData && settled
+              left: hasConData && (settled || hadAmberLo)
                 ? 'max(calc(var(--lo) * 1%), calc(var(--c-lo) * 1%))'
                 : 'calc(var(--lo) * 1%)',
-              right: hasConData && settled
+              right: hasConData && (settled || hadAmberHi)
                 ? 'max(calc((100 - var(--hi)) * 1%), calc((100 - var(--c-hi)) * 1%))'
                 : 'calc((100 - var(--hi)) * 1%)',
               height: 2,
               background: CYAN_COLOR,
-              opacity: full ? 0.1 : isActor ? 1 : isSpectator ? 0.15 : hasConData ? 0.4 : 1,
+              opacity: full ? 0.1 : isActor ? (hadAmberLo || hadAmberHi ? 0.4 : 1) : isSpectator ? 0.15 : hasConData ? 0.4 : 1,
             } as CSSProperties
           }
         />
@@ -987,7 +988,7 @@ function RangeSlider({
           onChange={(e) => {
             const v = Math.min(Number(e.target.value), highRef.current);
             lowRef.current = v;
-            syncTrack(v, highRef.current, true);
+            syncTrack(v, highRef.current, hadAmberLo, hadAmberHi);
             onDrag(name, v, highRef.current);
           }}
         />
@@ -1005,7 +1006,7 @@ function RangeSlider({
           onChange={(e) => {
             const v = Math.max(Number(e.target.value), lowRef.current);
             highRef.current = v;
-            syncTrack(lowRef.current, v, true);
+            syncTrack(lowRef.current, v, hadAmberLo, hadAmberHi);
             onDrag(name, lowRef.current, v);
           }}
         />
