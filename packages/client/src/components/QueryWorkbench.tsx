@@ -679,10 +679,15 @@ function RangeSlider({
   const [isPanning, setIsPanning] = useState(false);
 
   // ── Refs ──────────────────────────────────────────────────────────────────
-  // sealedRef mirrors state.seal for closure access in drag handlers.
-  // The state machine is the owner; the ref is a read-only projection.
+  // Refs mirror state-machine derivations for closure access in syncTrack
+  // and drag handlers. The state machine is the owner; refs are read-only
+  // projections. syncTrack reads these directly — zero parameters for state.
   const sealedRef = useRef<SealedAxis | null>(null);
   sealedRef.current = sealed;
+  const isActorRef = useRef(false);
+  const isSpectatorRef = useRef(false);
+  const fullRef = useRef(false);
+  const pendingRef = useRef(false);
   const trackRef = useRef<HTMLDivElement>(null);
   const sliderRef = useRef<HTMLDivElement>(null);
   const panStartRef = useRef<{ x: number; lo: number; hi: number; trackW: number } | null>(null);
@@ -720,13 +725,22 @@ function RangeSlider({
   }, [onDrag, name]);
 
   // ── Phase derivation ─────────────────────────────────────────────────────
-  const isActor    = phase === 'dragging' || phase === 'dropped' || phase === 'querying';
-  const isSpectator = phase === 'idle' && !!pending;
+  // effectivePhase snaps querying→idle on the same render pending flips false,
+  // so syncTrack runs before paint instead of waiting for SETTLE's re-render.
+  const effectivePhase = phase === 'querying' && !pending ? 'idle' : phase;
+  const isActor    = effectivePhase === 'dragging' || effectivePhase === 'dropped' || effectivePhase === 'querying';
+  const isSpectator = effectivePhase === 'idle' && !!pending;
   const settled    = !isActor && !isSpectator;
   const isDragging = phase === 'dragging';
 
   // ── The Axis — live D from props (stale-while-revalidate in data layer) ──
   const full = low <= min && high >= max;
+
+  // Mirror state-machine derivations into refs — syncTrack reads these directly
+  isActorRef.current = isActor;
+  isSpectatorRef.current = isSpectator;
+  fullRef.current = full;
+  pendingRef.current = !!pending;
   const activeConMin = (full && !hasAnyFilter) ? undefined : constrainedMin;
   const activeConMax = (full && !hasAnyFilter) ? undefined : constrainedMax;
   const axis = createAxis(min, max, activeConMin, activeConMax);
@@ -749,9 +763,15 @@ function RangeSlider({
    *    normal = ¬oob           (in-band)
    */
   const syncTrack = useCallback(
-    (loVal: number, hiVal: number, ax: Axis, actor: boolean, seal?: SealedAxis | null) => {
+    (loVal: number, hiVal: number, ax: Axis) => {
       const el = trackRef.current;
       if (!el) return;
+      // Read state from refs — zero parameters for state-derived values
+      const actor = isActorRef.current;
+      const seal = sealedRef.current;
+      const isFull = fullRef.current;
+      const pend = pendingRef.current;
+
       const p = ax.pct(loVal, hiVal);
       el.style.setProperty('--lo', String(p.lo));
       el.style.setProperty('--hi', String(p.hi));
@@ -760,6 +780,14 @@ function RangeSlider({
       el.style.setProperty('--c-hi', String(c.hi));
       el.style.setProperty('--has-con', ax.hasCon ? '1' : '0');
       el.style.setProperty('--settled', actor ? '0' : '1');
+      // Truth track opacity — colocated with geometry vars
+      const truthOpacity = isFull ? 0.1
+        : actor && seal != null && (seal.hadVoidLo || seal.hadVoidHi) ? 0.4
+        : actor ? 1
+        : !actor && pend ? 0.15
+        : ax.hasCon ? 0.4
+        : 1;
+      el.style.setProperty('--truth-opacity', String(truthOpacity));
       const loIn = lowInputRef.current;
       const hiIn = highInputRef.current;
       if (loIn && Math.abs(Number(loIn.value) - loVal) > 1e-7) loIn.value = String(loVal);
@@ -811,7 +839,7 @@ function RangeSlider({
 
     if (isActor) return;
 
-    syncTrack(low, high, axis, false, sealed);
+    syncTrack(low, high, axis);
 
     if (!isSpectator) {
       const bins = dynamicHistogram ?? projectedHistogram ?? staticHistogram;
@@ -844,7 +872,7 @@ function RangeSlider({
     const actualHi = highInputRef.current ? Number(highInputRef.current.value) : highRef.current;
     lowRef.current = actualLo;
     highRef.current = actualHi;
-    syncTrack(actualLo, actualHi, axisRef.current, true, sealedRef.current);
+    syncTrack(actualLo, actualHi, axisRef.current);
 
     // Void detector: read seal (survives through querying, SETTLE clears it)
     const start = sealedRef.current;
@@ -899,9 +927,9 @@ function RangeSlider({
         else if (newHi > curAx.max) { newHi = curAx.max; newLo = curAx.max - span; }
         lowRef.current = newLo;
         highRef.current = newHi;
-        const seal = sealedRef.current;
-        syncTrack(newLo, newHi, curAx, true, seal);
+        syncTrack(newLo, newHi, curAx);
 
+        const seal = sealedRef.current;
         const pb = seal?.projBounds(newLo, newHi, curAx);
         if (staticHistogram) syncHistogram(projectHistogram(staticHistogram, newLo, newHi, curAx.min, curAx.max, pb?.conMin, pb?.conMax));
         notifyDrag(newLo, newHi);
@@ -988,7 +1016,6 @@ function RangeSlider({
               background: AMBER_COLOR,
               opacity: 'var(--oob-lo)',
               boxShadow: `0 0 6px ${AMBER_GLOW}`,
-              transition: 'opacity var(--t-fast)',
             } as CSSProperties
           }
         />
@@ -1004,7 +1031,6 @@ function RangeSlider({
               background: AMBER_COLOR,
               opacity: 'var(--oob-hi)',
               boxShadow: `0 0 6px ${AMBER_GLOW}`,
-              transition: 'opacity var(--t-fast)',
             } as CSSProperties
           }
         />
@@ -1037,7 +1063,7 @@ function RangeSlider({
               right: 'max(calc((100 - var(--hi)) * 1%), calc((100 - var(--c-hi)) * 1%))',
               height: 2,
               background: CYAN_COLOR,
-              opacity: full ? 0.1 : isActor ? (sealed?.hadVoidLo || sealed?.hadVoidHi ? 0.4 : 1) : isSpectator ? 0.15 : axis.hasCon ? 0.4 : 1,
+              opacity: 'var(--truth-opacity)',
             } as CSSProperties
           }
         />
@@ -1076,9 +1102,9 @@ function RangeSlider({
             const v = Math.min(Number(e.target.value), highRef.current);
             lowRef.current = v;
             const ax = axisRef.current;
-            const seal = sealedRef.current;
-            syncTrack(v, highRef.current, ax, true, seal);
+            syncTrack(v, highRef.current, ax);
 
+            const seal = sealedRef.current;
             const pb = seal?.projBounds(v, highRef.current, ax);
             if (staticHistogram) syncHistogram(projectHistogram(staticHistogram, v, highRef.current, ax.min, ax.max, pb?.conMin, pb?.conMax));
             notifyDrag(v, highRef.current);
@@ -1099,9 +1125,9 @@ function RangeSlider({
             const v = Math.max(Number(e.target.value), lowRef.current);
             highRef.current = v;
             const ax = axisRef.current;
-            const seal = sealedRef.current;
-            syncTrack(lowRef.current, v, ax, true, seal);
+            syncTrack(lowRef.current, v, ax);
 
+            const seal = sealedRef.current;
             const pb = seal?.projBounds(lowRef.current, v, ax);
             if (staticHistogram) syncHistogram(projectHistogram(staticHistogram, lowRef.current, v, ax.min, ax.max, pb?.conMin, pb?.conMax));
             notifyDrag(lowRef.current, v);
