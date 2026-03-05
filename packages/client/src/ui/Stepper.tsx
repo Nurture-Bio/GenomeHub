@@ -247,8 +247,8 @@ export default function Stepper({
                 : health === 'warning'
                   ? 'var(--color-amber)'
                   : 'var(--color-fg-2)',
-            animation: isFinal ? 'flourishLabel 1000ms var(--ease-phi) both' : 'none',
-            transition: 'color var(--t-phi) var(--ease-phi)',
+            animation: isFinal ? 'flourishLabel 1000ms var(--ease-phi) both' : undefined,
+            transition: 'color var(--t-phi) var(--ease-phi), opacity var(--t-phi) var(--ease-phi)',
           }}
         >
           {activeStep?.label}

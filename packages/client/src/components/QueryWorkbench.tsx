@@ -326,9 +326,8 @@ const DistributionPlot = memo(
         <g
           clipPath={`url(#${clipId})`}
           style={{
-            opacity: pending ? 0.5 : 1,
-            transition: 'opacity 200ms',
-            animation: pending ? 'distPlotBreath 1.5s ease-in-out infinite' : 'none',
+            opacity: pending ? 0.4 : 1,
+            transition: 'opacity 382ms var(--ease-phi)',
           }}
         >
           {dynamicRects}
@@ -614,7 +613,8 @@ type SliderAction =
   | { type: 'DRAG_START'; seal: SealedAxis }
   | { type: 'DRAG_END' }
   | { type: 'VOID_SKIP' }
-  | { type: 'PENDING_START' };
+  | { type: 'PENDING_START' }
+  | { type: 'SETTLE' };
 
 const SLIDER_INIT: SliderState = { phase: 'idle', seal: null };
 
@@ -627,7 +627,9 @@ function sliderReducer(state: SliderState, action: SliderAction): SliderState {
     case 'VOID_SKIP':
       return { phase: 'idle', seal: null };
     case 'PENDING_START':
-      return state.phase === 'dropped' ? { ...state, phase: 'querying', seal: null } : state;
+      return state.phase === 'dropped' ? { ...state, phase: 'querying' } : state;
+    case 'SETTLE':
+      return state.phase === 'querying' ? { phase: 'idle', seal: null } : state;
     default:
       return state;
   }
@@ -694,12 +696,34 @@ function RangeSlider({
   const isFloat = !Number.isInteger(min) || !Number.isInteger(max);
   const step = isFloat ? ('any' as const) : 1;
 
+  // Throttled drag notification — imperative DOM at 60fps, React at ~1/frame
+  const dragRafRef = useRef<number | null>(null);
+  const pendingDragNotify = useRef<{ lo: number; hi: number } | null>(null);
+  const notifyDrag = useCallback((lo: number, hi: number) => {
+    pendingDragNotify.current = { lo, hi };
+    if (dragRafRef.current === null) {
+      dragRafRef.current = requestAnimationFrame(() => {
+        dragRafRef.current = null;
+        const p = pendingDragNotify.current;
+        if (p) onDrag(name, p.lo, p.hi);
+      });
+    }
+  }, [onDrag, name]);
+  const flushDragNotify = useCallback(() => {
+    if (dragRafRef.current !== null) {
+      cancelAnimationFrame(dragRafRef.current);
+      dragRafRef.current = null;
+    }
+    const p = pendingDragNotify.current;
+    pendingDragNotify.current = null;
+    if (p) onDrag(name, p.lo, p.hi);
+  }, [onDrag, name]);
+
   // ── Phase derivation ─────────────────────────────────────────────────────
-  const effectivePhase: SliderPhase = phase === 'querying' && !pending ? 'idle' : phase;
-  const isActor    = effectivePhase === 'dragging' || effectivePhase === 'dropped' || effectivePhase === 'querying';
-  const isSpectator = effectivePhase === 'idle' && !!pending;
+  const isActor    = phase === 'dragging' || phase === 'dropped' || phase === 'querying';
+  const isSpectator = phase === 'idle' && !!pending;
   const settled    = !isActor && !isSpectator;
-  const isDragging = effectivePhase === 'dragging';
+  const isDragging = phase === 'dragging';
 
   // ── The Axis — live D from props (stale-while-revalidate in data layer) ──
   const full = low <= min && high >= max;
@@ -734,6 +758,8 @@ function RangeSlider({
       const c = ax.conPct();
       el.style.setProperty('--c-lo', String(c.lo));
       el.style.setProperty('--c-hi', String(c.hi));
+      el.style.setProperty('--has-con', ax.hasCon ? '1' : '0');
+      el.style.setProperty('--settled', actor ? '0' : '1');
       const loIn = lowInputRef.current;
       const hiIn = highInputRef.current;
       if (loIn && Math.abs(Number(loIn.value) - loVal) > 1e-7) loIn.value = String(loVal);
@@ -774,6 +800,11 @@ function RangeSlider({
     [],
   );
 
+  // ── Settle — close the querying→idle loop when the server responds ────────
+  useLayoutEffect(() => {
+    if (!pending && phase === 'querying') dispatch({ type: 'SETTLE' });
+  }, [pending, phase]);
+
   // ── Layout effect — phase bookkeeping + non-actor sync ────────────────────
   useLayoutEffect(() => {
     if (pending && phase === 'dropped') dispatch({ type: 'PENDING_START' });
@@ -808,15 +839,15 @@ function RangeSlider({
   };
 
   const handleDragEnd = () => {
+    flushDragNotify();
     const actualLo = lowInputRef.current ? Number(lowInputRef.current.value) : lowRef.current;
     const actualHi = highInputRef.current ? Number(highInputRef.current.value) : highRef.current;
     lowRef.current = actualLo;
     highRef.current = actualHi;
     syncTrack(actualLo, actualHi, axisRef.current, true, sealedRef.current);
 
-    // Void detector: read seal before clearing
+    // Void detector: read seal (survives through querying, SETTLE clears it)
     const start = sealedRef.current;
-    sealedRef.current = null;
     if (start && staticHistogram && staticHistogram.length > 0) {
       const loChanged = actualLo !== start.lo;
       const hiChanged = actualHi !== start.hi;
@@ -824,6 +855,8 @@ function RangeSlider({
       const hiDelta = hiChanged && hasDataInDelta(start.hi, actualHi, min, max, staticHistogram);
       if ((loChanged || hiChanged) && !loDelta && !hiDelta) {
         dispatch({ type: 'VOID_SKIP' });
+        onDrag(name, actualLo, actualHi);
+        onCommit(name, actualLo, actualHi);
         return;
       }
     }
@@ -871,7 +904,7 @@ function RangeSlider({
 
         const pb = seal?.projBounds(newLo, newHi, curAx);
         if (staticHistogram) syncHistogram(projectHistogram(staticHistogram, newLo, newHi, curAx.min, curAx.max, pb?.conMin, pb?.conMax));
-        onDrag(name, newLo, newHi);
+        notifyDrag(newLo, newHi);
       };
 
       const onUp = () => {
@@ -883,10 +916,10 @@ function RangeSlider({
         document.body.style.userSelect = '';
         panStartRef.current = null;
         setIsPanning(false);
+        flushDragNotify();
         const curLo = lowRef.current;
         const curHi = highRef.current;
         const start = sealedRef.current;
-        sealedRef.current = null;
         if (start && staticHistogram && staticHistogram.length > 0) {
           const loChanged = curLo !== start.lo;
           const hiChanged = curHi !== start.hi;
@@ -894,6 +927,8 @@ function RangeSlider({
           const hiDelta = hiChanged && hasDataInDelta(start.hi, curHi, min, max, staticHistogram);
           if ((loChanged || hiChanged) && !loDelta && !hiDelta) {
             dispatch({ type: 'VOID_SKIP' });
+            onDrag(name, curLo, curHi);
+            onCommit(name, curLo, curHi);
             return;
           }
         }
@@ -919,6 +954,7 @@ function RangeSlider({
   return (
     <div
       ref={trackRef}
+      data-column={name}
       style={{
         background: 'oklch(0.13 0.01 240 / 0.5)',
         borderRadius: 6,
@@ -974,24 +1010,22 @@ function RangeSlider({
         />
 
         {/* Constrained data extent — double-click to clip */}
-        {axis.hasCon && !isActor && (
-          <div
-            className="absolute top-1/2 -translate-y-1/2 rounded-full"
-            title="Double-click to clip handles to this range"
-            onDoubleClick={handleClipToReality}
-            style={
-              {
-                left: 'calc(var(--c-lo) * 1%)',
-                width: 'calc(max(0, var(--c-hi) - var(--c-lo)) * 1%)',
-                height: 4,
-                background: CYAN_COLOR,
-                opacity: isSpectator ? 0.15 : 0.4,
-                cursor: 'pointer',
-                transition: 'opacity var(--t-fast)',
-              } as CSSProperties
-            }
-          />
-        )}
+        <div
+          className="absolute top-1/2 -translate-y-1/2 rounded-full"
+          title="Double-click to clip handles to this range"
+          onDoubleClick={handleClipToReality}
+          style={
+            {
+              left: 'calc(var(--c-lo) * 1%)',
+              width: 'calc(max(0, var(--c-hi) - var(--c-lo)) * 1%)',
+              height: 4,
+              background: CYAN_COLOR,
+              opacity: 'calc(var(--has-con, 0) * var(--settled, 0) * 0.4)',
+              cursor: 'pointer',
+              transition: 'opacity var(--t-fast)',
+            } as CSSProperties
+          }
+        />
 
 
         {/* Cyan truth track — R ∩ D, where data exists between thumbs */}
@@ -1047,7 +1081,7 @@ function RangeSlider({
 
             const pb = seal?.projBounds(v, highRef.current, ax);
             if (staticHistogram) syncHistogram(projectHistogram(staticHistogram, v, highRef.current, ax.min, ax.max, pb?.conMin, pb?.conMax));
-            onDrag(name, v, highRef.current);
+            notifyDrag(v, highRef.current);
           }}
         />
         <input
@@ -1070,7 +1104,7 @@ function RangeSlider({
 
             const pb = seal?.projBounds(lowRef.current, v, ax);
             if (staticHistogram) syncHistogram(projectHistogram(staticHistogram, lowRef.current, v, ax.min, ax.max, pb?.conMin, pb?.conMax));
-            onDrag(name, lowRef.current, v);
+            notifyDrag(lowRef.current, v);
           }}
         />
       </div>
