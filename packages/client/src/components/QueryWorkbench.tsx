@@ -275,45 +275,42 @@ const DistributionPlot = memo(
 
     const clipId = useRef(`ghost-mask-${Math.random().toString(36).slice(2, 8)}`).current;
 
-    // Memoize static rects — bin data only changes when server responds, not during drag
+    // Memoize static rects — full-height bars scaled by scaleY, no main-thread animation.
     const staticRects = useMemo(
       () =>
-        staticBins.map((v, i) => {
-          const barH = (v / staticMax) * height;
-          return (
-            <rect
-              key={i}
-              x={i * binW}
-              y={height - barH}
-              width={binW}
-              height={barH}
-              fill="var(--color-cyan)"
-            />
-          );
-        }),
+        staticBins.map((v, i) => (
+          <rect
+            key={i}
+            x={i * binW}
+            y={0}
+            width={binW}
+            height={height}
+            fill="var(--color-cyan)"
+            style={{ transformOrigin: 'bottom', transform: `scaleY(${v / staticMax})` }}
+          />
+        )),
       [staticBins, staticMax, height, binW],
     );
 
-    // Memoize dynamic rects — only recompute when bin data or height changes
+    // Memoize dynamic rects — scaleY morphs on compositor thread, zero main-thread cost.
     const dynamicRects = useMemo(
       () =>
-        activeBins.map((v, i) => {
-          const barH = (v / activeMax) * height;
-          return (
-            <rect
-              key={i}
-              x={i * binW}
-              width={binW}
-              fill="var(--color-cyan)"
-              opacity={0.45}
-              style={{
-                y: height - barH,
-                height: barH,
-                transition: 'y 300ms ease-out, height 300ms ease-out',
-              }}
-            />
-          );
-        }),
+        activeBins.map((v, i) => (
+          <rect
+            key={i}
+            x={i * binW}
+            y={0}
+            width={binW}
+            height={height}
+            fill="var(--color-cyan)"
+            opacity={0.45}
+            style={{
+              transformOrigin: 'bottom',
+              transform: `scaleY(${v / activeMax})`,
+              transition: 'transform 300ms cubic-bezier(0.382, 0, 0.618, 1)',
+            }}
+          />
+        )),
       [activeBins, activeMax, height, binW],
     );
 
@@ -474,6 +471,51 @@ function EditableNumber({
   );
 }
 
+// ── Optimistic Histogram Projection ───────────────────────────────────────────
+// Project the constrained histogram locally from static bins + thumb positions.
+// Zeroes bins outside the selected range; DistributionPlot's activeMax rescales
+// the local peak to full height. Valid for the active column only — cross-column
+// effects require the server. Replaced by real constrained histogram on arrival.
+
+function projectHistogram(
+  staticBins: number[],
+  lo: number,
+  hi: number,
+  min: number,
+  max: number,
+  conMin?: number,
+  conMax?: number,
+): number[] {
+  const n = staticBins.length;
+  const range = max - min || 1;
+  const toBin = (v: number) =>
+    Math.max(0, Math.min(n - 1, Math.floor(((v - min) / range) * n)));
+  const binLo = toBin(lo);
+  const binHi = toBin(hi);
+
+  // Intersect the selected range with the constrained data extent.
+  // Bins outside [conMin, conMax] are OOB — the cross-filtered query will return
+  // 0 for them, so including them in the projection would inflate the estimate.
+  const conBinLo = conMin !== undefined ? toBin(conMin) : 0;
+  const conBinHi = conMax !== undefined ? toBin(conMax) : n - 1;
+  const effectiveLo = Math.max(binLo, conBinLo);
+  const effectiveHi = Math.min(binHi, conBinHi);
+
+  // Pass 1: find local maximum within the effective (in-bounds) range
+  let localMax = 0;
+  for (let i = effectiveLo; i <= effectiveHi; i++) {
+    if (staticBins[i] > localMax) localMax = staticBins[i];
+  }
+  if (localMax === 0) return new Array<number>(n).fill(0);
+  // Pass 2: rescale visible bins so local peak = global peak of static distribution
+  const globalMax = Math.max(...staticBins, 1);
+  const projected = new Array<number>(n).fill(0);
+  for (let i = effectiveLo; i <= effectiveHi; i++) {
+    projected[i] = (staticBins[i] / localMax) * globalMax;
+  }
+  return projected;
+}
+
 // ── Void Detector ─────────────────────────────────────────────────────────────
 // If the drag delta swept only through histogram bins with 0 counts,
 // the query result is identical — skip the network request.
@@ -532,8 +574,20 @@ function RangeSlider({
   staticHistogram?: number[];
   dynamicHistogram?: number[];
 }) {
-  const [isDragging, setIsDragging] = useState(false);
+  // ── Slider lifecycle state machine ────────────────────────────────────────
+  // Five mutually exclusive phases. No boolean flags, no flag intersections.
+  //
+  //  idle ──pointerDown──► dragging ──pointerUp(data)──► dropped ──pending──► querying ──!pending──► idle
+  //                                  └──pointerUp(void)──► idle
+  //
+  //  Spectator = phase is idle while pending is true (this slider didn't cause the query).
+  //
+  type SliderPhase = 'idle' | 'dragging' | 'dropped' | 'querying';
+  const [phase, setPhase] = useState<SliderPhase>('idle');
+  // isPanning is gesture sub-type only (cursor style, pan window pointer events).
+  // It does not affect the lifecycle phase — both thumb-drag and pan are 'dragging'.
   const [isPanning, setIsPanning] = useState(false);
+
   const dragStartRef = useRef<{ lo: number; hi: number } | null>(null);
   const trackRef = useRef<HTMLDivElement>(null); // outer gauge — CSS var host
   const sliderRef = useRef<HTMLDivElement>(null); // inner track — pixel measurements
@@ -557,23 +611,47 @@ function RangeSlider({
   const step = isFloat ? ('any' as const) : 1;
 
   const hasConData = activeConMin !== undefined && activeConMax !== undefined;
+  const epsilon = range * 0.001;
+
+  // Optimistic projection — clipped only where amber existed BEFORE the current drag.
+  // If there was no amber at drag start, we're expanding into unknown territory → fully optimistic.
+  // If amber was visible at drag start, the cross-filter void is confirmed → clip at data boundary.
+  const dragStart = dragStartRef.current;
+  const hadAmberLo = hasConData && dragStart != null && dragStart.lo < activeConMin! - epsilon;
+  const hadAmberHi = hasConData && dragStart != null && dragStart.hi > activeConMax! + epsilon;
+  const projConMin = hadAmberLo ? activeConMin : undefined;
+  const projConMax = hadAmberHi ? activeConMax : undefined;
+  const projectedHistogram = useMemo(
+    () =>
+      staticHistogram && !full
+        ? projectHistogram(staticHistogram, low, high, min, max, projConMin, projConMax)
+        : undefined,
+    [staticHistogram, low, high, min, max, full, projConMin, projConMax],
+  );
+
+  // ── Phase derivation ───────────────────────────────────────────────────────
+  // Inline settle: if we were querying and pending just ended, treat as idle on
+  // THIS render — no extra render, no color flash.
+  const effectivePhase: SliderPhase = phase === 'querying' && !pending ? 'idle' : phase;
+
+  const isActor    = effectivePhase === 'dragging' || effectivePhase === 'dropped' || effectivePhase === 'querying';
+  const isSpectator = effectivePhase === 'idle' && !!pending;
+  const settled    = !isActor && !isSpectator; // idle + !pending = fresh server data
+  const isDragging = effectivePhase === 'dragging';
+
+  // Rendering rules derived from exactly one source of truth:
+  //   isActor     → projected histogram, unconstrained track, ghost OOB (opacity 0)
+  //   isSpectator → retained histogram,  constrained track,  ghost OOB (opacity 0)
+  //   settled     → dynamic  histogram,  constrained track,  amber OOB if outside bounds
   const conLoPct = hasConData ? Math.max(0, ((activeConMin! - min) / range) * 100) : 0;
   const conHiPct = hasConData ? Math.min(100, ((activeConMax! - min) / range) * 100) : 100;
-
-  // OOB = thumb is visibly past the constrained data boundary.  Epsilon is
-  // a visual tolerance (0.1% of range) that absorbs the accumulated float
-  // drift across the DuckDB → Arrow IPC → JS pipeline.  If the thumb is
-  // within a fraction the eye cannot perceive, honor the scientist's intent.
-  const epsilon = range * 0.001;
-  const lowOob = !pending && hasConData && low < activeConMin! - epsilon;
-  const highOob = !pending && hasConData && high > activeConMax! + epsilon;
 
   // ── Imperative engine — drives all track + thumb visuals at 60fps ──────────
   // React only sees the final values on pointerUp.  Between pointer events
   // every pixel is moved by CSS-variable writes on the container DOM node.
 
   const syncTrack = useCallback(
-    (loVal: number, hiVal: number) => {
+    (loVal: number, hiVal: number, optimistic: boolean) => {
       const el = trackRef.current;
       if (!el) return;
       const loPct = ((loVal - min) / range) * 100;
@@ -581,10 +659,11 @@ function RangeSlider({
       el.style.setProperty('--lo', String(loPct));
       el.style.setProperty('--hi', String(hiPct));
 
-      // OOB detection — drives amber void + thumb color
-      const pendingNow = !!pending;
-      const oobLo = !pendingNow && hasConData && loVal < activeConMin! - epsilon;
-      const oobHi = !pendingNow && hasConData && hiVal > activeConMax! + epsilon;
+      // OOB detection — syncTrack is the single owner of --oob-lo/--oob-hi.
+      // `optimistic` = caller knows bounds are stale (any in-flight state).
+      // Amber fires only when settled (optimistic=false) with confirmed fresh server bounds.
+      const oobLo = !optimistic && hasConData && loVal < activeConMin! - epsilon;
+      const oobHi = !optimistic && hasConData && hiVal > activeConMax! + epsilon;
       el.style.setProperty('--oob-lo', oobLo ? '0.5' : '0');
       el.style.setProperty('--oob-hi', oobHi ? '0.5' : '0');
 
@@ -607,14 +686,24 @@ function RangeSlider({
       if (loIn && Math.abs(Number(loIn.value) - loVal) > 1e-7) loIn.value = String(loVal);
       if (hiIn && Math.abs(Number(hiIn.value) - hiVal) > 1e-7) hiIn.value = String(hiVal);
     },
-    [min, range, pending, hasConData, activeConMin, activeConMax, epsilon],
+    [min, max, range, hasConData, activeConMin, activeConMax, epsilon],
   );
 
   // Sync CSS vars + uncontrolled inputs from React props.
-  // Only fires when user is NOT interacting (initial mount, reset, commit response).
+  // Ghost (optimistic=true) in all in-flight states; amber only when settled.
   useEffect(() => {
-    if (!isDragging && !isPanning) syncTrack(low, high);
-  }, [low, high, isDragging, isPanning, syncTrack]);
+    if (isDragging) return; // 60fps loop owns it during active drag
+    syncTrack(low, high, !settled);
+  }, [low, high, isDragging, settled, syncTrack]);
+
+  // Phase transitions driven by pending prop.
+  // dropped→querying: pending arrived, our query is in flight.
+  // querying→idle cleanup: effectivePhase already shows idle this render;
+  //   this effect just keeps the state value consistent.
+  useEffect(() => {
+    if (pending && phase === 'dropped') setPhase('querying');
+    else if (!pending && phase === 'querying') setPhase('idle');
+  }, [pending, phase]);
 
   // Sync constrained bounds as CSS vars (changes on server response only)
   useEffect(() => {
@@ -634,7 +723,7 @@ function RangeSlider({
   };
 
   const handleDragStart = () => {
-    setIsDragging(true);
+    setPhase('dragging');
     dragStartRef.current = { lo: lowRef.current, hi: highRef.current };
   };
 
@@ -646,9 +735,9 @@ function RangeSlider({
     // Hard sync — refs, CSS vars, and inputs all agree before anything else
     lowRef.current = actualLo;
     highRef.current = actualHi;
-    syncTrack(actualLo, actualHi);
+    syncTrack(actualLo, actualHi, true);
 
-    setIsDragging(false);
+    setPhase('dropped');
     // Void detector: if the drag delta swept only through empty bins, skip the query
     const start = dragStartRef.current;
     if (start && staticHistogram && staticHistogram.length > 0) {
@@ -656,7 +745,10 @@ function RangeSlider({
       const hiChanged = actualHi !== start.hi;
       const loDelta = loChanged && hasDataInDelta(start.lo, actualLo, min, max, staticHistogram);
       const hiDelta = hiChanged && hasDataInDelta(start.hi, actualHi, min, max, staticHistogram);
-      if ((loChanged || hiChanged) && !loDelta && !hiDelta) return; // dragged through void
+      if ((loChanged || hiChanged) && !loDelta && !hiDelta) {
+        setPhase('idle'); // void drag — no query coming
+        return;
+      }
     }
     onDrag(name, actualLo, actualHi);
     onCommit(name);
@@ -675,7 +767,7 @@ function RangeSlider({
       const hi = highRef.current;
       panStartRef.current = { x: e.clientX, lo, hi, trackW };
       dragStartRef.current = { lo, hi };
-      setIsDragging(true);
+      setPhase('dragging');
       setIsPanning(true);
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
       const capturedTarget = e.target as HTMLElement;
@@ -698,7 +790,7 @@ function RangeSlider({
         }
         lowRef.current = newLo;
         highRef.current = newHi;
-        syncTrack(newLo, newHi);
+        syncTrack(newLo, newHi, true);
         onDrag(name, newLo, newHi);
       };
 
@@ -713,7 +805,7 @@ function RangeSlider({
         document.body.style.userSelect = '';
         panStartRef.current = null;
         setIsPanning(false);
-        setIsDragging(false);
+        setPhase('dropped');
         const curLo = lowRef.current;
         const curHi = highRef.current;
         const start = dragStartRef.current;
@@ -722,7 +814,10 @@ function RangeSlider({
           const hiChanged = curHi !== start.hi;
           const loDelta = loChanged && hasDataInDelta(start.lo, curLo, min, max, staticHistogram);
           const hiDelta = hiChanged && hasDataInDelta(start.hi, curHi, min, max, staticHistogram);
-          if ((loChanged || hiChanged) && !loDelta && !hiDelta) return;
+          if ((loChanged || hiChanged) && !loDelta && !hiDelta) {
+            setPhase('idle'); // void pan — no query coming
+            return;
+          }
         }
         onDrag(name, curLo, curHi);
         onCommit(name);
@@ -750,8 +845,8 @@ function RangeSlider({
     '--hi': String(highPct),
     '--c-lo': String(conLoPct),
     '--c-hi': String(conHiPct),
-    '--oob-lo': lowOob ? '0.5' : '0',
-    '--oob-hi': highOob ? '0.5' : '0',
+    '--oob-lo': '0',
+    '--oob-hi': '0',
   } as CSSProperties;
 
   return (
@@ -768,7 +863,15 @@ function RangeSlider({
         <div className="relative" style={{ height: PLOT_H, marginBottom: 2 }}>
           <DistributionPlot
             staticBins={staticHistogram}
-            dynamicBins={hasConData ? dynamicHistogram : undefined}
+            dynamicBins={
+              // actor (drag/drop/query): projection held steady through entire cycle,
+              //   morphs once to real data when query completes
+              // spectator: undefined → useRetainedState holds previous dynamic, morphs to cross-filtered result
+              // settled: real server data (or projection fallback before first query)
+              isActor ? projectedHistogram
+              : isSpectator ? undefined
+              : dynamicHistogram ?? projectedHistogram
+            }
             height={PLOT_H}
             pending={pending}
           />
@@ -814,7 +917,7 @@ function RangeSlider({
         />
 
         {/* Constrained data extent — double-click to clip */}
-        {hasConData && (
+        {hasConData && !isActor && (
           <div
             className="absolute top-1/2 -translate-y-1/2 rounded-full"
             title="Double-click to clip handles to this range"
@@ -825,7 +928,7 @@ function RangeSlider({
                 width: 'calc(max(0, var(--c-hi) - var(--c-lo)) * 1%)',
                 height: 4,
                 background: CYAN_COLOR,
-                opacity: isDragging ? 0 : pending ? 0.15 : 0.4,
+                opacity: isSpectator ? 0.15 : 0.4,
                 cursor: 'pointer',
                 transition: 'opacity var(--t-fast)',
               } as CSSProperties
@@ -838,15 +941,15 @@ function RangeSlider({
           className="absolute top-1/2 -translate-y-1/2 rounded-full"
           style={
             {
-              left: hasConData
+              left: hasConData && settled
                 ? 'max(calc(var(--lo) * 1%), calc(var(--c-lo) * 1%))'
                 : 'calc(var(--lo) * 1%)',
-              right: hasConData
+              right: hasConData && settled
                 ? 'max(calc((100 - var(--hi)) * 1%), calc((100 - var(--c-hi)) * 1%))'
                 : 'calc((100 - var(--hi)) * 1%)',
               height: 2,
               background: CYAN_COLOR,
-              opacity: full ? 0.1 : isDragging ? 1 : hasConData ? 0.4 : 1,
+              opacity: full ? 0.1 : isActor ? 1 : isSpectator ? 0.15 : hasConData ? 0.4 : 1,
             } as CSSProperties
           }
         />
@@ -884,7 +987,7 @@ function RangeSlider({
           onChange={(e) => {
             const v = Math.min(Number(e.target.value), highRef.current);
             lowRef.current = v;
-            syncTrack(v, highRef.current);
+            syncTrack(v, highRef.current, true);
             onDrag(name, v, highRef.current);
           }}
         />
@@ -902,7 +1005,7 @@ function RangeSlider({
           onChange={(e) => {
             const v = Math.max(Number(e.target.value), lowRef.current);
             highRef.current = v;
-            syncTrack(lowRef.current, v);
+            syncTrack(lowRef.current, v, true);
             onDrag(name, lowRef.current, v);
           }}
         />
@@ -916,7 +1019,7 @@ function RangeSlider({
           min={min}
           max={high}
           isFloat={isFloat}
-          color={lowOob ? 'var(--color-amber)' : full ? 'var(--color-fg-3)' : 'var(--color-fg-2)'}
+          color={settled && hasConData && low < activeConMin! - epsilon ? 'var(--color-amber)' : full ? 'var(--color-fg-3)' : 'var(--color-fg-2)'}
           onCommit={(v) => {
             onDrag(name, v, high);
             onCommit(name);
@@ -927,7 +1030,7 @@ function RangeSlider({
           min={low}
           max={max}
           isFloat={isFloat}
-          color={highOob ? 'var(--color-amber)' : full ? 'var(--color-fg-3)' : 'var(--color-fg-2)'}
+          color={settled && hasConData && high > activeConMax! + epsilon ? 'var(--color-amber)' : full ? 'var(--color-fg-3)' : 'var(--color-fg-2)'}
           onCommit={(v) => {
             onDrag(name, low, v);
             onCommit(name);
@@ -1729,7 +1832,7 @@ export default function QueryWorkbench({
   }, [columns, columnStats, filters.dragVisuals, filters.rangeOverrides]);
 
   // ── Drawer & column visibility state ────────────────────────────────────────
-  const [isTableOpen, setIsTableOpen] = useState(false);
+  const [drawerState, setDrawerState] = useState<'closed' | 'opening' | 'open'>('closed');
 
   const [visibleColumns, setVisibleColumns] = useState<Set<string>>(
     () => new Set(columns.map((c) => c.name)),
@@ -1902,7 +2005,7 @@ export default function QueryWorkbench({
           pointerEvents: viewState.showSkeleton ? 'auto' : 'none',
         }}
       >
-        {skeletonGrid}
+        {viewState.showSkeleton && skeletonGrid}
       </div>
     ),
     [viewState.showSkeleton, skeletonGrid],
@@ -2072,9 +2175,13 @@ export default function QueryWorkbench({
       {/* ── The Vault Door (Data Drawer Header) ─────────────────────── */}
       <div
         onClick={() => {
-          setIsTableOpen((o) => {
-            if (o) clearCache(); // closing — flush Arrow cache
-            return !o;
+          setDrawerState((s) => {
+            if (s !== 'closed') {
+              clearCache(); // closing — flush Arrow cache
+              return 'closed';
+            }
+            fetchRange(0, WINDOW_SIZE);
+            return 'opening';
           });
         }}
         className="group vault-door flex items-center justify-between px-6 py-[1lh] mx-3 shrink-0"
@@ -2082,7 +2189,7 @@ export default function QueryWorkbench({
         {/* Left: The Handle */}
         <div className="flex items-center gap-3">
           <svg
-            className={`w-4 h-4 text-fg-3 transition-transform duration-300 group-hover:text-cyan ${isTableOpen ? 'rotate-180' : ''}`}
+            className={`w-4 h-4 text-fg-3 transition-transform duration-300 group-hover:text-cyan ${drawerState !== 'closed' ? 'rotate-180' : ''}`}
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -2091,7 +2198,7 @@ export default function QueryWorkbench({
             <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
           </svg>
           <span className="text-xs font-mono uppercase tracking-[0.2em] text-fg-2 group-hover:text-fg transition-colors">
-            {isTableOpen ? 'Close Data Vault' : 'Inspect Data Vault'}
+            {drawerState !== 'closed' ? 'Close Data Vault' : 'Inspect Data Vault'}
           </span>
         </div>
 
@@ -2148,16 +2255,27 @@ export default function QueryWorkbench({
       </div>
 
       {/* ── Table Drawer ───────────────────────────────────────────────────── */}
-
-      {/* Table header — outside scroll container, syncs horizontal scroll */}
       <div
-        ref={headerRef}
-        className="shrink-0 font-mono mx-3 overflow-hidden"
+        className="flex flex-col shrink-0 overflow-hidden mx-3"
         style={{
-          background: 'var(--color-void)',
-          ...(activeColumns.length === 0 ? { borderBottom: '2px solid var(--color-line)' } : {}),
+          height: drawerState !== 'closed' ? '40vh' : '0px',
+          transition: 'height 382ms cubic-bezier(0.382, 0, 0.618, 1)',
+          border: drawerState !== 'closed' ? '1px solid oklch(1 0 0 / 0.10)' : 'none',
+          borderRadius: 'var(--radius-lg)',
+        }}
+        onTransitionEnd={(e) => {
+          if (e.propertyName === 'height' && drawerState === 'opening') setDrawerState('open');
         }}
       >
+        {/* Table header — outside scroll container, syncs horizontal scroll */}
+        <div
+          ref={headerRef}
+          className="shrink-0 font-mono mx-3 overflow-hidden"
+          style={{
+            background: 'var(--color-void)',
+            ...(activeColumns.length === 0 ? { borderBottom: '2px solid var(--color-line)' } : {}),
+          }}
+        >
           {activeColumns.length > 0 &&
             (() => {
               const headerGroup = table.getHeaderGroups()[0];
@@ -2280,23 +2398,21 @@ export default function QueryWorkbench({
             })()}
         </div>
 
-      {/* Table body — scrollbar only covers data rows */}
-      <div
-        ref={scrollRef}
-        className="overflow-auto shrink-0 mx-3"
-        style={{
-          height: isTableOpen ? '40vh' : '0px',
-          transition: 'height 300ms ease-out',
-          scrollbarGutter: 'stable',
-        }}
-        onScroll={(e) => {
-          if (headerRef.current) headerRef.current.scrollLeft = e.currentTarget.scrollLeft;
-        }}
+        {/* Table body — scrollbar only covers data rows */}
+        <div
+          ref={scrollRef}
+          className="overflow-auto flex-1 mx-3"
+          style={{
+            scrollbarGutter: 'stable',
+          }}
+          onScroll={(e) => {
+            if (headerRef.current) headerRef.current.scrollLeft = e.currentTarget.scrollLeft;
+          }}
       >
         <div className="flex-1 min-w-0" style={{ position: 'relative' }}>
           {skeletonOverlay}
 
-          {viewState.isReady && snapshot.count > 0 && isTableOpen && (
+          {viewState.isReady && snapshot.count > 0 && drawerState === 'open' && (
             <VirtualRows
               scrollRef={scrollRef}
               rowCount={snapshot.count}
@@ -2340,6 +2456,7 @@ export default function QueryWorkbench({
               </button>
             </div>
           )}
+        </div>
         </div>
       </div>
     </div>
