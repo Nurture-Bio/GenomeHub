@@ -9,7 +9,7 @@ import * as Popover from '@radix-ui/react-popover';
 import { getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { CSSProperties, RefObject } from 'react';
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useDataProfile } from '../hooks/useDataProfile';
 import { useDerivedState } from '../hooks/useDerivedState';
 import type {
@@ -225,20 +225,6 @@ function deriveViewState(
     noResults,
     showSkeleton,
   };
-}
-
-// ── useRetainedState — bridges network gaps with a single law ─────────────────
-// Value is remembered across renders. Cleared when clearCondition fires.
-// Bridges the gap when value is temporarily undefined during a query.
-
-function useRetainedState<T>(value: T | undefined, clearCondition: boolean): T | undefined {
-  const ref = useRef<T | undefined>(undefined);
-  if (clearCondition) {
-    ref.current = undefined;
-  } else if (value !== undefined) {
-    ref.current = value;
-  }
-  return value ?? ref.current;
 }
 
 // ── DistributionPlot ──────────────────────────────────────────────────────────
@@ -613,6 +599,48 @@ function createAxis(min: number, max: number, conMin: number | undefined, conMax
 // ── RangeSlider ───────────────────────────────────────────────────────────────
 
 // Stable color constants — module-level so useCallback deps never churn
+// ── Slider State Machine ──────────────────────────────────────────────────────
+// Owns phase, seal, and retained D. Every question about what D is at any point
+// in the lifecycle has a single answer here.
+
+type SliderPhase = 'idle' | 'dragging' | 'dropped' | 'querying';
+
+interface SliderState {
+  phase: SliderPhase;
+  seal: SealedAxis | null;
+  retainedConMin: number | undefined;
+  retainedConMax: number | undefined;
+}
+
+type SliderAction =
+  | { type: 'DRAG_START'; seal: SealedAxis; conMin: number | undefined; conMax: number | undefined }
+  | { type: 'DRAG_END' }
+  | { type: 'VOID_SKIP' }
+  | { type: 'PENDING_START' }
+  | { type: 'SETTLE'; conMin: number | undefined; conMax: number | undefined }
+  | { type: 'FULL_RANGE' };
+
+const SLIDER_INIT: SliderState = { phase: 'idle', seal: null, retainedConMin: undefined, retainedConMax: undefined };
+
+function sliderReducer(state: SliderState, action: SliderAction): SliderState {
+  switch (action.type) {
+    case 'DRAG_START':
+      return { phase: 'dragging', seal: action.seal, retainedConMin: action.conMin, retainedConMax: action.conMax };
+    case 'DRAG_END':
+      return { ...state, phase: 'dropped' };
+    case 'VOID_SKIP':
+      return { phase: 'idle', seal: null, retainedConMin: undefined, retainedConMax: undefined };
+    case 'PENDING_START':
+      return state.phase === 'dropped' ? { ...state, phase: 'querying' } : state;
+    case 'SETTLE':
+      return { phase: 'idle', seal: null, retainedConMin: action.conMin, retainedConMax: action.conMax };
+    case 'FULL_RANGE':
+      return { ...state, seal: null, retainedConMin: undefined, retainedConMax: undefined };
+    default:
+      return state;
+  }
+}
+
 const AMBER_COLOR = 'var(--color-amber)';
 const AMBER_GLOW = 'oklch(0.750 0.185 60 / 0.28)';
 const CYAN_COLOR = 'var(--color-cyan)';
@@ -648,20 +676,17 @@ function RangeSlider({
   dynamicHistogram?: number[];
 }) {
   // ── State machine ────────────────────────────────────────────────────────
-  //  idle ──pointerDown──► dragging ──pointerUp(data)──► dropped ──pending──► querying ──!pending──► idle
-  //                                  └──pointerUp(void)──► idle
-  type SliderPhase = 'idle' | 'dragging' | 'dropped' | 'querying';
-  const [phase, setPhaseRaw] = useState<SliderPhase>('idle');
+  //  idle ──DRAG_START──► dragging ──DRAG_END──► dropped ──PENDING_START──► querying ──SETTLE──► idle
+  //                                  └──VOID_SKIP──► idle
+  const [sm, dispatch] = useReducer(sliderReducer, SLIDER_INIT);
+  const { phase, seal: sealed, retainedConMin, retainedConMax } = sm;
   const [isPanning, setIsPanning] = useState(false);
 
-  // Sealed axis — captured at pointerDown, null outside actor cycle.
-  const sealedRef = useRef<SealedAxis | null>(null);
-  const setPhase = useCallback((next: SliderPhase) => {
-    if (next === 'idle') sealedRef.current = null;
-    setPhaseRaw(next);
-  }, []);
-
   // ── Refs ──────────────────────────────────────────────────────────────────
+  // sealedRef mirrors state.seal for closure access in drag handlers.
+  // The state machine is the owner; the ref is a read-only projection.
+  const sealedRef = useRef<SealedAxis | null>(null);
+  sealedRef.current = sealed;
   const trackRef = useRef<HTMLDivElement>(null);
   const sliderRef = useRef<HTMLDivElement>(null);
   const panStartRef = useRef<{ x: number; lo: number; hi: number; trackW: number } | null>(null);
@@ -671,15 +696,6 @@ function RangeSlider({
   const highRef = useRef(high);
   lowRef.current = low;
   highRef.current = high;
-
-  // ── The Axis — live D, rebuilt every render ───────────────────────────────
-  const full = low <= min && high >= max;
-  const activeConMin = useRetainedState(constrainedMin, full);
-  const activeConMax = useRetainedState(constrainedMax, full);
-  const axis = createAxis(min, max, activeConMin, activeConMax);
-  // Ref mirror so drag closures always read the latest axis
-  const axisRef = useRef(axis);
-  axisRef.current = axis;
 
   const isFloat = !Number.isInteger(min) || !Number.isInteger(max);
   const step = isFloat ? ('any' as const) : 1;
@@ -691,8 +707,14 @@ function RangeSlider({
   const settled    = !isActor && !isSpectator;
   const isDragging = effectivePhase === 'dragging';
 
-  // ── Sealed axis — hadVoid predicates from t₀ ────────────────────────────
-  const sealed = sealedRef.current;
+  // ── The Axis — live D from the state machine ─────────────────────────────
+  const full = low <= min && high >= max;
+  const activeConMin = full ? undefined : retainedConMin;
+  const activeConMax = full ? undefined : retainedConMax;
+  const axis = createAxis(min, max, activeConMin, activeConMax);
+  // Ref mirror so drag closures always read the latest axis
+  const axisRef = useRef(axis);
+  axisRef.current = axis;
   const renderOob = axis.oob(low, high);
   const projectedHistogram = useMemo(() => {
     if (!staticHistogram || full) return undefined;
@@ -769,8 +791,8 @@ function RangeSlider({
 
   // ── Layout effect — phase bookkeeping + non-actor sync ────────────────────
   useLayoutEffect(() => {
-    if (pending && phase === 'dropped') setPhase('querying');
-    else if (!pending && phase === 'querying') setPhase('idle');
+    if (pending && phase === 'dropped') dispatch({ type: 'PENDING_START' });
+    else if (!pending && phase === 'querying') dispatch({ type: 'SETTLE', conMin: constrainedMin, conMax: constrainedMax });
 
     if (isActor) return;
 
@@ -781,9 +803,10 @@ function RangeSlider({
       const bins = dynamicHistogram ?? projectedHistogram ?? staticHistogram;
       if (bins) syncHistogram(bins);
     }
-  }, [low, high, isActor, isSpectator, pending, phase, axis,
+  }, [low, high, isActor, isSpectator, pending, phase, axis, sealed,
       syncTrack, syncBounds, syncHistogram,
-      projectedHistogram, dynamicHistogram, staticHistogram, setPhase]);
+      projectedHistogram, dynamicHistogram, staticHistogram,
+      constrainedMin, constrainedMax]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -797,8 +820,9 @@ function RangeSlider({
   const handleDragStart = () => {
     const lo = lowRef.current;
     const hi = highRef.current;
-    sealedRef.current = axisRef.current.seal(lo, hi);
-    setPhase('dragging');
+    const newSeal = axisRef.current.seal(lo, hi);
+    sealedRef.current = newSeal;
+    dispatch({ type: 'DRAG_START', seal: newSeal, conMin: activeConMin, conMax: activeConMax });
   };
 
   const handleDragEnd = () => {
@@ -808,7 +832,6 @@ function RangeSlider({
     highRef.current = actualHi;
     syncTrack(actualLo, actualHi, axisRef.current, sealedRef.current);
 
-    setPhase('dropped');
     // Void detector: if the drag delta swept only through empty bins, skip the query
     const start = sealedRef.current;
     if (start && staticHistogram && staticHistogram.length > 0) {
@@ -817,10 +840,11 @@ function RangeSlider({
       const loDelta = loChanged && hasDataInDelta(start.lo, actualLo, min, max, staticHistogram);
       const hiDelta = hiChanged && hasDataInDelta(start.hi, actualHi, min, max, staticHistogram);
       if ((loChanged || hiChanged) && !loDelta && !hiDelta) {
-        setPhase('idle');
+        dispatch({ type: 'VOID_SKIP' });
         return;
       }
     }
+    dispatch({ type: 'DRAG_END' });
     onDrag(name, actualLo, actualHi);
     onCommit(name, actualLo, actualHi);
   };
@@ -838,8 +862,9 @@ function RangeSlider({
       const hi = highRef.current;
       const ax = axisRef.current;
       panStartRef.current = { x: e.clientX, lo, hi, trackW };
-      sealedRef.current = ax.seal(lo, hi);
-      setPhase('dragging');
+      const newSeal = ax.seal(lo, hi);
+      sealedRef.current = newSeal;
+      dispatch({ type: 'DRAG_START', seal: newSeal, conMin: ax.conMin, conMax: ax.conMax });
       setIsPanning(true);
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
       const capturedTarget = e.target as HTMLElement;
@@ -875,7 +900,6 @@ function RangeSlider({
         document.body.style.userSelect = '';
         panStartRef.current = null;
         setIsPanning(false);
-        setPhase('dropped');
         const curLo = lowRef.current;
         const curHi = highRef.current;
         const start = sealedRef.current;
@@ -885,10 +909,11 @@ function RangeSlider({
           const loDelta = loChanged && hasDataInDelta(start.lo, curLo, min, max, staticHistogram);
           const hiDelta = hiChanged && hasDataInDelta(start.hi, curHi, min, max, staticHistogram);
           if ((loChanged || hiChanged) && !loDelta && !hiDelta) {
-            setPhase('idle');
+            dispatch({ type: 'VOID_SKIP' });
             return;
           }
         }
+        dispatch({ type: 'DRAG_END' });
         onDrag(name, curLo, curHi);
         onCommit(name, curLo, curHi);
       };
@@ -899,7 +924,7 @@ function RangeSlider({
       window.addEventListener('pointerup', onUp);
       window.addEventListener('pointercancel', onUp);
     },
-    [name, min, max, onDrag, onCommit, staticHistogram, syncTrack, syncHistogram, setPhase],
+    [name, min, max, onDrag, onCommit, staticHistogram, syncTrack, syncHistogram],
   );
 
   // ── Render ────────────────────────────────────────────────────────────────
