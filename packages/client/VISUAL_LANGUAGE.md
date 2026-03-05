@@ -267,6 +267,66 @@ The hook partitions its output into three orthogonal slices:
 
 ---
 
+### Optimistic Histogram Projection
+
+**52. Slider Phase State Machine** (`QueryWorkbench.tsx: SliderPhase`)
+A single `phase` value with explicit transitions replaces the boolean flag pile (`isDragging × isPanning × justDropped × wasActor`). Four flags with different clearing conditions produced emergent states that no one could audit.
+
+```
+idle → dragging → dropped → querying → idle
+                ↓ (void drag)
+              idle
+```
+
+| Phase | Histogram | Track clamp | Amber |
+|-------|-----------|-------------|-------|
+| `dragging` | projected (live) | unconstrained | ghost |
+| `dropped` | projected (held) | unconstrained | ghost |
+| `querying` | projected (held) | unconstrained | ghost |
+| `idle` (spectator) | retained → morph | constrained | ghost |
+| `idle` (settled) | dynamic (server) | constrained | if OOB |
+
+Three mutually exclusive derived booleans: `isActor`, `isSpectator`, `settled`. Every rendering decision branches from these — nothing else. `isPanning` is a gesture sub-type (cursor style), not a lifecycle phase.
+
+**53. Inline Phase Settlement — The Flash Killer** (`QueryWorkbench.tsx: effectivePhase`)
+```typescript
+const effectivePhase: SliderPhase = phase === 'querying' && !pending ? 'idle' : phase;
+```
+Detects `querying && !pending → idle` on the same render frame. The `useEffect` that sets `phase = 'idle'` is bookkeeping only — the visual is already correct on the render that `pending` goes false. Without this, a `useEffect` that cleared `wasActor` when `!pending` would self-destruct during the 80ms gap between `pointerUp` and `START_QUERY` dispatch — `!pending && wasActor` evaluated to true before pending ever arrived. Every fix to one flag's timing broke another flag's invariant.
+
+**54. Local Histogram Projection** (`QueryWorkbench.tsx: projectHistogram`)
+When the user drags a range slider, the server needs 80–200ms to compute the real constrained histogram. `projectHistogram` rescales the static (unfiltered) distribution within the thumb range — a local estimate that requires zero network:
+$$
+\text{projected}[i] = \frac{\text{static}[i]}{\max(\text{static}[lo..hi])} \times \max(\text{static})
+$$
+When the server responds, bars that cross-filtering excluded "fall off" via the compositor-isolated `scaleY` morph. That delta — the difference between the prophecy and the truth — is the science. The actor holds the projection through the full cycle (`dragging → dropped → querying`), then morphs once to real data. No `undefined` gap, no `useRetainedState` handoff, no flash.
+
+**55. The `dragStartRef` Amber Predicate** (`QueryWorkbench.tsx: projConMin/projConMax`)
+The projection must be optimistic when expanding into unknown territory, but must not show bars in a confirmed cross-filter void (the amber region). `activeConMin`/`activeConMax` conflates this slider's own previous range with cross-filter effects — `low < activeConMin` fires both when dragging into the cross-filter void and when dragging past your own old position into territory with real static data. The fix: check whether amber was visible at **pointerDown** (`dragStartRef.current`), not whether the current thumb position is past the data extent:
+```typescript
+const dragStart = dragStartRef.current;
+const hadAmberLo = hasConData && dragStart != null && dragStart.lo < activeConMin! - epsilon;
+const projConMin = hadAmberLo ? activeConMin : undefined;
+```
+
+| Scenario | `hadAmber` | Projection |
+|----------|-----------|------------|
+| No amber at drag start → drag outward | `false` | Fully optimistic — bars grow from static distribution |
+| Amber at drag start → drag into void | `true` | Clips at data boundary — no bars in void |
+| Static bins zero | n/a | Zero — truly no data anywhere |
+
+**56. Compositor-Isolated Histogram Bars** (`DistributionPlot`)
+SVG attribute transitions (`y`, `height`) are main-thread-interpolated — 64 elements × 300ms recomputing layout every frame. If `syncTrack()` writes CSS variables on the same thread, two animation systems fight for the same 16ms budget. Fix: `transform: scaleY()` from a fixed baseline. `transform` is compositor-composited — GPU thread, zero main-thread cost:
+```tsx
+<rect y={0} height={plotHeight} style={{
+  transformOrigin: 'bottom',
+  transform: `scaleY(${barHeight / plotHeight})`,
+  transition: 'transform 300ms cubic-bezier(0.382, 0, 0.618, 1)',
+}} />
+```
+
+---
+
 ### Future Architecture (Not Yet Implemented)
 
 **42. Web Worker Arrow Decoding**
