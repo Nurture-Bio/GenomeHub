@@ -2100,7 +2100,22 @@ export default function QueryWorkbench({
           <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
             {[
               { label: 'Numeric', subset: tableEligible.filter((c) => isNumericType(c.type)) },
-              { label: 'Text', subset: tableEligible.filter((c) => !isNumericType(c.type)) },
+              {
+                label: 'Categories',
+                subset: tableEligible.filter((c) => {
+                  if (isNumericType(c.type)) return false;
+                  const card = columnCardinality[c.name];
+                  return card && card.distinct >= 1 && card.distinct <= DROPDOWN_MAX;
+                }),
+              },
+              {
+                label: 'Text',
+                subset: tableEligible.filter((c) => {
+                  if (isNumericType(c.type)) return false;
+                  const card = columnCardinality[c.name];
+                  return !card || card.distinct > DROPDOWN_MAX;
+                }),
+              },
             ].map(({ label, subset }) => {
               if (subset.length === 0) return null;
               const allOn = subset.every((c) => visibleColumns.has(c.name));
