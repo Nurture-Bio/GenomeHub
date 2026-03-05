@@ -615,18 +615,16 @@ function RangeSlider({
 
   const epsilon = range * 0.001;
 
-  // ── Sealed constrained bounds ──────────────────────────────────────────────
-  // During the actor cycle, use the constrained bounds captured at drag start.
-  // This seals the amber predicate against concurrent server responses.
-  // Outside the actor cycle, use the live reactive values.
+  // ── Projection predicate — sealed at drag start ───────────────────────────
+  // "Was S ⊄ D at t₀?" — one-time test, frozen for the drag cycle.
+  // If true, clip projection at ∂D. If false, projection is fully optimistic.
+  // This is NOT the OOB visual — that's a continuous test in syncTrack.
   const dragCtx = dragCtxRef.current;
-  const sealedConMin = dragCtx ? dragCtx.conMin : activeConMin;
-  const sealedConMax = dragCtx ? dragCtx.conMax : activeConMax;
-  const hasConData = sealedConMin !== undefined && sealedConMax !== undefined;
-
-  // Amber predicate — frozen at drag start, impossible to flip mid-gesture.
-  const hadAmberLo = hasConData && dragCtx != null && dragCtx.lo < sealedConMin! - epsilon;
-  const hadAmberHi = hasConData && dragCtx != null && dragCtx.hi > sealedConMax! + epsilon;
+  const sealedConMin = dragCtx?.conMin;
+  const sealedConMax = dragCtx?.conMax;
+  const hasSealedCon = sealedConMin !== undefined && sealedConMax !== undefined;
+  const hadAmberLo = hasSealedCon && dragCtx != null && dragCtx.lo < sealedConMin! - epsilon;
+  const hadAmberHi = hasSealedCon && dragCtx != null && dragCtx.hi > sealedConMax! + epsilon;
   const projConMin = hadAmberLo ? sealedConMin : undefined;
   const projConMax = hadAmberHi ? sealedConMax : undefined;
   const projectedHistogram = useMemo(
@@ -647,21 +645,18 @@ function RangeSlider({
   const settled    = !isActor && !isSpectator; // idle + !pending = fresh server data
   const isDragging = effectivePhase === 'dragging';
 
-  // Rendering rules derived from exactly one source of truth:
-  //   isActor     → projected histogram, unconstrained track, ghost OOB (opacity 0)
-  //   isSpectator → retained histogram,  constrained track,  ghost OOB (opacity 0)
-  //   settled     → dynamic  histogram,  constrained track,  amber OOB if outside bounds
-  const conLoPct = hasConData ? Math.max(0, ((sealedConMin! - min) / range) * 100) : 0;
-  const conHiPct = hasConData ? Math.min(100, ((sealedConMax! - min) / range) * 100) : 100;
+  // Constrained track overlay — live D, always.
+  const hasLiveCon = activeConMin !== undefined && activeConMax !== undefined;
+  const conLoPct = hasLiveCon ? Math.max(0, ((activeConMin! - min) / range) * 100) : 0;
+  const conHiPct = hasLiveCon ? Math.min(100, ((activeConMax! - min) / range) * 100) : 100;
 
   // ── Imperative engine — drives all track + thumb visuals at 60fps ──────────
   // React only sees the final values on pointerUp.  Between pointer events
   // every pixel is moved by CSS-variable writes on the container DOM node.
   //
   // Position + OOB are one concern: "where is the thumb relative to the data."
-  // Constrained bounds as arguments encode the phase gate — undefined means
-  // no amber (started drag during query, or no cross-filter). No flags, no
-  // branches, no clearing step.
+  // Constrained bounds = live D (the cross-filtered data extent). OOB is a
+  // continuous membership test of R against D, evaluated on every frame.
   const syncTrack = useCallback(
     (loVal: number, hiVal: number, conMin?: number, conMax?: number) => {
       const el = trackRef.current;
@@ -722,9 +717,8 @@ function RangeSlider({
 
     if (isActor) return;
 
-    // Spectator uses sealed bounds (stale is fine — this slider didn't cause the query).
-    // Settled uses live bounds (server's word is final).
-    syncTrack(low, high, isSpectator ? sealedConMin : activeConMin, isSpectator ? sealedConMax : activeConMax);
+    // OOB is a continuous membership test against live D.
+    syncTrack(low, high, activeConMin, activeConMax);
 
     // Constrained bounds CSS vars
     const el = trackRef.current;
@@ -738,7 +732,7 @@ function RangeSlider({
       const bins = dynamicHistogram ?? projectedHistogram ?? staticHistogram;
       if (bins) syncHistogram(bins);
     }
-  }, [low, high, isActor, isSpectator, pending, phase, sealedConMin, sealedConMax,
+  }, [low, high, isActor, isSpectator, pending, phase,
       activeConMin, activeConMax, syncTrack, syncHistogram, conLoPct, conHiPct,
       projectedHistogram, dynamicHistogram, staticHistogram, setPhase]);
 
@@ -764,7 +758,7 @@ function RangeSlider({
     // Hard sync — refs, CSS vars, and inputs all agree before anything else
     lowRef.current = actualLo;
     highRef.current = actualHi;
-    syncTrack(actualLo, actualHi, sealedConMin, sealedConMax);
+    syncTrack(actualLo, actualHi, activeConMin, activeConMax);
 
     setPhase('dropped');
     // Void detector: if the drag delta swept only through empty bins, skip the query
@@ -819,7 +813,7 @@ function RangeSlider({
         }
         lowRef.current = newLo;
         highRef.current = newHi;
-        syncTrack(newLo, newHi, sealedConMin, sealedConMax);
+        syncTrack(newLo, newHi, activeConMin, activeConMax);
         if (staticHistogram) syncHistogram(projectHistogram(staticHistogram, newLo, newHi, min, max, projConMin, projConMax));
         onDrag(name, newLo, newHi);
       };
@@ -859,7 +853,7 @@ function RangeSlider({
       window.addEventListener('pointerup', onUp);
       window.addEventListener('pointercancel', onUp);
     },
-    [name, min, max, range, onDrag, onCommit, staticHistogram, syncTrack, syncHistogram, sealedConMin, sealedConMax, projConMin, projConMax],
+    [name, min, max, range, onDrag, onCommit, staticHistogram, syncTrack, syncHistogram, activeConMin, activeConMax, projConMin, projConMax],
   );
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -924,7 +918,7 @@ function RangeSlider({
         />
 
         {/* Constrained data extent — double-click to clip */}
-        {hasConData && !isActor && (
+        {hasLiveCon && !isActor && (
           <div
             className="absolute top-1/2 -translate-y-1/2 rounded-full"
             title="Double-click to clip handles to this range"
@@ -948,15 +942,15 @@ function RangeSlider({
           className="absolute top-1/2 -translate-y-1/2 rounded-full"
           style={
             {
-              left: hasConData && (settled || hadAmberLo)
+              left: hasLiveCon && (settled || hadAmberLo)
                 ? 'max(calc(var(--lo) * 1%), calc(var(--c-lo) * 1%))'
                 : 'calc(var(--lo) * 1%)',
-              right: hasConData && (settled || hadAmberHi)
+              right: hasLiveCon && (settled || hadAmberHi)
                 ? 'max(calc((100 - var(--hi)) * 1%), calc((100 - var(--c-hi)) * 1%))'
                 : 'calc((100 - var(--hi)) * 1%)',
               height: 2,
               background: CYAN_COLOR,
-              opacity: full ? 0.1 : isActor ? (hadAmberLo || hadAmberHi ? 0.4 : 1) : isSpectator ? 0.15 : hasConData ? 0.4 : 1,
+              opacity: full ? 0.1 : isActor ? (hadAmberLo || hadAmberHi ? 0.4 : 1) : isSpectator ? 0.15 : hasLiveCon ? 0.4 : 1,
             } as CSSProperties
           }
         />
@@ -994,7 +988,7 @@ function RangeSlider({
           onChange={(e) => {
             const v = Math.min(Number(e.target.value), highRef.current);
             lowRef.current = v;
-            syncTrack(v, highRef.current, sealedConMin, sealedConMax);
+            syncTrack(v, highRef.current, activeConMin, activeConMax);
             if (staticHistogram) syncHistogram(projectHistogram(staticHistogram, v, highRef.current, min, max, projConMin, projConMax));
             onDrag(name, v, highRef.current);
           }}
@@ -1013,7 +1007,7 @@ function RangeSlider({
           onChange={(e) => {
             const v = Math.max(Number(e.target.value), lowRef.current);
             highRef.current = v;
-            syncTrack(lowRef.current, v, sealedConMin, sealedConMax);
+            syncTrack(lowRef.current, v, activeConMin, activeConMax);
             if (staticHistogram) syncHistogram(projectHistogram(staticHistogram, lowRef.current, v, min, max, projConMin, projConMax));
             onDrag(name, lowRef.current, v);
           }}
@@ -1028,7 +1022,7 @@ function RangeSlider({
           min={min}
           max={high}
           isFloat={isFloat}
-          color={settled && hasConData && low < sealedConMin! - epsilon ? 'var(--color-amber)' : full ? 'var(--color-fg-3)' : 'var(--color-fg-2)'}
+          color={hasLiveCon && low < activeConMin! - epsilon ? 'var(--color-amber)' : full ? 'var(--color-fg-3)' : 'var(--color-fg-2)'}
           onCommit={(v) => {
             onDrag(name, v, high);
             onCommit(name, v, high);
@@ -1039,7 +1033,7 @@ function RangeSlider({
           min={low}
           max={max}
           isFloat={isFloat}
-          color={settled && hasConData && high > sealedConMax! + epsilon ? 'var(--color-amber)' : full ? 'var(--color-fg-3)' : 'var(--color-fg-2)'}
+          color={hasLiveCon && high > activeConMax! + epsilon ? 'var(--color-amber)' : full ? 'var(--color-fg-3)' : 'var(--color-fg-2)'}
           onCommit={(v) => {
             onDrag(name, low, v);
             onCommit(name, low, v);
