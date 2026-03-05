@@ -43,7 +43,7 @@ export interface FilterState {
 
   // Mutators — intent, not gesture
   setRangeVisual: (name: string, lo: number, hi: number) => void;
-  commitRange: (name: string) => void;
+  commitRange: (name: string, lo: number, hi: number) => void;
   setRangeExact: (name: string, value: number | null) => void;
   setTextFilter: (name: string, value: string) => void;
   toggleCategory: (name: string, value: string) => void;
@@ -90,7 +90,6 @@ export function useFilterState(columnStats: Record<string, ColumnStats>): Filter
   // a single setState. Only touches dragVisuals — never the committed ledger.
   const rafRef = useRef<number | null>(null);
   const pendingDrag = useRef<{ name: string; lo: number; hi: number } | null>(null);
-
   const setRangeVisual = useCallback((name: string, lo: number, hi: number) => {
     pendingDrag.current = { name, lo, hi };
     if (rafRef.current === null) {
@@ -102,28 +101,31 @@ export function useFilterState(columnStats: Record<string, ColumnStats>): Filter
     }
   }, []);
 
-  const commitRange = useCallback((name: string) => {
-    // Commit the drag visual to the true ledger
-    setDragVisuals((prev) => {
-      const visual = prev[name];
-      if (visual) {
-        // Write final value to the committed ledger
-        setRangeOverrides((ro) => {
-          const stats = columnStats[name];
-          // Clean up identity ranges — if dragged back to [min, max], remove the override
-          if (stats && visual[0] <= stats.min && visual[1] >= stats.max) {
-            const next = { ...ro };
-            delete next[name];
-            return next;
-          }
-          return { ...ro, [name]: visual };
-        });
-        // Clear the visual so it falls back to the true ledger
-        const next = { ...prev };
+  const commitRange = useCallback((name: string, lo: number, hi: number) => {
+    // Kill the pending RAF so it can't re-set dragVisuals after we clear them.
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    pendingDrag.current = null;
+
+    // Both setters at top level → React 18 batches them in one render.
+    // Never nest setState inside an updater — React cannot batch those atomically.
+    const stats = columnStats[name];
+    if (stats && lo <= stats.min && hi >= stats.max) {
+      setRangeOverrides((ro) => {
+        const next = { ...ro };
         delete next[name];
         return next;
-      }
-      return prev;
+      });
+    } else {
+      setRangeOverrides((ro) => ({ ...ro, [name]: [lo, hi] }));
+    }
+
+    setDragVisuals((prev) => {
+      const next = { ...prev };
+      delete next[name];
+      return next;
     });
   }, [columnStats]);
 
