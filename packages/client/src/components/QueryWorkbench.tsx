@@ -164,7 +164,7 @@ function deriveConvergenceStep(
 
 // ── The View — where internal state meets the observer's eye ──────────────────
 
-interface ViewState {
+interface StructuralState {
   convergenceStep: number;
   convergenceSteps: StepperStep[];
   isReady: boolean;
@@ -172,23 +172,24 @@ interface ViewState {
   flowState: 'normal' | 'pending' | 'stalled';
   flowLabel: string | undefined;
   isPending: boolean;
-  hasFilter: boolean;
-  noResults: boolean;
   showSkeleton: boolean;
 }
 
-function deriveViewState(
+interface DataState {
+  hasFilter: boolean;
+  noResults: boolean;
+}
+
+function deriveStructuralState(
   lifecycle: {
     phase: QueryPhase;
     error: string | null;
     queryError: Error | string | null;
     isQuerying: boolean;
   },
-  snapshot: QuerySnapshot,
   isFetchingRange: boolean,
   cacheGen: number,
-  filterCount: number,
-): ViewState {
+): StructuralState {
   const { phase, error, queryError, isQuerying } = lifecycle;
 
   const convergenceStep = deriveConvergenceStep(phase, isQuerying, isFetchingRange, cacheGen);
@@ -201,7 +202,7 @@ function deriveViewState(
     ? CONVERGENCE_STEPS.map((s, i) => (i === convergenceStep ? { ...s, error: displayError } : s))
     : [...CONVERGENCE_STEPS];
 
-  const flowState: ViewState['flowState'] = queryError
+  const flowState: StructuralState['flowState'] = queryError
     ? 'stalled'
     : isQuerying
       ? 'pending'
@@ -209,23 +210,15 @@ function deriveViewState(
   const flowLabel = queryError ? 'query failed' : undefined;
 
   const isPending = isQuerying || isFetchingRange;
-  const hasFilter = filterCount > 0;
-  const noResults = hasFilter && snapshot.count === 0;
-
   const showSkeleton = convergenceStep < 2 || (convergenceStep === 2 && cacheGen === 0);
 
-  return {
-    convergenceStep,
-    convergenceSteps,
-    isReady,
-    isTerminal,
-    flowState,
-    flowLabel,
-    isPending,
-    hasFilter,
-    noResults,
-    showSkeleton,
-  };
+  return { convergenceStep, convergenceSteps, isReady, isTerminal, flowState, flowLabel, isPending, showSkeleton };
+}
+
+function deriveDataState(filterCount: number, count: number): DataState {
+  const hasFilter = filterCount > 0;
+  const noResults = hasFilter && count === 0;
+  return { hasFilter, noResults };
 }
 
 
@@ -424,6 +417,119 @@ function partitionColumns(
 
 // ── ControlCenter (was FilterSidebar) ─────────────────────────────────────────
 
+const RangeSliderCard = memo(function RangeSliderCard({
+  column,
+  stats,
+  constrainedStats,
+  rangeState,
+  hasAnyFilter,
+  isQuerying,
+  staticHistogram,
+  dynamicHistogram,
+  onDrag,
+  onCommit,
+  visible,
+  onToggleVisible,
+}: {
+  column: ColumnInfo;
+  stats: ColumnStats | undefined;
+  constrainedStats: ColumnStats | undefined;
+  rangeState: [number, number] | undefined;
+  hasAnyFilter: boolean;
+  isQuerying: boolean;
+  staticHistogram: number[] | undefined;
+  dynamicHistogram: number[] | undefined;
+  onDrag: (name: string, lo: number, hi: number) => void;
+  onCommit: (name: string, lo: number, hi: number) => void;
+  visible: boolean;
+  onToggleVisible: (name: string) => void;
+}) {
+  const active = !!(
+    rangeState &&
+    stats &&
+    (rangeState[0] > stats.min || rangeState[1] < stats.max)
+  );
+
+  return (
+    <div>
+      <div className="flex items-baseline gap-1.5 mb-1">
+        <span
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleVisible(column.name);
+          }}
+          className="font-semibold cursor-pointer select-none"
+          title={visible ? 'Hide in table' : 'Show in table'}
+          style={{
+            fontSize: 'var(--font-size-xs)',
+            color: active
+              ? 'var(--color-cyan)'
+              : visible
+                ? 'var(--color-fg-2)'
+                : 'var(--color-fg-3)',
+            borderBottom: visible
+              ? '1px solid var(--color-cyan)'
+              : '1px dashed var(--color-fg-3)',
+            opacity: visible ? 1 : 0.5,
+            transition: 'color var(--t-fast), opacity var(--t-fast), border-color var(--t-fast)',
+          }}
+        >
+          {column.name}
+        </span>
+        <span
+          className="font-mono shrink-0 ml-auto"
+          style={{ fontSize: 'calc(var(--font-size-xs) - 1px)', opacity: 0.25 }}
+        >
+          {column.type}
+        </span>
+      </div>
+
+      {!stats ? (
+        <div style={{ height: 20, position: 'relative' }}>
+          <div
+            className="skeleton rounded-full"
+            style={{
+              height: 2,
+              width: '100%',
+              position: 'absolute',
+              top: '50%',
+              transform: 'translateY(-50%)',
+            }}
+          />
+        </div>
+      ) : stats.min === stats.max ? (
+        <span
+          className="font-mono"
+          style={{
+            fontSize: 'var(--font-size-xs)',
+            color: 'var(--color-fg-3)',
+            fontStyle: 'italic',
+          }}
+        >
+          {Number.isInteger(stats.min) ? stats.min.toLocaleString() : stats.min.toFixed(2)}{' '}
+          (constant)
+        </span>
+      ) : (
+        <RangeSlider
+          name={column.name}
+          min={stats.min}
+          max={stats.max}
+          low={rangeState?.[0] ?? stats.min}
+          high={rangeState?.[1] ?? stats.max}
+          constrainedMin={hasAnyFilter ? constrainedStats?.min : undefined}
+          constrainedMax={hasAnyFilter ? constrainedStats?.max : undefined}
+          pending={isQuerying}
+          hasAnyFilter={hasAnyFilter}
+          onDrag={onDrag}
+          onCommit={onCommit}
+          staticHistogram={staticHistogram}
+          dynamicHistogram={hasAnyFilter ? dynamicHistogram : undefined}
+        />
+      )}
+    </div>
+  );
+});
+
 const ControlCenter = memo(function ControlCenter({
   columns,
   columnStats,
@@ -483,21 +589,11 @@ const ControlCenter = memo(function ControlCenter({
     }
   }
 
-  const renderColumnCard = (c: ColumnInfo) => {
-    const isNum = isNumericType(c.type);
-    const stats = columnStats[c.name];
+  const renderTextCard = (c: ColumnInfo) => {
     const card = columnCardinality[c.name];
     const sel = selected[c.name] ?? new Set<string>();
     const hasCard = card && card.distinct >= 1 && card.distinct <= DROPDOWN_MAX;
-    const active = isNum
-      ? !!(
-          rangeState[c.name] &&
-          stats &&
-          (rangeState[c.name][0] > stats.min || rangeState[c.name][1] < stats.max)
-        )
-      : hasCard
-        ? sel.size > 0
-        : !!textFilters[c.name]?.trim();
+    const active = hasCard ? sel.size > 0 : !!textFilters[c.name]?.trim();
 
     return (
       <div key={c.name}>
@@ -533,51 +629,7 @@ const ControlCenter = memo(function ControlCenter({
           </span>
         </div>
 
-        {isNum ? (
-          !stats ? (
-            /* Schema says numeric but stats haven't hydrated — skeleton track */
-            <div style={{ height: 20, position: 'relative' }}>
-              <div
-                className="skeleton rounded-full"
-                style={{
-                  height: 2,
-                  width: '100%',
-                  position: 'absolute',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                }}
-              />
-            </div>
-          ) : stats.min === stats.max ? (
-            <span
-              className="font-mono"
-              style={{
-                fontSize: 'var(--font-size-xs)',
-                color: 'var(--color-fg-3)',
-                fontStyle: 'italic',
-              }}
-            >
-              {Number.isInteger(stats.min) ? stats.min.toLocaleString() : stats.min.toFixed(2)}{' '}
-              (constant)
-            </span>
-          ) : (
-            <RangeSlider
-              name={c.name}
-              min={stats.min}
-              max={stats.max}
-              low={rangeState[c.name]?.[0] ?? stats.min}
-              high={rangeState[c.name]?.[1] ?? stats.max}
-              constrainedMin={hasAnyFilter ? constrainedStats[c.name]?.min : undefined}
-              constrainedMax={hasAnyFilter ? constrainedStats[c.name]?.max : undefined}
-              pending={isQuerying}
-              hasAnyFilter={hasAnyFilter}
-              onDrag={onRangeDrag}
-              onCommit={onRangeCommit}
-              staticHistogram={staticHistograms[c.name]}
-              dynamicHistogram={hasAnyFilter ? constrainedHistograms[c.name] : undefined}
-            />
-          )
-        ) : hasCard ? (
+        {hasCard ? (
           card.values.length === 1 ? (
             <span
               className="font-mono"
@@ -603,7 +655,7 @@ const ControlCenter = memo(function ControlCenter({
               onClear={() => onClearSelect(c.name)}
             />
           )
-        ) : !isNum ? (
+        ) : (
           <input
             className="w-full bg-transparent border border-line rounded-sm text-fg-2 font-mono placeholder:text-fg-3 focus:outline-none"
             style={{
@@ -617,7 +669,7 @@ const ControlCenter = memo(function ControlCenter({
             onChange={(e) => onTextChange(c.name, e.target.value)}
             spellCheck={false}
           />
-        ) : null}
+        )}
       </div>
     );
   };
@@ -665,7 +717,23 @@ const ControlCenter = memo(function ControlCenter({
             className="grid gap-4 content-start"
             style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}
           >
-            {numerics.map(renderColumnCard)}
+            {numerics.map((c) => (
+              <RangeSliderCard
+                key={c.name}
+                column={c}
+                stats={columnStats[c.name]}
+                constrainedStats={constrainedStats[c.name]}
+                rangeState={rangeState[c.name]}
+                hasAnyFilter={hasAnyFilter}
+                isQuerying={isQuerying}
+                staticHistogram={staticHistograms[c.name]}
+                dynamicHistogram={constrainedHistograms[c.name]}
+                onDrag={onRangeDrag}
+                onCommit={onRangeCommit}
+                visible={visibleColumns.has(c.name)}
+                onToggleVisible={onToggleVisible}
+              />
+            ))}
           </div>
         )}
         {texts.length > 0 && (
@@ -673,7 +741,7 @@ const ControlCenter = memo(function ControlCenter({
             className="grid gap-4 content-start"
             style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}
           >
-            {texts.map(renderColumnCard)}
+            {texts.map(renderTextCard)}
           </div>
         )}
       </div>
@@ -930,19 +998,15 @@ export default function QueryWorkbench({
     cacheGen,
   } = store;
 
-  // ── View derivation ────────────────────────────────────────────────────────
-  const viewState = useMemo(
-    () => deriveViewState(lifecycle, snapshot, isFetchingRange, cacheGen, filters.specs.length),
-    [
-      lifecycle.phase,
-      lifecycle.error,
-      lifecycle.queryError,
-      lifecycle.isQuerying,
-      isFetchingRange,
-      cacheGen,
-      filters.specs.length,
-      snapshot.count,
-    ],
+  // ── View derivation — split into structural (phase/skeleton) and data (count/filters) ──
+  const structural = useMemo(
+    () => deriveStructuralState(lifecycle, isFetchingRange, cacheGen),
+    [lifecycle.phase, lifecycle.error, lifecycle.queryError, lifecycle.isQuerying, isFetchingRange, cacheGen],
+  );
+
+  const dataState = useMemo(
+    () => deriveDataState(filters.specs.length, snapshot.count),
+    [filters.specs.length, snapshot.count],
   );
 
   // ── Reprofile handler ──────────────────────────────────────────────────────
@@ -980,8 +1044,8 @@ export default function QueryWorkbench({
       onProgress?.(null);
       return;
     }
-    onProgress?.({ steps: viewState.convergenceSteps, active: viewState.convergenceStep });
-  }, [viewState.convergenceStep, viewState.isTerminal, viewState.convergenceSteps]);
+    onProgress?.({ steps: structural.convergenceSteps, active: structural.convergenceStep });
+  }, [structural.convergenceStep, structural.isTerminal, structural.convergenceSteps]);
 
   // Cleanup: clear stepper when unmounting
   useEffect(() => {
@@ -1202,14 +1266,14 @@ export default function QueryWorkbench({
           inset: 0,
           zIndex: 10,
           background: 'var(--color-void)',
-          opacity: viewState.showSkeleton ? 1 : 0,
-          pointerEvents: viewState.showSkeleton ? 'auto' : 'none',
+          opacity: structural.showSkeleton ? 1 : 0,
+          pointerEvents: structural.showSkeleton ? 'auto' : 'none',
         }}
       >
-        {viewState.showSkeleton && skeletonGrid}
+        {structural.showSkeleton && skeletonGrid}
       </div>
     ),
-    [viewState.showSkeleton, skeletonGrid],
+    [structural.showSkeleton, skeletonGrid],
   );
 
   // ── Extension pop-out ────────────────────────────────────────────────────
@@ -1223,7 +1287,7 @@ export default function QueryWorkbench({
 
   // ── Loading / error states ─────────────────────────────────────────────────
 
-  if (viewState.isTerminal) return null;
+  if (structural.isTerminal) return null;
 
   return (
     <div
@@ -1260,7 +1324,7 @@ export default function QueryWorkbench({
 
           {/* Pillar 2: Stepper + Status */}
           <div className="flex flex-col items-center">
-            <Stepper steps={viewState.convergenceSteps} active={viewState.convergenceStep} />
+            <Stepper steps={structural.convergenceSteps} active={structural.convergenceStep} />
           </div>
 
           {/* Pillar 3: Command Cluster */}
@@ -1269,7 +1333,7 @@ export default function QueryWorkbench({
               type="button"
               onClick={filters.resetFilters}
               className={`ghost flex items-center gap-1 px-2 py-0.5 rounded font-mono uppercase tracking-widest cursor-pointer bg-transparent border-none text-cyan/70 hover:text-cyan hover:bg-cyan/10 active:scale-95 text-xs ${
-                viewState.hasFilter ? 'awake' : ''
+                dataState.hasFilter ? 'awake' : ''
               }`}
             >
               <span>Reset</span>
@@ -1300,10 +1364,10 @@ export default function QueryWorkbench({
           <RiverGauge
             current={snapshot.count}
             total={snapshot.total}
-            flowState={viewState.flowState}
-            accent={viewState.hasFilter}
+            flowState={structural.flowState}
+            accent={dataState.hasFilter}
             variant="tide"
-            statusLabel={viewState.flowLabel}
+            statusLabel={structural.flowLabel}
           />
         )}
       </div>
@@ -1344,9 +1408,9 @@ export default function QueryWorkbench({
               onToggleSelect={filters.toggleCategory}
               onClearSelect={filters.clearCategory}
               onTextChange={filters.setTextFilter}
-              hasAnyFilter={viewState.hasFilter}
+              hasAnyFilter={dataState.hasFilter}
               constrainedStats={snapshot.stats}
-              noResults={viewState.noResults}
+              noResults={dataState.noResults}
               isQuerying={lifecycle.isQuerying}
               staticHistograms={staticHistograms}
               constrainedHistograms={snapshot.histograms}
@@ -1613,7 +1677,7 @@ export default function QueryWorkbench({
         <div className="flex-1 min-w-0" style={{ position: 'relative' }}>
           {skeletonOverlay}
 
-          {viewState.isReady && snapshot.count > 0 && drawerState === 'open' && (
+          {structural.isReady && snapshot.count > 0 && drawerState === 'open' && (
             <VirtualRows
               scrollRef={scrollRef}
               rowCount={snapshot.count}
@@ -1629,7 +1693,7 @@ export default function QueryWorkbench({
             />
           )}
 
-          {viewState.isReady && snapshot.count === 0 && (
+          {structural.isReady && snapshot.count === 0 && (
             <div
               className="flex flex-col items-center justify-center gap-3"
               style={{ height: '100%', minHeight: 200 }}
