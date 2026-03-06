@@ -6,7 +6,8 @@
  */
 
 import type { CSSProperties } from 'react';
-import { memo, useCallback, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { SpringAnimator } from '../lib/SpringAnimator';
 
 // ── DistributionPlot ──────────────────────────────────────────────────────────
 // Ghost mask clip is driven purely by inherited CSS vars (--lo, --hi) from the
@@ -65,7 +66,6 @@ const DistributionPlot = memo(
             style={{
               transformOrigin: 'bottom',
               transform: `scaleY(var(--dyn-${i}, 0))`,
-              transition: 'transform 300ms cubic-bezier(0.382, 0, 0.618, 1)',
             }}
           />
         )),
@@ -441,7 +441,7 @@ interface RangeSliderProps {
 
 // ── RangeSlider ───────────────────────────────────────────────────────────────
 
-export default function RangeSlider({
+const RangeSlider = React.memo(function RangeSlider({
   name,
   min,
   max,
@@ -474,40 +474,55 @@ export default function RangeSlider({
   const fullRef = useRef(false);
   const pendingRef = useRef(false);
   const trackRef = useRef<HTMLDivElement>(null);
+  const animatorRef = useRef<SpringAnimator | null>(null);
   const sliderRef = useRef<HTMLDivElement>(null);
   const panStartRef = useRef<{ x: number; lo: number; hi: number; trackW: number } | null>(null);
   const lowInputRef = useRef<HTMLInputElement>(null);
   const highInputRef = useRef<HTMLInputElement>(null);
   const lowRef = useRef(low);
   const highRef = useRef(high);
-  lowRef.current = low;
-  highRef.current = high;
+  // Only sync refs from props when idle — during active phases (dragging,
+  // dropped, querying) the imperative onChange/pan handlers own these refs.
+  // Overwriting mid-drag causes clamping against stale prop values, snapping
+  // the thumb backward ("fighting" the user).
+  if (phase === 'idle') {
+    lowRef.current = low;
+    highRef.current = high;
+  }
 
   const isFloat = !Number.isInteger(min) || !Number.isInteger(max);
   const step = isFloat ? ('any' as const) : 1;
 
-  // Throttled drag notification — imperative DOM at 60fps, React at ~1/frame
-  const dragRafRef = useRef<number | null>(null);
+  // Debounced drag notification — imperative DOM at 60fps, React only on pause.
+  // Resets on every drag event; fires 100ms after the user stops moving.
+  // flushDragNotify forces immediate fire on drop.
+  const dragTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingDragNotify = useRef<{ lo: number; hi: number } | null>(null);
   const notifyDrag = useCallback((lo: number, hi: number) => {
     pendingDragNotify.current = { lo, hi };
-    if (dragRafRef.current === null) {
-      dragRafRef.current = requestAnimationFrame(() => {
-        dragRafRef.current = null;
-        const p = pendingDragNotify.current;
-        if (p) onDrag(name, p.lo, p.hi);
-      });
-    }
+    if (dragTimerRef.current !== null) clearTimeout(dragTimerRef.current);
+    dragTimerRef.current = setTimeout(() => {
+      dragTimerRef.current = null;
+      const p = pendingDragNotify.current;
+      if (p) onDrag(name, p.lo, p.hi);
+    }, 100);
   }, [onDrag, name]);
   const flushDragNotify = useCallback(() => {
-    if (dragRafRef.current !== null) {
-      cancelAnimationFrame(dragRafRef.current);
-      dragRafRef.current = null;
+    if (dragTimerRef.current !== null) {
+      clearTimeout(dragTimerRef.current);
+      dragTimerRef.current = null;
     }
     const p = pendingDragNotify.current;
     pendingDragNotify.current = null;
     if (p) onDrag(name, p.lo, p.hi);
   }, [onDrag, name]);
+
+  // ── Spring animator lifecycle ────────────────────────────────────────────
+  useEffect(() => {
+    if (!trackRef.current) return;
+    animatorRef.current = new SpringAnimator(trackRef.current);
+    return () => animatorRef.current?.dispose();
+  }, []);
 
   // ── Phase derivation ─────────────────────────────────────────────────────
   // effectivePhase snaps querying→idle on the same render pending flips false,
@@ -528,7 +543,10 @@ export default function RangeSlider({
   pendingRef.current = !!pending;
   const activeConMin = (full && !hasAnyFilter) ? undefined : constrainedMin;
   const activeConMax = (full && !hasAnyFilter) ? undefined : constrainedMax;
-  const axis = createAxis(min, max, activeConMin, activeConMax);
+  const axis = useMemo(
+    () => createAxis(min, max, activeConMin, activeConMax),
+    [min, max, activeConMin, activeConMax],
+  );
   // Ref mirror so drag closures always read the latest axis
   const axisRef = useRef(axis);
   axisRef.current = axis;
@@ -598,17 +616,10 @@ export default function RangeSlider({
     [],
   );
 
-  /** syncHistogram — owns --dyn-N. Always writes all 64 slots. */
+  /** syncHistogram — owns --dyn-N via spring animator. */
   const syncHistogram = useCallback(
     (bins: number[]) => {
-      const el = trackRef.current;
-      if (!el) return;
-      let mx = 0;
-      for (let i = 0; i < bins.length; i++) { if (bins[i] > mx) mx = bins[i]; }
-      if (mx === 0) mx = 1;
-      for (let i = 0; i < 64; i++) {
-        el.style.setProperty(`--dyn-${i}`, String((bins[i] ?? 0) / mx));
-      }
+      animatorRef.current?.setTargets(bins);
     },
     [],
   );
@@ -961,4 +972,6 @@ export default function RangeSlider({
       </div>
     </div>
   );
-}
+});
+
+export default RangeSlider;
