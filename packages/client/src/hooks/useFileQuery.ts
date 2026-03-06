@@ -713,7 +713,7 @@ export function useFileQuery(
       preflightRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fileId, state.phase, filterKey, sortKey]);
+  }, [fileId, state.phase, filterKey, sortKey, enablePreflight]);
 
   /** Flush Arrow cache + abort in-flight requests. Call when the table drawer closes. */
   const clearCache = useCallback(() => {
