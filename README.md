@@ -490,6 +490,36 @@ Each `RangeSlider` histogram is a single `<canvas>` element driven by `SpringAni
 
 **Why this matters at scale:** With 20+ filterable columns, an SVG approach would create 2,500+ DOM nodes (64 `<rect>` elements per histogram, static + dynamic layers). Every frame, the browser would recalculate styles for each node reading a CSS variable. Canvas replaces all of that with one composite operation per slider — the GPU composites a single bitmap instead of walking a paint tree of hundreds of elements.
 
+#### Global animation ticker
+
+Game engines have one main loop. GenomeHub does too.
+
+All spring physics and breathing animations subscribe to a single `AnimationTicker` singleton (`lib/AnimationTicker.ts`). Instead of 50–75 independent `requestAnimationFrame` loops competing in the frame queue, one rAF callback fans out to every active subscriber. All physics tick in one contiguous block of execution, all canvases paint in perfect synchronization, and when everything settles, the clock puts itself to sleep — zero idle CPU.
+
+```
+User drags a filter
+  │
+  ▼  SpringAnimator.setTargets() — subscribe to ticker
+  │  SingleSpring.setTarget()    — subscribe to ticker
+  │  Breathing useEffect         — subscribe to ticker
+  │
+  ▼  AnimationTicker (one requestAnimationFrame)
+  │    for (const fn of subscribers)
+  │      fn(now) → true:  keep ticking
+  │      fn(now) → false: settled, auto-unsubscribe
+  │
+  ▼  All 20+ histogram canvases paint in the same frame
+  │  RiverGauge clip-path updates in the same frame
+  │  No visual tearing across the dashboard
+  │
+  ▼  All springs settled, no breathing active
+     subscribers.size === 0 → rafId = null → clock sleeps
+```
+
+Subscribers provide a tick function `(now: DOMHighResTimeStamp) => boolean`. Return `true` to keep ticking, `false` to auto-unsubscribe. The `Set<TickFn>` guarantees O(1) subscribe/unsubscribe and safe deletion during iteration (per spec). A try-catch around each subscriber prevents one throw from killing the entire clock.
+
+**Delta-time trap:** When a spring settles and unsubscribes, its `lastTime` goes stale. If it wakes up 10 seconds later, `now - lastTime` would produce a catastrophic dt. Every wake-up path (`setTarget`, `setTargets`) resets `lastTime = 0`. The tick method treats `lastTime === 0` as "first frame" — anchors the timestamp, flushes the current position, and skips physics for that single frame.
+
 #### Parquet conversion status lifecycle
 
 ```
