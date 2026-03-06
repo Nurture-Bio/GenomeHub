@@ -62,7 +62,7 @@ white/5     Minimal seams — sidebar boundary (perceptible only at ΔL > 0.02)
 
 ## Performance Architecture
 
-51 interlocking mechanisms that make 2.6M rows feel instant. Grouped by the resource they protect.
+52 interlocking mechanisms that make 2.6M rows feel instant. Grouped by the resource they protect.
 
 ---
 
@@ -123,24 +123,27 @@ Filter handlers split into two phases: `setState()` (synchronous, high-priority 
 **15. Canvas Histogram Rendering** (`RangeSlider.tsx: paintCanvas`)
 Each slider paints its histogram to a single `<canvas>` element via a `SpringAnimator` paint callback. One canvas replaces 128 SVG `<rect>` DOM nodes per slider — with 20+ numeric columns, this eliminates ~2,500+ DOM nodes from the style recalculation tree. The canvas uses DPR-aware backing store sizing (`Math.round(w * devicePixelRatio)`) and `ctx.clip()` to mask the dynamic layer to the selected range. Static bars render at α=0.12 (reference shape), dynamic bars at α=0.45 (spring-driven heights from `Float64Array` positions). During pending states, a breathing animation modulates α sinusoidally between 0.25 and 0.5.
 
-**16. Input Coalescing via `getCoalescedEvents()`** (`RangeSlider.tsx: scheduleDragFrame`)
+**16. Breathing Grace Period — Perceptual Query Decoupling** (`RangeSlider.tsx: breathingRef + BREATH_GRACE_MS`)
+The breathing animation (sinusoidal α between 0.25 and 0.5) starts after a 300ms grace period, not immediately when `pending=true`. Two refs decouple query timing from visual timing: `pendingRef` drives truth track opacity in `syncTrack` (immediate, subtle dimming), while `breathingRef` drives the canvas alpha oscillation (delayed). During the grace period, bars paint at normal α=0.45 — even if `paintCanvas` is called by the spring animator's flush callback. If the server responds within 300ms, the user never sees breathing; they only see the spring smoothly correct from projected/stale to server truth. For small deltas (same-column range adjustment), the correction is invisible. Breathing only kicks in for genuinely slow queries (complex cross-filters, large datasets), matching the ~300ms perceptual threshold where the brain shifts from "instantaneous" to "waiting." The `breathTick` closure is defined outside the `setTimeout` so the cleanup closure captures the same identity; `ticker.unsubscribe(fn)` on a never-subscribed function is a safe no-op (`Set.delete`).
+
+**17. Input Coalescing via `getCoalescedEvents()`** (`RangeSlider.tsx: scheduleDragFrame`)
 Multiple pointer events can fire between frames. `scheduleDragFrame()` gates all drag processing behind a single `requestAnimationFrame` — handlers write to refs (`lowRef`, `highRef`), and the scheduled frame reads the final values once, running `syncTrack` + `syncHistogram` + `notifyDrag` exactly once per frame. The pan handler additionally calls `ev.getCoalescedEvents()` to take the last pointer position from the OS batch, discarding intermediate samples. On drop (`handleDragEnd`, `onUp`), the pending frame is cancelled — drop handlers process final values directly. Combined with the global animation ticker, this means the main thread processes at most one pointer event per frame during drag operations.
 
-**17. `memo()` as Reconciliation Firewall** (`ControlCenter`, `VirtualRows`)
+**18. `memo()` as Reconciliation Firewall** (`ControlCenter`, `VirtualRows`)
 Both wrapped with `memo()`. Without this, toggling `isTableOpen` (parent state) cascades into the entire filter panel (10+ cards) and the full table body. `memo()` cuts the reconciliation DAG at these nodes. Reflow cost of a parent state change drops from O(subtree) to O(1) shallow compare.
 
-**18. Memoized Skeleton Grid** (`QueryWorkbench.tsx: skeletonGrid useMemo`)
+**19. Memoized Skeleton Grid** (`QueryWorkbench.tsx: skeletonGrid useMemo`)
 Skeleton DOM (15 rows × N columns) built once, cached in `useMemo`. `skelRef.current` captures a frozen snapshot of column metadata + widths at first render. The skeleton is immutable — never rebuilt, regardless of how many times the loading state cycles.
 
-**19. Skeleton Opacity Toggle** (never conditional mount)
+**20. Skeleton Opacity Toggle** (never conditional mount)
 Skeleton overlay is `position: absolute; inset: 0`. Visibility controlled by `opacity` and `pointer-events` only. GPU composites opacity changes in ~0.1ms. Conditional mount (`{loading && <Skeleton/>}`) would construct and destroy DOM nodes each cycle, triggering layout recalculation and a double-fade artifact.
 
-**20. Global Animation Ticker — One rAF for All Springs** (`lib/AnimationTicker.ts`)
+**21. Global Animation Ticker — One rAF for All Springs** (`lib/AnimationTicker.ts`)
 Game engines have one main loop. `AnimationTicker` is the singleton rAF clock. All spring physics (`SpringAnimator`, `SingleSpring`) and breathing animations subscribe `(now: DOMHighResTimeStamp) => boolean` tick functions — return `true` to keep ticking, `false` to auto-unsubscribe. With 20+ numeric columns, this consolidates 50-75 independent rAF callbacks into one contiguous tick. All canvases paint in the same frame (no visual tearing). Zero subscribers → `rafId = null` → zero idle CPU. `Set<TickFn>` guarantees O(1) subscribe/unsubscribe and safe deletion during `for...of` iteration (per ECMAScript spec). Try-catch per subscriber prevents one throw from killing the clock.
 
 **Delta-time trap:** When a spring settles and unsubscribes, its `lastTime` goes stale. If it wakes up seconds later, `now - lastTime` produces a catastrophic dt that explodes the physics. Every wake-up path (`setTarget`/`setTargets`) resets `lastTime = 0`. The tick method treats `lastTime === 0` as "first frame" — anchors the timestamp, flushes the current position, and skips physics for that single frame.
 
-**21. `clipPath` on RiverGauge** (`RiverGauge.tsx`)
+**22. `clipPath` on RiverGauge** (`RiverGauge.tsx`)
 ```tsx
 clipPath: `inset(0 ${100 - ratio * 100}% 0 0)`
 ```
@@ -150,95 +153,95 @@ The fill bar is a full-width element clipped by the compositor. `clipPath` is pa
 
 ### State Management — Closure Hygiene & Consistency
 
-**22. `triggerRef` — Single-Writer Register** (`QueryWorkbench.tsx`)
+**23. `triggerRef` — Single-Writer Register** (`QueryWorkbench.tsx`)
 ```tsx
 const triggerRef = useRef<() => void>(() => {});
 triggerRef.current = triggerFilters;  // overwritten every render
 ```
 Deferred/debounced callbacks invoke `triggerRef.current()` — a pointer that always dereferences to the latest closure. The ref is a single-writer register: React's render loop is the sole writer, callbacks are readers. No contention. No dependency arrays. No stale captures.
 
-**23. `useRetainedState` — Zero-Order Hold** (`QueryWorkbench.tsx`)
+**24. `useRetainedState` — Zero-Order Hold** (`QueryWorkbench.tsx`)
 Retains the last defined value across render cycles. When `constrainedStats` goes `undefined` (old response cleared, new response in flight), the retained value bridges the gap. This is a zero-order hold from control theory: hold the last known output until new input arrives. Prevents flicker during the dead time between query cycles.
 
-**24. Ref-Sync for Pointer Handlers** (`RangeSlider: lowRef, highRef`)
+**25. Ref-Sync for Pointer Handlers** (`RangeSlider: lowRef, highRef`)
 `lowRef.current = low` every render. Pointer-move listeners read `.current`. Without this, the listener captures `low` from the render it was created in — potentially hundreds of renders stale. The ref is a compare-and-swap register: each render atomically updates the value that event handlers observe.
 
-**25. Visibility Toggle — No Layout Shift** (`QueryWorkbench.tsx`)
+**26. Visibility Toggle — No Layout Shift** (`QueryWorkbench.tsx`)
 Never conditionally mount elements that participate in layout flow. `.ghost` / `.ghost.awake` toggles `opacity` and `pointer-events` without DOM insertion/removal. Invariant: `∀ frame: layout_height(container) = constant`, regardless of filter state.
 
-**26. Zero-Height Virtualizer Divergence**
+**27. Zero-Height Virtualizer Divergence**
 When `!isTableOpen`, **unmount** `<VirtualRows>` entirely. `useVirtualizer` with `height = 0` enters a degenerate state: it computes zero rows fit, re-measures, finds zero again, and diverges into an infinite resize loop. This is the one controlled exception to the "never conditionally mount" invariant.
 
 ---
 
 ### Network — Query Minimization
 
-**27. Null-Set Elimination** (`hasDataInDelta`)
+**28. Null-Set Elimination** (`hasDataInDelta`)
 Before issuing a query: map slider bounds to histogram bins, check `Σ bin_count > 0` in the selected range. If the sum is zero, the query would return `∅` — skip it. The fastest query is the one you never send.
 
-**28. Debounced Text Filter** (`useFilterState.ts: setTextFilter`)
+**29. Debounced Text Filter** (`useFilterState.ts: setTextFilter`)
 300ms dead time. User types "BRCA1" — without debounce, that's 5 queries (B, BR, BRC, BRCA, BRCA1). With: 1 query. Savings: `(n_keystrokes − 1) / n_keystrokes` of wasted round-trips.
 
-**29. Range Drag = Zero Queries Until Commit**
+**30. Range Drag = Zero Queries Until Commit**
 During drag: `setRangeVisual` writes to `dragVisuals` (transient buffer — visual-only). On `pointerUp`: `commitRange` checkpoints the buffer into `rangeOverrides` (committed store) and flushes the transient. The query effect watches only `rangeOverrides`. A full-range drag fires exactly 1 query. This is a write-ahead log: buffer writes in the hot path, checkpoint atomically on commit. It also eliminates the stale-closure-behind-by-one (see #44) — rAF commits state in render N, `pointerUp` reads in render N+1, so the query always observes committed values.
 
-**30. First-Ready Preserves Prefetch Data** (catch-up effect)
+**31. First-Ready Preserves Prefetch Data** (catch-up effect)
 When the pipeline transitions to `ready`, don't clear the fallback JSON rows. Let them remain visible while the first Arrow query fires. The skeleton → data transition happens once (Arrow lands), not twice (clear → skeleton → Arrow). Speculative execution with lazy invalidation.
 
 ---
 
 ### Profile Hydration — Lazy & Sequential
 
-**31. Demand-Driven Attribute Fetch** (`useDataProfile`)
+**32. Demand-Driven Attribute Fetch** (`useDataProfile`)
 Only requests attributes the current view needs (`columnStats`, `cardinality`, `histograms`). Attributes resolved to `null` (negative cache) are never re-fetched. A view that never renders histograms never pays for their computation. Fetch cost: `O(|requested|)`, not `O(|all_attributes|)`.
 
-**32. Polling for Async Computation** (`useDataProfile`)
+**33. Polling for Async Computation** (`useDataProfile`)
 Server returns HTTP 202 while attributes are computing. Client polls at 1 Hz, max 30 iterations. Computing cardinality over 10⁸ rows takes wall-clock time — the polling loop decouples the UI's frame budget from the server's service time.
 
 ---
 
 ### Numerical & Layout Stability
 
-**33. Relative Float Tolerance** (`RangeSlider`)
+**34. Relative Float Tolerance** (`RangeSlider`)
 Out-of-bounds detection: `|x − bound| < ε` where `ε = range × 10⁻³`. The pipeline DuckDB → Arrow IPC serialization → JS `Number` accumulates representational error at each boundary crossing. `9.999999999` is `10` within tolerance. Standard relative-epsilon comparison from numerical analysis.
 
-**34. Uncontrolled Input Reconciliation** (`syncTrack`)
+**35. Uncontrolled Input Reconciliation** (`syncTrack`)
 HTML range inputs are uncontrolled — React doesn't own their `.value`. When filter state changes (committed bounds update, constrained range narrows), `syncTrack` writes `.value` imperatively. Numeric comparison before write prevents float → string → float precision loss from triggering spurious change events.
 
-**35. Deterministic Skeleton Widths**
+**36. Deterministic Skeleton Widths**
 Each skeleton bar: `width = 55 + ((row × 17 + col_len × 11) mod 40)%`. The hash function is a low-quality PRNG — intentionally. Uniform widths read as a broken loading state. Varied widths read as "data is arriving." The function is pure: same inputs → same widths across renders. No flicker.
 
-**36. Data-Adaptive Column Widths** (`colWFromName`)
+**37. Data-Adaptive Column Widths** (`colWFromName`)
 `width = max_char_length × 7.5px + chrome`. Sized from actual data distribution, not hardcoded constants. Columns with short values get narrow tracks; columns with UUIDs get wide ones.
 
 ---
 
 ### Layout Containment & Compositor Promotion
 
-**37. Tabular Numerals** (`font-variant-numeric: tabular-nums`)
+**38. Tabular Numerals** (`font-variant-numeric: tabular-nums`)
 Applied to all numeric readouts (`.sigil`, RiverGauge, row counts). Forces monospaced digit widths: `advance_width('1') = advance_width('9')`. Without this, numeric text jitters as values change because proportional fonts render `111` narrower than `999`. Invariant: `∀ digit d: advance_width(d) = constant`.
 
-**38. Scrollbar Reflow Guard** (`scrollbar-gutter: stable`)
+**39. Scrollbar Reflow Guard** (`scrollbar-gutter: stable`)
 When the drawer opens and content exceeds viewport height, `overflow-y: auto` injects a scrollbar — shifting the entire layout 12px left. `scrollbar-gutter: stable` reserves scrollbar width permanently. This is the layout equivalent of pre-allocating a buffer: pay the space cost upfront to avoid reallocation jitter. Applied to `<main>` and the table scroll container.
 
-**39. Fitts's Law Correction** (slider thumb `box-shadow: 0 0 0 8px transparent`)
+**40. Fitts's Law Correction** (slider thumb `box-shadow: 0 0 0 8px transparent`)
 The 14px slider thumb is too small for reliable target acquisition. An 8px transparent `box-shadow` expands the effective hit area to 30px without changing visual size. `::after` pseudo-elements don't work on `<input>` elements, so the shadow serves as the invisible hit region.
 
-**40. CSS Containment — Reflow DAG Partitioning** (`contain: layout style paint`)
+**41. CSS Containment — Reflow DAG Partitioning** (`contain: layout style paint`)
 Applied to `.vault-door`, `.glass-canopy`, `.sidebar-surface`. This is a graph cut in the browser's reflow DAG: the layout engine treats the boundary as a hard partition. Reflows inside the contained subtree are `O(subtree)`, not `O(document)`. Text changes, filter updates, and data hydration inside a contained element cannot cascade upward.
 
-**41. Selective GPU Promotion** (`will-change`)
+**42. Selective GPU Promotion** (`will-change`)
 - `.vault-door:hover { will-change: transform }` — promotes to compositor layer before interaction
 - `.river-fill { will-change: clip-path }` — always promoted (continuously animated)
 Each promotion costs VRAM (the element gets its own texture). Applied only where animation actually occurs. Global `will-change` is a memory leak with extra steps.
 
-**44. Batched-State Read-After-Write Hazard** (`QueryWorkbench.tsx`)
+**45. Batched-State Read-After-Write Hazard** (`QueryWorkbench.tsx`)
 React batches `setState` within synchronous handlers. Calling `setSelected(next)` then reading `selected` in the same handler reads the pre-batch value — a classic read-after-write hazard. Fix: mirror each filter state in a `useRef`. The functional updater (`setState(prev => ...)`) runs synchronously, so the ref updates inside it. The query function reads `.current` — always post-write. Range sliders avoid this via the two-phase protocol (#29): drag and commit are separate events in separate renders, so committed state is always visible when the query fires. Category and text filters lack a discrete commit event, so they need the ref-sync.
 
-**45. Write-Ahead Log — Transient / Committed Separation** (`useFilterState.ts: dragVisuals + rangeOverrides`)
+**46. Write-Ahead Log — Transient / Committed Separation** (`useFilterState.ts: dragVisuals + rangeOverrides`)
 `dragVisuals` is the write buffer — high-frequency, visual-only, never observed by the query effect. `rangeOverrides` is the committed store — low-frequency, durable, watched by the query effect. On `pointerUp`, `commitRange` checkpoints the buffer into the store and flushes the buffer. Invariant: the query effect's dependency set contains `rangeOverrides` but never `dragVisuals`. This guarantees `queries_during_drag = 0`. The 80ms debounce serves as the equivalent checkpoint for text filters (which have no discrete commit event).
 
-**46. Atomic Query Lifecycle — Total State Machine** (`useFileQuery.ts: queryReducer`)
+**47. Atomic Query Lifecycle — Total State Machine** (`useFileQuery.ts: queryReducer`)
 `isQuerying`, `queryError`, and `QuerySnapshot` are co-located in a single reducer. Three actions govern transitions:
 ```
 START_QUERY  → { isQuerying: true,  queryError: null     }
@@ -247,19 +250,19 @@ QUERY_ERROR  → { isQuerying: false, queryError: payload  }
 ```
 State transitions are total functions — every action produces a fully-specified next state. Invariant: `¬(isQuerying ∧ queryError ≠ null)`. No orphaned spinners, no lingering errors after success. `FATAL_ERROR` handles initialization failures (unrecoverable); `QUERY_ERROR` handles query failures from the `ready` phase (recoverable — next query clears it).
 
-**47. Controller / View Separation** (`RiverGauge.tsx`)
+**48. Controller / View Separation** (`RiverGauge.tsx`)
 RiverGauge accepts `flowState: 'normal' | 'pending' | 'stalled'` and an optional `statusLabel`. It knows nothing about queries, errors, or pipeline phases. The controller (`QueryWorkbench.tsx`) maps domain state to visual state: `queryError ? 'stalled' : isQuerying ? 'pending' : 'normal'`. CSS implements the transitions: `.river-fill.pending` pulses, `.river-fill.stalled` turns amber. The gauge is a pure morphism: `(flowState, ratio, label) → pixels`. All domain logic stays in the controller.
 
-**48. Systemic CSS Tokens for Gauge** (`index.css: .river-readout, .river-total, .river-fill.pending`)
+**49. Systemic CSS Tokens for Gauge** (`index.css: .river-readout, .river-total, .river-fill.pending`)
 All inline `opacity`, `fontSize`, `letterSpacing`, `color`, `textTransform`, and `animation` purged from `RiverGauge.tsx`. Replaced with CSS classes: `.river-readout` (typography, color, transition), `.river-readout.compact` / `.accent` / `.empty` (variant modifiers), `.river-total` (secondary readout), `.river-gauge.dissolved` (terminal fade). Only dynamic layout values (`clipPath`, `minWidth`, `height`) remain inline. Rule: if the value is a design constant, it's a CSS token — not a hardcoded literal in TSX.
 
-**49. Unified Scroll Container** (`QueryWorkbench.tsx`)
+**50. Unified Scroll Container** (`QueryWorkbench.tsx`)
 Header and body share one `overflow-auto` element. Header uses `position: sticky; top: 0; z-index: 10`. No JS scroll sync (`onScroll` + `scrollLeft` mirror deleted). The browser's compositor handles horizontal lock natively — zero JS per scroll frame. The previous dual-container approach required JS to mirror `scrollLeft` between two elements, producing a 1-frame desync visible as header/body misalignment during fast horizontal scroll.
 
-**50. ViewState — Pure Projection Function** (`QueryWorkbench.tsx: deriveViewState`)
+**51. ViewState — Pure Projection Function** (`QueryWorkbench.tsx: deriveViewState`)
 `f: (Lifecycle × Snapshot × Bool × ℕ × ℕ) → ViewState`. Computes every visual boolean the component needs: `convergenceStep`, `convergenceSteps`, `isReady`, `isTerminal`, `flowState`, `flowLabel`, `isPending`, `hasFilter`, `noResults`, `showSkeleton`. Called once via `useMemo`, consumed as `viewState.*` throughout. This is common-subexpression elimination applied to view logic — 12+ scattered boolean expressions that interrogated the same inputs with subtly inconsistent logic, collapsed into one referentially transparent function. Adding a new `QueryPhase` requires touching exactly one function.
 
-**51. QueryState / QuerySnapshot / store — Three Orthogonal Projections** (`useFileQuery.ts`)
+**52. QueryState / QuerySnapshot / store — Three Orthogonal Projections** (`useFileQuery.ts`)
 The hook partitions its output into three orthogonal slices:
 - **lifecycle** `{ phase, isQuerying, error, queryError }` — the state machine's current node
 - **snapshot** `{ count, total, stats, histograms }` — point-in-time query results (immutable between queries)
@@ -271,7 +274,7 @@ The hook partitions its output into three orthogonal slices:
 
 ### Optimistic Histogram Projection
 
-**52. Slider Phase State Machine** (`QueryWorkbench.tsx: SliderPhase`)
+**53. Slider Phase State Machine** (`QueryWorkbench.tsx: SliderPhase`)
 A single `phase` value with explicit transitions replaces the boolean flag pile (`isDragging × isPanning × justDropped × wasActor`). Four flags with different clearing conditions produced emergent states that no one could audit.
 
 ```
@@ -290,20 +293,20 @@ idle → dragging → dropped → querying → idle
 
 Three mutually exclusive derived booleans: `isActor`, `isSpectator`, `settled`. Every rendering decision branches from these — nothing else. `isPanning` is a gesture sub-type (cursor style), not a lifecycle phase.
 
-**53. Inline Phase Settlement — The Flash Killer** (`QueryWorkbench.tsx: effectivePhase`)
+**54. Inline Phase Settlement — The Flash Killer** (`QueryWorkbench.tsx: effectivePhase`)
 ```typescript
 const effectivePhase: SliderPhase = phase === 'querying' && !pending ? 'idle' : phase;
 ```
 Detects `querying && !pending → idle` on the same render frame. The `useEffect` that sets `phase = 'idle'` is bookkeeping only — the visual is already correct on the render that `pending` goes false. Without this, a `useEffect` that cleared `wasActor` when `!pending` would self-destruct during the 80ms gap between `pointerUp` and `START_QUERY` dispatch — `!pending && wasActor` evaluated to true before pending ever arrived. Every fix to one flag's timing broke another flag's invariant.
 
-**54. Local Histogram Projection** (`QueryWorkbench.tsx: projectHistogram`)
+**55. Local Histogram Projection** (`QueryWorkbench.tsx: projectHistogram`)
 When the user drags a range slider, the server needs 80–200ms to compute the real constrained histogram. `projectHistogram` rescales the static (unfiltered) distribution within the thumb range — a local estimate that requires zero network:
 $$
 \text{projected}[i] = \frac{\text{static}[i]}{\max(\text{static}[lo..hi])} \times \max(\text{static})
 $$
 When the server responds, bars that cross-filtering excluded "fall off" via the compositor-isolated `scaleY` morph. That delta — the difference between the prophecy and the truth — is the science. The actor holds the projection through the full cycle (`dragging → dropped → querying`), then morphs once to real data. No `undefined` gap, no `useRetainedState` handoff, no flash.
 
-**55. The `dragStartRef` Amber Predicate** (`QueryWorkbench.tsx: projConMin/projConMax`)
+**56. The `dragStartRef` Amber Predicate** (`QueryWorkbench.tsx: projConMin/projConMax`)
 The projection must be optimistic when expanding into unknown territory, but must not show bars in a confirmed cross-filter void (the amber region). `activeConMin`/`activeConMax` conflates this slider's own previous range with cross-filter effects — `low < activeConMin` fires both when dragging into the cross-filter void and when dragging past your own old position into territory with real static data. The fix: check whether amber was visible at **pointerDown** (`dragStartRef.current`), not whether the current thumb position is past the data extent:
 ```typescript
 const dragStart = dragStartRef.current;
@@ -317,7 +320,7 @@ const projConMin = hadAmberLo ? activeConMin : undefined;
 | Amber at drag start → drag into void | `true` | Clips at data boundary — no bars in void |
 | Static bins zero | n/a | Zero — truly no data anywhere |
 
-**56. Spring-Driven Canvas Bars** (`lib/SpringAnimator.ts → RangeSlider.tsx: paintCanvas`)
+**57. Spring-Driven Canvas Bars** (`lib/SpringAnimator.ts → RangeSlider.tsx: paintCanvas`)
 Histogram bars are underdamped springs (tension 180, friction 12, mass 1) with Euler integration, not CSS transitions. `SpringAnimator` drives a 64-bin `Float64Array` of normalized positions and flushes to a paint callback each frame — a pure physics engine with no DOM coupling. `SingleSpring` drives a single scalar value via the same math (used by RiverGauge for `clip-path` animation). Both subscribe to the global `AnimationTicker` rather than managing their own rAF loops.
 
 The spring architecture is general-purpose — histograms are the first visualization built on it, not the last. Any future visualization (scatter plots, heatmaps, network graphs) plugs into the same physics layer by implementing a paint callback that receives the current `Float64Array` positions.
@@ -326,8 +329,8 @@ The spring architecture is general-purpose — histograms are the first visualiz
 
 ### Future Architecture (Not Yet Implemented)
 
-**42. Web Worker Arrow Decoding**
+**43. Web Worker Arrow Decoding**
 Arrow IPC frames are decoded on the main thread. A 10MB frame blocks for ~50ms — 3 dropped frames at 60fps. Fix: move `apache-arrow` into a Web Worker. Return decoded `ArrayBuffer` via `Transferable Objects` (zero-copy ownership transfer — the buffer moves, not copies). Main thread never touches the binary data. Decoding cost becomes invisible regardless of frame size.
 
-**43. FinalizationRegistry for Deterministic Cleanup**
+**44. FinalizationRegistry for Deterministic Cleanup**
 Arrow Tables are contiguous typed-array allocations. When evicted from the LRU cache, JS GC reclaims them eventually. `FinalizationRegistry` would provide a deterministic callback to call `.free()` if WASM decoders are introduced (DuckDB-WASM, Rust-compiled). Deterministic cleanup prevents heap fragmentation under sustained load.

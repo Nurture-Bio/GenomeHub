@@ -11,11 +11,13 @@
 import type { CSSProperties } from 'react';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { ticker } from '../lib/AnimationTicker';
+import { histogramProjection } from '../lib/HistogramProjection';
 import { SpringAnimator } from '../lib/SpringAnimator';
 
 // ── Canvas color constants — oklch strings work directly as fillStyle ────────
 const CANVAS_CYAN = 'oklch(0.75 0.18 195)';
 const CANVAS_AMBER = 'oklch(0.75 0.185 60)';
+const BREATH_GRACE_MS = 300;
 
 // ── EditableNumber ────────────────────────────────────────────────────────────
 
@@ -116,51 +118,6 @@ function EditableNumber({
       {display}
     </span>
   );
-}
-
-// ── Optimistic Histogram Projection ───────────────────────────────────────────
-// Project the constrained histogram locally from static bins + thumb positions.
-// Zeroes bins outside the selected range; the canvas paintCanvas() rescales
-// the local peak to full height. Valid for the active column only — cross-column
-// effects require the server. Replaced by real constrained histogram on arrival.
-
-function projectHistogram(
-  staticBins: number[],
-  lo: number,
-  hi: number,
-  min: number,
-  max: number,
-  conMin?: number,
-  conMax?: number,
-): number[] {
-  const n = staticBins.length;
-  const range = max - min || 1;
-  const toBin = (v: number) =>
-    Math.max(0, Math.min(n - 1, Math.floor(((v - min) / range) * n)));
-  const binLo = toBin(lo);
-  const binHi = toBin(hi);
-
-  // Intersect the selected range with the constrained data extent.
-  // Bins outside [conMin, conMax] are OOB — the cross-filtered query will return
-  // 0 for them, so including them in the projection would inflate the estimate.
-  const conBinLo = conMin !== undefined ? toBin(conMin) : 0;
-  const conBinHi = conMax !== undefined ? toBin(conMax) : n - 1;
-  const effectiveLo = Math.max(binLo, conBinLo);
-  const effectiveHi = Math.min(binHi, conBinHi);
-
-  // Pass 1: find local maximum within the effective (in-bounds) range
-  let localMax = 0;
-  for (let i = effectiveLo; i <= effectiveHi; i++) {
-    if (staticBins[i] > localMax) localMax = staticBins[i];
-  }
-  if (localMax === 0) return new Array<number>(n).fill(0);
-  // Pass 2: rescale visible bins so local peak = global peak of static distribution
-  const globalMax = Math.max(...staticBins, 1);
-  const projected = new Array<number>(n).fill(0);
-  for (let i = effectiveLo; i <= effectiveHi; i++) {
-    projected[i] = (staticBins[i] / localMax) * globalMax;
-  }
-  return projected;
 }
 
 // ── Void Detector ─────────────────────────────────────────────────────────────
@@ -354,6 +311,7 @@ const RangeSlider = React.memo(function RangeSlider({
   const isSpectatorRef = useRef(false);
   const fullRef = useRef(false);
   const pendingRef = useRef(false);
+  const breathingRef = useRef(false);
   const trackRef = useRef<HTMLDivElement>(null);
   const animatorRef = useRef<SpringAnimator | null>(null);
   const sliderRef = useRef<HTMLDivElement>(null);
@@ -456,7 +414,8 @@ const RangeSlider = React.memo(function RangeSlider({
     ctx.clip();
 
     let dynAlpha = 0.45;
-    if (pend) {
+    const breathing = breathingRef.current;
+    if (breathing) {
       // Replicate distPlotBreath: sinusoidal between 0.25 and 0.5
       const t = (performance.now() % 1500) / 1500;
       dynAlpha = 0.25 + 0.125 * (1 - Math.cos(2 * Math.PI * t));
@@ -527,7 +486,7 @@ const RangeSlider = React.memo(function RangeSlider({
   const projectedHistogram = useMemo(() => {
     if (!staticHistogram || full) return undefined;
     const pb = sealed?.projBounds(low, high, axis);
-    return projectHistogram(staticHistogram, low, high, min, max, pb?.conMin, pb?.conMax);
+    return histogramProjection.project(staticHistogram, { lo: low, hi: high, min, max, conMin: pb?.conMin, conMax: pb?.conMax });
   }, [staticHistogram, low, high, min, max, full, sealed, axis]);
 
   // ── Sync static bins ref for canvas paint ─────────────────────────────────
@@ -619,7 +578,7 @@ const RangeSlider = React.memo(function RangeSlider({
       const pb = seal?.projBounds(lo, hi, ax);
       const bins = staticBinsRef.current;
       if (bins.length > 0) {
-        syncHistogram(projectHistogram(bins, lo, hi, ax.min, ax.max, pb?.conMin, pb?.conMax));
+        syncHistogram(histogramProjection.project(bins, { lo, hi, min: ax.min, max: ax.max, conMin: pb?.conMin, conMax: pb?.conMax }));
       }
       notifyDrag(lo, hi);
     });
@@ -634,15 +593,25 @@ const RangeSlider = React.memo(function RangeSlider({
     return () => ro.disconnect();
   }, [paintCanvas]);
 
-  // ── Breathing tick — runs only when pending, paints sinusoidal alpha ────────
+  // ── Breathing tick — 300ms grace period before breathing starts ─────────────
+  // Fast queries (<300ms): user sees only the spring correction, no breathing.
+  // Slow queries (>300ms): breathing kicks in as "still working" indicator.
   useEffect(() => {
     if (!pending) {
-      paintCanvas();  // clear breathing state
+      breathingRef.current = false;
+      paintCanvas();
       return;
     }
     const breathTick = () => { paintCanvas(); return true; };
-    ticker.subscribe(breathTick);
-    return () => ticker.unsubscribe(breathTick);
+    const timer = setTimeout(() => {
+      breathingRef.current = true;
+      ticker.subscribe(breathTick);
+    }, BREATH_GRACE_MS);
+    return () => {
+      clearTimeout(timer);
+      breathingRef.current = false;
+      ticker.unsubscribe(breathTick); // safe no-op if never subscribed (Set.delete)
+    };
   }, [pending, paintCanvas]);
 
   // ── Settle — close the querying→idle loop when the server responds ────────

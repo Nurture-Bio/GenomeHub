@@ -206,7 +206,7 @@ vendor/
                      Synced from github.com/ryandward/strand
 concertina/          Vendored UI library (dist only — source at github.com/ryandward/concertina)
 docs/
-  VISUAL_LANGUAGE.md             Visual language spec + performance architecture (56 mechanisms)
+  VISUAL_LANGUAGE.md             Visual language spec + performance architecture (57 mechanisms)
   engine-methods-schema.json     JSON Schema for the engine method catalog contract
 ```
 
@@ -644,6 +644,10 @@ Subscribers provide `(now: DOMHighResTimeStamp) => boolean`. The `Set<TickFn>` g
 #### Input coalescing
 
 Multiple pointer events can fire between frames. `scheduleDragFrame()` gates all drag processing behind a single `requestAnimationFrame` — handlers write to refs, and the scheduled frame reads the final values once per frame. The pan handler additionally calls `ev.getCoalescedEvents()` to take the last pointer position from the OS batch. Combined with the global ticker, the main thread processes at most one pointer event per frame during drag operations.
+
+#### Perceptual decoupling
+
+Breathing only kicks in after 300ms. Fast queries (<300ms from `pending=true`) are invisible to the user — the spring correction from projected/stale to server truth is the only feedback. Slow queries trigger the breathing animation as a "still working" indicator, matching the ~300ms perceptual threshold where the brain shifts from "instantaneous" to "waiting."
 
 ---
 
