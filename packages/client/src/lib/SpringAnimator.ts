@@ -1,5 +1,5 @@
 /**
- * Spring physics — imperative underdamped springs for UI animation.
+ * Spring physics — the motion layer of GenomeHub's data visualization engine.
  *
  * Canvas for the data, DOM for the interface.
  * Canvas is for things you cannot touch.
@@ -7,11 +7,12 @@
  * All springs subscribe to the global AnimationTicker — one rAF loop
  * for the entire application. When everything settles, the clock sleeps.
  *
- * SpringAnimator: drives 64 histogram bar positions, flushing to a
- * paint callback each frame. One canvas element replaces 128 SVG rects.
+ * SpringAnimator: drives 64-bin Float64Array positions, flushing to a
+ * paint callback each frame. General-purpose — histograms are the first
+ * visualization built on this, not the last.
  *
- * SingleSpring: drives a single value via a write callback. Same constants,
- * same Euler-step math. Used by RiverGauge for clip-path animation.
+ * SingleSpring: drives a single scalar value via a write callback. Same
+ * constants, same Euler-step math. Used by RiverGauge for clip-path animation.
  */
 
 import { ticker } from './AnimationTicker';

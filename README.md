@@ -482,44 +482,6 @@ The same `FilterSidebar` pattern from the Strand pipeline is reused. Control sel
 
 Constrained stats (min/max within the current filter set) power the constraint band overlay and amber out-of-bounds indicators, identical to the Strand implementation.
 
-#### Canvas for the data, DOM for the interface
-
-In high-performance web engineering, there is a golden rule: **Canvas for the data, DOM for the interface.** Canvas is for things you cannot touch — if the user can't click it, focus it, or type into it, it belongs on canvas.
-
-Each `RangeSlider` histogram is a single `<canvas>` element driven by `SpringAnimator` — a pure physics engine that writes `Float64Array` spring positions into a paint callback. One rAF loop, zero CSS custom properties, direct bitmap paint. The slider track, thumbs, amber void indicators, and editable labels remain DOM elements — things you touch.
-
-**Why this matters at scale:** With 20+ filterable columns, an SVG approach would create 2,500+ DOM nodes (64 `<rect>` elements per histogram, static + dynamic layers). Every frame, the browser would recalculate styles for each node reading a CSS variable. Canvas replaces all of that with one composite operation per slider — the GPU composites a single bitmap instead of walking a paint tree of hundreds of elements.
-
-#### Global animation ticker
-
-Game engines have one main loop. GenomeHub does too.
-
-All spring physics and breathing animations subscribe to a single `AnimationTicker` singleton (`lib/AnimationTicker.ts`). Instead of 50–75 independent `requestAnimationFrame` loops competing in the frame queue, one rAF callback fans out to every active subscriber. All physics tick in one contiguous block of execution, all canvases paint in perfect synchronization, and when everything settles, the clock puts itself to sleep — zero idle CPU.
-
-```
-User drags a filter
-  │
-  ▼  SpringAnimator.setTargets() — subscribe to ticker
-  │  SingleSpring.setTarget()    — subscribe to ticker
-  │  Breathing useEffect         — subscribe to ticker
-  │
-  ▼  AnimationTicker (one requestAnimationFrame)
-  │    for (const fn of subscribers)
-  │      fn(now) → true:  keep ticking
-  │      fn(now) → false: settled, auto-unsubscribe
-  │
-  ▼  All 20+ histogram canvases paint in the same frame
-  │  RiverGauge clip-path updates in the same frame
-  │  No visual tearing across the dashboard
-  │
-  ▼  All springs settled, no breathing active
-     subscribers.size === 0 → rafId = null → clock sleeps
-```
-
-Subscribers provide a tick function `(now: DOMHighResTimeStamp) => boolean`. Return `true` to keep ticking, `false` to auto-unsubscribe. The `Set<TickFn>` guarantees O(1) subscribe/unsubscribe and safe deletion during iteration (per spec). A try-catch around each subscriber prevents one throw from killing the entire clock.
-
-**Delta-time trap:** When a spring settles and unsubscribes, its `lastTime` goes stale. If it wakes up 10 seconds later, `now - lastTime` would produce a catastrophic dt. Every wake-up path (`setTarget`, `setTargets`) resets `lastTime = 0`. The tick method treats `lastTime === 0` as "first frame" — anchors the timestamp, flushes the current position, and skips physics for that single frame.
-
 #### Parquet conversion status lifecycle
 
 ```
@@ -634,6 +596,48 @@ The sidebar renders a faithful projection of the constraint engine output. It ne
 3. Dynamic epsilon `ε = (max − min) × 0.001` — 0.1% slack absorbs sub-LSB precision drift between the worker's DataView reads and the main thread's drain-loop accumulator
 
 **Clip to Reality**: double-click the constraint band to snap both handles to the constrained bounds without auto-clipping. User intent (the explicit filter value) is preserved until the user acts.
+
+---
+
+### Data visualization engine
+
+GenomeHub's client-side visualization layer is built as a data viz engine — not a collection of chart components. Two architectural principles govern all visual data rendering:
+
+#### Canvas for the data, DOM for the interface
+
+In high-performance web engineering, there is a golden rule: **Canvas for the data, DOM for the interface.** Canvas is for things you cannot touch — if the user can't click it, focus it, or type into it, it belongs on canvas. Interactive controls (sliders, buttons, text inputs) stay in the DOM.
+
+Data visualizations paint to `<canvas>` elements via `SpringAnimator` — a pure physics engine that drives `Float64Array` spring positions into paint callbacks. One canvas element per visualization, zero CSS custom properties, direct bitmap paint. The first implementation is histogram overlays on range sliders: 20+ filterable columns that would otherwise create 2,500+ SVG DOM nodes now render as 20 canvas elements with zero per-frame style recalculation.
+
+#### Global animation ticker
+
+Game engines have one main loop. GenomeHub does too.
+
+All spring physics and breathing animations subscribe to a single `AnimationTicker` singleton (`lib/AnimationTicker.ts`). Instead of N independent `requestAnimationFrame` loops competing in the frame queue, one rAF callback fans out to every active subscriber. All physics tick in one contiguous block, all canvases paint in perfect synchronization, and when everything settles the clock sleeps — zero idle CPU.
+
+```
+Component subscribes to ticker
+  │
+  ▼  AnimationTicker (one requestAnimationFrame)
+  │    for (const fn of subscribers)
+  │      fn(now) → true:  keep ticking
+  │      fn(now) → false: settled, auto-unsubscribe
+  │
+  ▼  All canvases paint in the same frame
+  │  All spring-driven DOM updates in the same frame
+  │  No visual tearing across the dashboard
+  │
+  ▼  All subscribers settled
+     subscribers.size === 0 → rafId = null → clock sleeps
+```
+
+Subscribers provide `(now: DOMHighResTimeStamp) => boolean`. The `Set<TickFn>` guarantees O(1) subscribe/unsubscribe and safe deletion during iteration (per spec). A try-catch around each subscriber prevents one throw from killing the entire clock.
+
+**Delta-time trap:** When a spring settles and unsubscribes, its `lastTime` goes stale. If it wakes up seconds later, `now - lastTime` produces a catastrophic dt. Every wake-up path resets `lastTime = 0`. The tick method treats this as "first frame" — anchors the timestamp, flushes the current position, and skips physics for that single frame.
+
+#### Spring physics
+
+`SpringAnimator` (64-bin array) and `SingleSpring` (scalar) share the same underdamped spring constants (tension 180, friction 12). Both subscribe to the global ticker rather than managing their own rAF loops. `SpringAnimator` drives histogram canvases; `SingleSpring` drives RiverGauge clip-path animations. The physics is the foundation — histograms are the first visualization built on it, not the last.
 
 ---
 

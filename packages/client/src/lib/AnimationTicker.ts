@@ -1,7 +1,10 @@
 /**
- * AnimationTicker — single rAF loop for all spring physics and breathing animations.
+ * AnimationTicker — the master clock for GenomeHub's data visualization engine.
  *
  * One main loop. Like a game engine.
+ *
+ * All spring physics, breathing animations, and future visualizations
+ * subscribe here. Never create independent rAF loops for data viz.
  *
  * Subscribers provide (now: DOMHighResTimeStamp) => boolean.
  * Return true to keep ticking next frame, false to auto-unsubscribe.
