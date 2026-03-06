@@ -10,6 +10,7 @@
 
 import type { CSSProperties } from 'react';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { ticker } from '../lib/AnimationTicker';
 import { SpringAnimator } from '../lib/SpringAnimator';
 
 // ── Canvas color constants — oklch strings work directly as fillStyle ────────
@@ -366,7 +367,6 @@ const RangeSlider = React.memo(function RangeSlider({
   const clipBoundsRef = useRef({ lo: 0, hi: 100 });
   const springPositionsRef = useRef<Float64Array>(new Float64Array(64));
   const emptyRef = useRef(0);  // dormant — --empty is never set by JS today
-  const breathRafRef = useRef<number | null>(null);
   // Only sync refs from props when idle — during active phases (dragging,
   // dropped, querying) the imperative onChange/pan handlers own these refs.
   // Overwriting mid-drag causes clamping against stale prop values, snapping
@@ -611,21 +611,15 @@ const RangeSlider = React.memo(function RangeSlider({
     return () => ro.disconnect();
   }, [paintCanvas]);
 
-  // ── Breathing rAF loop — runs only when pending and spring is idle ────────
+  // ── Breathing tick — runs only when pending, paints sinusoidal alpha ────────
   useEffect(() => {
     if (!pending) {
       paintCanvas();  // clear breathing state
       return;
     }
-    const loop = () => {
-      paintCanvas();
-      breathRafRef.current = requestAnimationFrame(loop);
-    };
-    breathRafRef.current = requestAnimationFrame(loop);
-    return () => {
-      if (breathRafRef.current !== null) cancelAnimationFrame(breathRafRef.current);
-      breathRafRef.current = null;
-    };
+    const breathTick = () => { paintCanvas(); return true; };
+    ticker.subscribe(breathTick);
+    return () => ticker.unsubscribe(breathTick);
   }, [pending, paintCanvas]);
 
   // ── Settle — close the querying→idle loop when the server responds ────────

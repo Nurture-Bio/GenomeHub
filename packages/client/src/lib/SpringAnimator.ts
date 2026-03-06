@@ -4,13 +4,17 @@
  * Canvas for the data, DOM for the interface.
  * Canvas is for things you cannot touch.
  *
- * SpringAnimator: drives 64 histogram bar positions via a rAF loop,
- * flushing to a paint callback each frame (zero DOM / CSS var writes).
- * One canvas element replaces 128 SVG rects per slider.
+ * All springs subscribe to the global AnimationTicker — one rAF loop
+ * for the entire application. When everything settles, the clock sleeps.
+ *
+ * SpringAnimator: drives 64 histogram bar positions, flushing to a
+ * paint callback each frame. One canvas element replaces 128 SVG rects.
  *
  * SingleSpring: drives a single value via a write callback. Same constants,
  * same Euler-step math. Used by RiverGauge for clip-path animation.
  */
+
+import { ticker } from './AnimationTicker';
 
 const TENSION = 180;
 const FRICTION = 12;
@@ -26,13 +30,14 @@ export class SingleSpring {
   private position = 0;
   private velocity = 0;
   private target = 0;
-  private rafId: number | null = null;
   private lastTime = 0;
   private disposed = false;
   private hasRun = false;
+  private boundTick: (now: number) => boolean;
 
   constructor(writeFn: (value: number) => void) {
     this.writeFn = writeFn;
+    this.boundTick = (now) => this.tick(now);
   }
 
   /** Retarget the spring. First call snaps; subsequent calls animate. */
@@ -45,40 +50,34 @@ export class SingleSpring {
       this.writeFn(value);
       return;
     }
-    if (this.rafId === null && !this.disposed) {
-      this.lastTime = 0;
-      this.rafId = requestAnimationFrame((t) => this.tick(t));
+    if (!this.disposed) {
+      this.lastTime = 0; // prevent stale dt explosion on wake
+      ticker.subscribe(this.boundTick);
     }
   }
 
-  /** Immediate jump — cancel loop, set position, call writeFn once. */
+  /** Immediate jump — stop animating, set position, call writeFn once. */
   snap(value: number): void {
     this.position = value;
     this.velocity = 0;
     this.target = value;
-    if (this.rafId !== null) {
-      cancelAnimationFrame(this.rafId);
-      this.rafId = null;
-    }
+    ticker.unsubscribe(this.boundTick);
     this.writeFn(value);
   }
 
   dispose(): void {
     this.disposed = true;
-    if (this.rafId !== null) {
-      cancelAnimationFrame(this.rafId);
-      this.rafId = null;
-    }
+    ticker.unsubscribe(this.boundTick);
   }
 
-  private tick(now: number): void {
-    if (this.disposed) return;
+  private tick(now: number): boolean {
+    if (this.disposed) return false;
 
+    // First frame after wake: anchor timestamp, flush position, skip physics
     if (this.lastTime === 0) {
       this.lastTime = now;
       this.writeFn(this.position);
-      this.rafId = requestAnimationFrame((t) => this.tick(t));
-      return;
+      return true;
     }
 
     const dt = Math.min((now - this.lastTime) / 1000, MAX_DT);
@@ -96,11 +95,8 @@ export class SingleSpring {
 
     this.writeFn(this.position);
 
-    if (this.position === this.target && this.velocity === 0) {
-      this.rafId = null;
-    } else {
-      this.rafId = requestAnimationFrame((t) => this.tick(t));
-    }
+    // Settled — auto-unsubscribe from ticker
+    return !(this.position === this.target && this.velocity === 0);
   }
 }
 
@@ -111,19 +107,20 @@ export class SpringAnimator {
   private positions: Float64Array;
   private velocities: Float64Array;
   private targets: Float64Array;
-  private rafId: number | null = null;
   private lastTime = 0;
   private disposed = false;
   private hasRun = false;
+  private boundTick: (now: number) => boolean;
 
   constructor(onFlush: (positions: Float64Array) => void) {
     this.onFlush = onFlush;
     this.positions = new Float64Array(64);
     this.velocities = new Float64Array(64);
     this.targets = new Float64Array(64);
+    this.boundTick = (now) => this.tick(now);
   }
 
-  /** Normalize bins and retarget the spring. Starts the rAF loop if not running. */
+  /** Normalize bins and retarget the spring. Subscribes to the global ticker. */
   setTargets(bins: number[]): void {
     // Normalize: find max, divide
     let mx = 0;
@@ -144,30 +141,25 @@ export class SpringAnimator {
       this.flush();
       return;
     }
-    // Start loop if not already running
-    if (this.rafId === null && !this.disposed) {
-      this.lastTime = 0;
-      this.rafId = requestAnimationFrame((t) => this.tick(t));
+    if (!this.disposed) {
+      this.lastTime = 0; // prevent stale dt explosion on wake
+      ticker.subscribe(this.boundTick);
     }
   }
 
   dispose(): void {
     this.disposed = true;
-    if (this.rafId !== null) {
-      cancelAnimationFrame(this.rafId);
-      this.rafId = null;
-    }
+    ticker.unsubscribe(this.boundTick);
   }
 
-  private tick(now: number): void {
-    if (this.disposed) return;
+  private tick(now: number): boolean {
+    if (this.disposed) return false;
 
-    // First frame: no dt, just record time
+    // First frame after wake: anchor timestamp, flush positions, skip physics
     if (this.lastTime === 0) {
       this.lastTime = now;
       this.flush();
-      this.rafId = requestAnimationFrame((t) => this.tick(t));
-      return;
+      return true;
     }
 
     const dt = Math.min((now - this.lastTime) / 1000, MAX_DT);
@@ -199,11 +191,7 @@ export class SpringAnimator {
 
     this.flush();
 
-    if (allSettled) {
-      this.rafId = null;
-    } else {
-      this.rafId = requestAnimationFrame((t) => this.tick(t));
-    }
+    return !allSettled; // true = keep ticking, false = settled
   }
 
   private flush(): void {
