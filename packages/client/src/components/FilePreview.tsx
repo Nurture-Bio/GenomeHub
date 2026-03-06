@@ -9,7 +9,6 @@ interface FilePreviewProps {
   fileId: string;
   filename: string;
   sizeBytes: number;
-  onExport?: () => void;
 }
 
 // ── Plain text preview with infinite scroll ──────────────
@@ -76,14 +75,14 @@ function TextPreview({ pages, isFetchingNextPage, hasNextPage, fetchNextPage }: 
 
 // ── Main preview component ───────────────────────────────
 
-export default function FilePreview({ fileId, filename, sizeBytes, onExport }: FilePreviewProps) {
+export default function FilePreview({ fileId, filename, sizeBytes }: FilePreviewProps) {
   const convertible = isConvertible(filename);
 
   const { data, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage } =
     useInfiniteFilePreview(!convertible ? fileId : undefined);
 
   if (convertible) {
-    return <QueryWorkbench fileId={fileId} filename={filename} onExport={onExport} />;
+    return <QueryWorkbench fileId={fileId} filename={filename} />;
   }
 
   if (isLoading) return <div className="skeleton h-32 rounded-md" />;

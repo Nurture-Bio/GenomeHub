@@ -41,6 +41,7 @@ import { asyncWrap } from '../lib/async_wrap.js';
 import { resolveLocalParquet } from '../lib/parquet_cache.js';
 import { getConnection } from '../lib/duckdb.js';
 import { expandSchema, isNumeric, safeName, type FlatColumn } from '../lib/data_profile.js';
+import type { DuckDBValue } from '@duckdb/node-api';
 
 const router = Router();
 
@@ -89,11 +90,11 @@ function compileWhere(
   filters: FilterSpec[],
   colMap: Map<string, FlatColumn>,
   paramOffset = 0,
-): { clause: string; params: unknown[] } {
+): { clause: string; params: DuckDBValue[] } {
   if (filters.length === 0) return { clause: '', params: [] };
 
   const conditions: string[] = [];
-  const params: unknown[] = [];
+  const params: DuckDBValue[] = [];
   let idx = paramOffset;
 
   for (const f of filters) {
@@ -328,6 +329,126 @@ router.post(
         res.destroy();
       } else {
         res.status(500).json({ error: 'Query failed' });
+      }
+    }
+  }),
+);
+
+// ── Export — filtered TSV download ────────────────────────────────────────────
+
+router.post(
+  '/:id/export',
+  asyncWrap(async (req, res) => {
+    const repo = AppDataSource.getRepository(GenomicFile);
+    const file = await repo.findOneBy({ id: req.params.id });
+    if (!file) {
+      res.status(404).json({ error: 'not found' });
+      return;
+    }
+
+    const pqKey = resolveParquetKey(file);
+    if (!pqKey) {
+      res.status(409).json({ error: 'parquet not ready' });
+      return;
+    }
+
+    const dataProfile: DataProfile | null = file.dataProfile;
+    if (!dataProfile?.schema) {
+      res.status(409).json({ error: 'data profile not ready' });
+      return;
+    }
+
+    const {
+      filters = [] as FilterSpec[],
+      sort = [] as SortSpec[],
+    } = req.body as {
+      filters?: FilterSpec[];
+      sort?: SortSpec[];
+    };
+
+    const flatCols = expandSchema(dataProfile.schema);
+    const colMap = new Map(flatCols.map((c) => [c.name, c]));
+    const allowedNames = new Set(flatCols.map((c) => c.name));
+
+    for (const f of filters) {
+      if (!allowedNames.has(f.column)) {
+        res.status(400).json({ error: `Unknown column: ${f.column}` });
+        return;
+      }
+    }
+    for (const s of sort) {
+      if (!allowedNames.has(s.column)) {
+        res.status(400).json({ error: `Unknown column: ${s.column}` });
+        return;
+      }
+      if (s.direction !== 'asc' && s.direction !== 'desc') {
+        res.status(400).json({ error: `Invalid sort direction: ${s.direction}` });
+        return;
+      }
+    }
+
+    const localPath = await resolveLocalParquet(pqKey);
+    const conn = await getConnection();
+    const safeSrc = localPath.replace(/'/g, "''");
+    const readParquet = `read_parquet('${safeSrc}')`;
+
+    try {
+      const { clause: whereClause, params: whereParams } = compileWhere(filters, colMap);
+      const orderByClause = compileOrderBy(sort, colMap);
+      const selectList = flatCols.map((c) => `${c.sqlExpr} AS ${safeName(c.name)}`).join(', ');
+
+      const sql = `SELECT ${selectList} FROM ${readParquet} ${whereClause} ${orderByClause}`;
+
+      // Stream via async iterator — chunks arrive incrementally without
+      // buffering the entire result set in the Node.js heap.
+      const result = await conn.stream(sql, whereParams);
+      const colNames = result.columnNames();
+
+      // Derive filename: stem + .tsv
+      const stem = file.filename.replace(/\.[^.]+$/, '');
+      const exportName = filters.length > 0 ? `${stem}_filtered.tsv` : `${stem}.tsv`;
+
+      res.setHeader('Content-Type', 'text/tab-separated-values; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${exportName}"`);
+
+      // Header row
+      res.write(colNames.join('\t') + '\n');
+
+      // Stream data chunks with backpressure
+      for await (const chunk of result) {
+        const numRows = chunk.rowCount;
+        const numCols = colNames.length;
+        for (let r = 0; r < numRows; r++) {
+          let line = '';
+          for (let c = 0; c < numCols; c++) {
+            if (c > 0) line += '\t';
+            const v = chunk.getColumnVector(c).getItem(r);
+            line += v === null || v === undefined ? '' : String(v);
+          }
+          line += '\n';
+          // Respect backpressure — if the kernel buffer is full, wait for drain
+          if (!res.write(line)) {
+            await new Promise<void>((resolve) => res.once('drain', resolve));
+          }
+        }
+      }
+
+      conn.closeSync();
+      res.end();
+    } catch (err) {
+      try { conn.closeSync(); } catch {}
+      console.error(
+        JSON.stringify({
+          tag: '[EXPORT_FAILED]',
+          fileId: file.id,
+          error: err instanceof Error ? err.message : String(err),
+          timestamp: new Date().toISOString(),
+        }),
+      );
+      if (res.headersSent) {
+        res.destroy();
+      } else {
+        res.status(500).json({ error: 'Export failed' });
       }
     }
   }),

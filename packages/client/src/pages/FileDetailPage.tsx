@@ -9,7 +9,6 @@ import {
   useRemoveFilesFromCollection,
   useAddProvenance,
   useRemoveProvenance,
-  usePresignedUrl,
   useDeleteFileMutation,
   useAddFileOrganism,
   useRemoveFileOrganism,
@@ -90,7 +89,6 @@ export default function FileDetailPage() {
 
   const { updateFile } = useUpdateFileMutation();
   const setBreadcrumbLabel = useAppStore((s) => s.setBreadcrumbLabel);
-  const { getUrl } = usePresignedUrl();
   const { deleteFile: _deleteFile } = useDeleteFileMutation();
 
   const { addFiles: addToCol } = useAddFilesToCollection();
@@ -145,12 +143,6 @@ export default function FileDetailPage() {
     await removeProvenance(fileId, edgeId);
   };
 
-  const handleDownload = async () => {
-    if (!fileId) return;
-    const url = await getUrl(fileId);
-    window.open(url, '_blank');
-  };
-
   if (!file && !fileId) {
     return (
       <div className="flex flex-col gap-3 p-2 md:p-5">
@@ -164,12 +156,11 @@ export default function FileDetailPage() {
     <div className="flex flex-col gap-3 md:gap-4 p-2 md:p-5 animate-page-enter">
       {/* File preview — QueryWorkbench owns its own header, stepper, and gauge. */}
       {file && !isConvertible(file.filename) && detectFormat(file.filename) !== 'parquet' ? (
-        <FilePreview fileId={fileId!} filename={file.filename} sizeBytes={file.sizeBytes} onExport={handleDownload} />
+        <FilePreview fileId={fileId!} filename={file.filename} sizeBytes={file.sizeBytes} />
       ) : (
         <QueryWorkbench
           fileId={fileId!}
           filename={file?.filename}
-          onExport={file ? handleDownload : undefined}
         />
       )}
 

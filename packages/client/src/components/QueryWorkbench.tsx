@@ -937,12 +937,10 @@ const VirtualRows = memo(function VirtualRows({
 export default function QueryWorkbench({
   fileId,
   filename,
-  onExport,
   onProgress,
 }: {
   fileId: string;
   filename?: string;
-  onExport?: () => void;
   onProgress?: (config: { steps: StepperStep[]; active: number } | null) => void;
 }) {
   // ── Profile enrichment — early access for filter state ──
@@ -1011,6 +1009,30 @@ export default function QueryWorkbench({
     () => deriveDataState(filters.specs.length, snapshot.count),
     [filters.specs.length, snapshot.count],
   );
+
+  // ── Export handler — filtered TSV download ──────────────────────────────────
+  const handleExport = useCallback(async () => {
+    try {
+      const res = await apiFetch(`/api/files/${fileId}/export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filters: filters.specs, sort: filters.sortSpecs }),
+      });
+      if (!res.ok) throw new Error('Export failed');
+      const blob = await res.blob();
+      const disposition = res.headers.get('Content-Disposition') ?? '';
+      const match = disposition.match(/filename="(.+?)"/);
+      const name = match?.[1] ?? 'export.tsv';
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      /* non-fatal — toast could go here later */
+    }
+  }, [fileId, filters.specs, filters.sortSpecs]);
 
   // ── Reprofile handler ──────────────────────────────────────────────────────
   const setFileProfile = useAppStore((s) => s.setFileProfile);
@@ -1349,15 +1371,13 @@ export default function QueryWorkbench({
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
-            {onExport && (
-              <button
-                type="button"
-                onClick={onExport}
-                className="flex items-center px-2 py-0.5 rounded font-mono uppercase tracking-widest cursor-pointer bg-transparent border border-line text-cyan/70 hover:text-cyan hover:bg-cyan/10 active:scale-95 text-xs"
-              >
-                Export
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={handleExport}
+              className="flex items-center px-2 py-0.5 rounded font-mono uppercase tracking-widest cursor-pointer bg-transparent border border-line text-cyan/70 hover:text-cyan hover:bg-cyan/10 active:scale-95 text-xs"
+            >
+              Export
+            </button>
           </div>
         </div>
 
