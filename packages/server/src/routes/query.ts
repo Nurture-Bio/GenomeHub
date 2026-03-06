@@ -167,11 +167,13 @@ router.post(
       sort = [] as SortSpec[],
       offset = 0,
       limit = 50,
+      mode,
     } = req.body as {
       filters?: FilterSpec[];
       sort?: SortSpec[];
       offset?: number;
       limit?: number;
+      mode?: 'preflight';
     };
 
     const flatCols = expandSchema(dataProfile.schema);
@@ -226,6 +228,20 @@ router.post(
         godSelectParts.push(`MAX(${col.sqlExpr})::DOUBLE AS ${safeName(col.name + '_max')}`);
       }
       const godSql = `SELECT ${godSelectParts.join(', ')} FROM ${readParquet} ${whereClause}`;
+
+      // ── Preflight mode: god query only (count + stats, no rows/histograms) ──
+      if (mode === 'preflight') {
+        res.setHeader('Content-Type', 'application/vnd.apache.arrow.stream');
+        res.setHeader('X-Arrow-Tables', '1');
+        res.setHeader('X-Hist-Columns', '');
+        res.write(writeU32LE(1));
+        const godBuf = await arrowQuery(conn, godSql, whereParams);
+        res.write(writeU32LE(godBuf.byteLength));
+        res.write(godBuf);
+        conn.closeSync();
+        res.end();
+        return;
+      }
 
       // ── Viewport Query ───────────────────────────────────────────────────
 

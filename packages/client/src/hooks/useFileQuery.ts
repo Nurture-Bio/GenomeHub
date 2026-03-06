@@ -436,6 +436,8 @@ export function useFileQuery(
 
   // AbortController for cancelling stale requests
   const abortRef = useRef<AbortController | null>(null);
+  // Preflight: speculative god-only query fired immediately (0ms) before the debounced full query
+  const preflightRef = useRef<{ abort: AbortController; filterKey: string } | null>(null);
 
   // ── Profile ready = server ready (no WASM boot needed) ──
   const serverReadyRef = useRef(false);
@@ -620,9 +622,47 @@ export function useFileQuery(
 
     const filters = activeFilterSpecs ?? [];
     const sort = sortSpecs ?? [];
+    const currentFilterKey = JSON.stringify(filters);
 
-    // Debounce: batch rapid filter changes (drag frames, typing) into one query
+    // ── Preflight: fire immediately (0ms) — god query only ──────────────
+    preflightRef.current?.abort.abort();
+    const pfAbort = new AbortController();
+    preflightRef.current = { abort: pfAbort, filterKey: currentFilterKey };
+
+    apiFetch(`/api/files/${fileId}/query`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filters, sort, offset: 0, limit: 0, mode: 'preflight' }),
+      signal: pfAbort.signal,
+    })
+      .then((res) => {
+        if (!res.ok || !res.body) return null;
+        return streamArrowFrames(res.body);
+      })
+      .then(async (frames) => {
+        if (!frames) return;
+        for await (const { table } of frames) {
+          if (!table) continue;
+          // Preflight returns exactly 1 frame: the god query
+          const god = parseGodTable(table);
+          // Only promote if filterKey hasn't diverged
+          if (preflightRef.current?.filterKey === currentFilterKey) {
+            dispatch({ type: 'QUERY_DATA', payload: {
+              count: god.filteredCount,
+              stats: Object.keys(god.constrainedStats).length > 0 ? god.constrainedStats : {},
+              ...(filters.length === 0 ? { total: god.filteredCount } : {}),
+            } });
+          }
+        }
+      })
+      .catch(() => {}); // Aborted or failed — silently ignore
+
+    // ── Full query: 80ms debounce ───────────────────────────────────────
     const timer = setTimeout(() => {
+      // Cancel preflight — full query will provide everything
+      preflightRef.current?.abort.abort();
+      preflightRef.current = null;
+
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
@@ -661,7 +701,11 @@ export function useFileQuery(
         });
     }, 80);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      preflightRef.current?.abort.abort();
+      preflightRef.current = null;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileId, state.phase, filterKey, sortKey]);
 
