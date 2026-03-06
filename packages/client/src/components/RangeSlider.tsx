@@ -367,6 +367,7 @@ const RangeSlider = React.memo(function RangeSlider({
   const clipBoundsRef = useRef({ lo: 0, hi: 100 });
   const springPositionsRef = useRef<Float64Array>(new Float64Array(64));
   const emptyRef = useRef(0);  // dormant — --empty is never set by JS today
+  const coalescedFrameRef = useRef<number | null>(null);
   // Only sync refs from props when idle — during active phases (dragging,
   // dropped, querying) the imperative onChange/pan handlers own these refs.
   // Overwriting mid-drag causes clamping against stale prop values, snapping
@@ -492,6 +493,7 @@ const RangeSlider = React.memo(function RangeSlider({
     return () => {
       animatorRef.current?.dispose();
       if (dragTimerRef.current !== null) clearTimeout(dragTimerRef.current);
+      if (coalescedFrameRef.current !== null) cancelAnimationFrame(coalescedFrameRef.current);
     };
   }, [paintCanvas]);
 
@@ -602,6 +604,27 @@ const RangeSlider = React.memo(function RangeSlider({
     [],
   );
 
+  // ── Input coalescing — at most one drag update per frame ────────────────
+  // Drag handlers write to refs and schedule; the frame callback reads refs
+  // and runs syncTrack + syncHistogram + notifyDrag exactly once.
+  const scheduleDragFrame = useCallback(() => {
+    if (coalescedFrameRef.current !== null) return; // already scheduled
+    coalescedFrameRef.current = requestAnimationFrame(() => {
+      coalescedFrameRef.current = null;
+      const lo = lowRef.current;
+      const hi = highRef.current;
+      const ax = axisRef.current;
+      syncTrack(lo, hi, ax);
+      const seal = sealedRef.current;
+      const pb = seal?.projBounds(lo, hi, ax);
+      const bins = staticBinsRef.current;
+      if (bins.length > 0) {
+        syncHistogram(projectHistogram(bins, lo, hi, ax.min, ax.max, pb?.conMin, pb?.conMax));
+      }
+      notifyDrag(lo, hi);
+    });
+  }, [syncTrack, syncHistogram, notifyDrag]);
+
   // ── Canvas ResizeObserver ──────────────────────────────────────────────────
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -661,6 +684,11 @@ const RangeSlider = React.memo(function RangeSlider({
   };
 
   const handleDragEnd = () => {
+    // Cancel pending coalesced frame — we process final values here
+    if (coalescedFrameRef.current !== null) {
+      cancelAnimationFrame(coalescedFrameRef.current);
+      coalescedFrameRef.current = null;
+    }
     flushDragNotify();
     const actualLo = lowInputRef.current ? Number(lowInputRef.current.value) : lowRef.current;
     const actualHi = highInputRef.current ? Number(highInputRef.current.value) : highRef.current;
@@ -711,7 +739,10 @@ const RangeSlider = React.memo(function RangeSlider({
       const onMove = (ev: PointerEvent) => {
         const s = panStartRef.current;
         if (!s) return;
-        const deltaPx = ev.clientX - s.x;
+        // Coalesce — take the last pointer position from the OS batch
+        const coalesced = ev.getCoalescedEvents?.();
+        const last = coalesced && coalesced.length > 0 ? coalesced[coalesced.length - 1] : ev;
+        const deltaPx = last.clientX - s.x;
         const curAx = axisRef.current;
         const deltaVal = (deltaPx / s.trackW) * curAx.range;
         const span = s.hi - s.lo;
@@ -721,18 +752,18 @@ const RangeSlider = React.memo(function RangeSlider({
         else if (newHi > curAx.max) { newHi = curAx.max; newLo = curAx.max - span; }
         lowRef.current = newLo;
         highRef.current = newHi;
-        syncTrack(newLo, newHi, curAx);
-
-        const seal = sealedRef.current;
-        const pb = seal?.projBounds(newLo, newHi, curAx);
-        if (staticHistogram) syncHistogram(projectHistogram(staticHistogram, newLo, newHi, curAx.min, curAx.max, pb?.conMin, pb?.conMax));
-        notifyDrag(newLo, newHi);
+        scheduleDragFrame();
       };
 
       const onUp = () => {
         window.removeEventListener('pointermove', onMove);
         window.removeEventListener('pointerup', onUp);
         window.removeEventListener('pointercancel', onUp);
+        // Cancel pending coalesced frame — onUp processes final values
+        if (coalescedFrameRef.current !== null) {
+          cancelAnimationFrame(coalescedFrameRef.current);
+          coalescedFrameRef.current = null;
+        }
         try { capturedTarget.releasePointerCapture(capturedPointerId); } catch {}
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
@@ -765,7 +796,7 @@ const RangeSlider = React.memo(function RangeSlider({
       window.addEventListener('pointerup', onUp);
       window.addEventListener('pointercancel', onUp);
     },
-    [name, min, max, onDrag, onCommit, staticHistogram, syncTrack, syncHistogram],
+    [name, min, max, onDrag, onCommit, staticHistogram, scheduleDragFrame, flushDragNotify],
   );
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -898,15 +929,8 @@ const RangeSlider = React.memo(function RangeSlider({
           onPointerUp={handleDragEnd}
           onPointerCancel={handleDragEnd}
           onChange={(e) => {
-            const v = Math.min(Number(e.target.value), highRef.current);
-            lowRef.current = v;
-            const ax = axisRef.current;
-            syncTrack(v, highRef.current, ax);
-
-            const seal = sealedRef.current;
-            const pb = seal?.projBounds(v, highRef.current, ax);
-            if (staticHistogram) syncHistogram(projectHistogram(staticHistogram, v, highRef.current, ax.min, ax.max, pb?.conMin, pb?.conMax));
-            notifyDrag(v, highRef.current);
+            lowRef.current = Math.min(Number(e.target.value), highRef.current);
+            scheduleDragFrame();
           }}
         />
         <input
@@ -921,15 +945,8 @@ const RangeSlider = React.memo(function RangeSlider({
           onPointerUp={handleDragEnd}
           onPointerCancel={handleDragEnd}
           onChange={(e) => {
-            const v = Math.max(Number(e.target.value), lowRef.current);
-            highRef.current = v;
-            const ax = axisRef.current;
-            syncTrack(lowRef.current, v, ax);
-
-            const seal = sealedRef.current;
-            const pb = seal?.projBounds(lowRef.current, v, ax);
-            if (staticHistogram) syncHistogram(projectHistogram(staticHistogram, lowRef.current, v, ax.min, ax.max, pb?.conMin, pb?.conMax));
-            notifyDrag(lowRef.current, v);
+            highRef.current = Math.max(Number(e.target.value), lowRef.current);
+            scheduleDragFrame();
           }}
         />
       </div>

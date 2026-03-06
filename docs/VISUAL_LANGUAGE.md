@@ -117,14 +117,14 @@ Rows use `transform: translateY(${offset}px)`, not `top: ${offset}px`. Transform
 **13. `useTransition` — Latency Hiding via Priority Inversion** (`QueryWorkbench.tsx`)
 Filter handlers split into two phases: `setState()` (synchronous, high-priority — UI updates this frame) then `startTransition(() => query())` (deferred, low-priority — server query + reconciliation). The user sees the chip toggle before the query fires. Without `useTransition`, both operations share one priority and the chip visually lags the click by the round-trip duration.
 
-**14. CSS-Variable-Driven Slider** (`QueryWorkbench.tsx: syncTrack`)
-`el.style.setProperty('--lo', pct)` writes directly to the CSSOM. CSS `calc()` computes thumb position, track fill, and highlight zone from these variables. React reconciliation cost during drag: zero. The drag loop is an open-loop controller — no state reads, no diffs, no virtual DOM. 60fps is guaranteed because the only work is a CSSOM write (~0.01ms).
+**14. CSS-Variable-Driven Slider Track** (`RangeSlider.tsx: syncTrack`)
+`el.style.setProperty('--lo', pct)` writes directly to the CSSOM. CSS `calc()` computes track fill, amber void indicators, and truth track from these variables. React reconciliation cost during drag: zero. The drag loop is an open-loop controller — no state reads, no diffs, no virtual DOM. 60fps is guaranteed because the only work is a CSSOM write (~0.01ms) plus a canvas repaint scheduled by `scheduleDragFrame`.
 
-**15. CSS `clipPath` Histogram Mask** (`DistributionPlot`)
-SVG `<clipPath>` references `--lo` and `--hi` CSS variables. During drag, only CSS variables update — the SVG tree is never touched. The compositor applies the clip as a GPU-side mask operation. Render cost during drag: O(1) compositor work, O(0) main-thread work.
+**15. Canvas Histogram Rendering** (`RangeSlider.tsx: paintCanvas`)
+Each slider paints its histogram to a single `<canvas>` element via a `SpringAnimator` paint callback. One canvas replaces 128 SVG `<rect>` DOM nodes per slider — with 20+ numeric columns, this eliminates ~2,500+ DOM nodes from the style recalculation tree. The canvas uses DPR-aware backing store sizing (`Math.round(w * devicePixelRatio)`) and `ctx.clip()` to mask the dynamic layer to the selected range. Static bars render at α=0.12 (reference shape), dynamic bars at α=0.45 (spring-driven heights from `Float64Array` positions). During pending states, a breathing animation modulates α sinusoidally between 0.25 and 0.5.
 
-**16. `memo()` with Structural Equality** (`DistributionPlot`)
-Custom comparator: re-render iff `staticBins`, `dynamicBins`, `height`, or `pending` changed. Clip position lives in CSS variables — invisible to React. This is manual common-subexpression elimination: the component's render function is expensive, so we cache its output and invalidate only on structural input change.
+**16. Input Coalescing via `getCoalescedEvents()`** (`RangeSlider.tsx: scheduleDragFrame`)
+Multiple pointer events can fire between frames. `scheduleDragFrame()` gates all drag processing behind a single `requestAnimationFrame` — handlers write to refs (`lowRef`, `highRef`), and the scheduled frame reads the final values once, running `syncTrack` + `syncHistogram` + `notifyDrag` exactly once per frame. The pan handler additionally calls `ev.getCoalescedEvents()` to take the last pointer position from the OS batch, discarding intermediate samples. On drop (`handleDragEnd`, `onUp`), the pending frame is cancelled — drop handlers process final values directly. Combined with the global animation ticker, this means the main thread processes at most one pointer event per frame during drag operations.
 
 **17. `memo()` as Reconciliation Firewall** (`ControlCenter`, `VirtualRows`)
 Both wrapped with `memo()`. Without this, toggling `isTableOpen` (parent state) cascades into the entire filter panel (10+ cards) and the full table body. `memo()` cuts the reconciliation DAG at these nodes. Reflow cost of a parent state change drops from O(subtree) to O(1) shallow compare.
@@ -135,8 +135,10 @@ Skeleton DOM (15 rows × N columns) built once, cached in `useMemo`. `skelRef.cu
 **19. Skeleton Opacity Toggle** (never conditional mount)
 Skeleton overlay is `position: absolute; inset: 0`. Visibility controlled by `opacity` and `pointer-events` only. GPU composites opacity changes in ~0.1ms. Conditional mount (`{loading && <Skeleton/>}`) would construct and destroy DOM nodes each cycle, triggering layout recalculation and a double-fade artifact.
 
-**20. RAF Sample-and-Hold for Range Drag** (`useFilterState.ts: setRangeVisual`)
-Pointer events arrive at the input device's polling rate (typically 125–1000 Hz). `requestAnimationFrame` downsamples to the display refresh rate (60 Hz). The `pendingDrag` ref stores the latest value; RAF reads it once per frame. This is a sample-and-hold circuit: continuous input → discrete output at display frequency. We care about the position, not the trajectory — last-value sampling is exact.
+**20. Global Animation Ticker — One rAF for All Springs** (`lib/AnimationTicker.ts`)
+Game engines have one main loop. `AnimationTicker` is the singleton rAF clock. All spring physics (`SpringAnimator`, `SingleSpring`) and breathing animations subscribe `(now: DOMHighResTimeStamp) => boolean` tick functions — return `true` to keep ticking, `false` to auto-unsubscribe. With 20+ numeric columns, this consolidates 50-75 independent rAF callbacks into one contiguous tick. All canvases paint in the same frame (no visual tearing). Zero subscribers → `rafId = null` → zero idle CPU. `Set<TickFn>` guarantees O(1) subscribe/unsubscribe and safe deletion during `for...of` iteration (per ECMAScript spec). Try-catch per subscriber prevents one throw from killing the clock.
+
+**Delta-time trap:** When a spring settles and unsubscribes, its `lastTime` goes stale. If it wakes up seconds later, `now - lastTime` produces a catastrophic dt that explodes the physics. Every wake-up path (`setTarget`/`setTargets`) resets `lastTime = 0`. The tick method treats `lastTime === 0` as "first frame" — anchors the timestamp, flushes the current position, and skips physics for that single frame.
 
 **21. `clipPath` on RiverGauge** (`RiverGauge.tsx`)
 ```tsx
@@ -315,15 +317,10 @@ const projConMin = hadAmberLo ? activeConMin : undefined;
 | Amber at drag start → drag into void | `true` | Clips at data boundary — no bars in void |
 | Static bins zero | n/a | Zero — truly no data anywhere |
 
-**56. Compositor-Isolated Histogram Bars** (`DistributionPlot`)
-SVG attribute transitions (`y`, `height`) are main-thread-interpolated — 64 elements × 300ms recomputing layout every frame. If `syncTrack()` writes CSS variables on the same thread, two animation systems fight for the same 16ms budget. Fix: `transform: scaleY()` from a fixed baseline. `transform` is compositor-composited — GPU thread, zero main-thread cost:
-```tsx
-<rect y={0} height={plotHeight} style={{
-  transformOrigin: 'bottom',
-  transform: `scaleY(${barHeight / plotHeight})`,
-  transition: 'transform 300ms cubic-bezier(0.382, 0, 0.618, 1)',
-}} />
-```
+**56. Spring-Driven Canvas Bars** (`lib/SpringAnimator.ts → RangeSlider.tsx: paintCanvas`)
+Histogram bars are underdamped springs (tension 180, friction 12, mass 1) with Euler integration, not CSS transitions. `SpringAnimator` drives a 64-bin `Float64Array` of normalized positions and flushes to a paint callback each frame — a pure physics engine with no DOM coupling. `SingleSpring` drives a single scalar value via the same math (used by RiverGauge for `clip-path` animation). Both subscribe to the global `AnimationTicker` rather than managing their own rAF loops.
+
+The spring architecture is general-purpose — histograms are the first visualization built on it, not the last. Any future visualization (scatter plots, heatmaps, network graphs) plugs into the same physics layer by implementing a paint callback that receives the current `Float64Array` positions.
 
 ---
 

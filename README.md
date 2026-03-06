@@ -184,7 +184,8 @@ packages/
       workers/       jsonStrandWorker — Phase 1 scan, Phase 2 stream, Phase 3 constraints
       lib/duckdb.ts  Shared DuckDB WASM singleton (boot, connection, BigInt coercion)
       ui/            CVA component recipes (Button, Badge, Card, Input, ...)
-      lib/           API fetch wrapper, query keys, format detection
+      lib/           API fetch wrapper, query keys, format detection,
+                     AnimationTicker (global rAF clock), SpringAnimator (physics engine)
       components/    FilePreview, ParquetPreview (DuckDB WASM + virtualizer),
                      JsonStrandPreview (Strand SAB pipeline), DatasetErrorState,
                      Breadcrumbs, EnginePanel, ...
@@ -205,7 +206,8 @@ vendor/
                      Synced from github.com/ryandward/strand
 concertina/          Vendored UI library (dist only — source at github.com/ryandward/concertina)
 docs/
-  engine-methods-schema.json   JSON Schema for the engine method catalog contract
+  VISUAL_LANGUAGE.md             Visual language spec + performance architecture (56 mechanisms)
+  engine-methods-schema.json     JSON Schema for the engine method catalog contract
 ```
 
 ## API reference
@@ -638,6 +640,10 @@ Subscribers provide `(now: DOMHighResTimeStamp) => boolean`. The `Set<TickFn>` g
 #### Spring physics
 
 `SpringAnimator` (64-bin array) and `SingleSpring` (scalar) share the same underdamped spring constants (tension 180, friction 12). Both subscribe to the global ticker rather than managing their own rAF loops. `SpringAnimator` drives histogram canvases; `SingleSpring` drives RiverGauge clip-path animations. The physics is the foundation — histograms are the first visualization built on it, not the last.
+
+#### Input coalescing
+
+Multiple pointer events can fire between frames. `scheduleDragFrame()` gates all drag processing behind a single `requestAnimationFrame` — handlers write to refs, and the scheduled frame reads the final values once per frame. The pan handler additionally calls `ev.getCoalescedEvents()` to take the last pointer position from the OS batch. Combined with the global ticker, the main thread processes at most one pointer event per frame during drag operations.
 
 ---
 
