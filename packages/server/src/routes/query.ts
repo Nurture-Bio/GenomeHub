@@ -32,6 +32,9 @@
  * @module
  */
 
+import { createHash } from 'node:crypto';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { Router } from 'express';
 import { HISTOGRAM_BINS, histogramBucketSql, detectFormat } from '@genome-hub/shared';
 import type { FilterSpec, SortSpec, DataProfile, DataProfileStats } from '@genome-hub/shared';
@@ -41,7 +44,7 @@ import { asyncWrap } from '../lib/async_wrap.js';
 import { resolveLocalParquet } from '../lib/parquet_cache.js';
 import { getConnection } from '../lib/duckdb.js';
 import { expandSchema, isNumeric, safeName, type FlatColumn } from '../lib/data_profile.js';
-import type { DuckDBValue } from '@duckdb/node-api';
+import type { DuckDBValue, DuckDBResult } from '@duckdb/node-api';
 
 const router = Router();
 
@@ -334,6 +337,24 @@ router.post(
   }),
 );
 
+// ── TSV generator — yields one line at a time, constant memory ────────────────
+
+async function* generateTSV(result: DuckDBResult, colNames: string[]): AsyncGenerator<string> {
+  yield colNames.join('\t') + '\n';
+  for await (const chunk of result) {
+    const numRows = chunk.rowCount;
+    const numCols = colNames.length;
+    for (let r = 0; r < numRows; r++) {
+      const cells: string[] = [];
+      for (let c = 0; c < numCols; c++) {
+        const v = chunk.getColumnVector(c).getItem(r);
+        cells.push(v === null || v === undefined ? '' : String(v));
+      }
+      yield cells.join('\t') + '\n';
+    }
+  }
+}
+
 // ── Export — filtered TSV download ────────────────────────────────────────────
 
 router.post(
@@ -398,45 +419,28 @@ router.post(
       const selectList = flatCols.map((c) => `${c.sqlExpr} AS ${safeName(c.name)}`).join(', ');
 
       const sql = `SELECT ${selectList} FROM ${readParquet} ${whereClause} ${orderByClause}`;
-
-      // Stream via async iterator — chunks arrive incrementally without
-      // buffering the entire result set in the Node.js heap.
       const result = await conn.stream(sql, whereParams);
       const colNames = result.columnNames();
 
-      // Derive filename: stem + .tsv
       const stem = file.filename.replace(/\.[^.]+$/, '');
-      const exportName = filters.length > 0 ? `${stem}_filtered.tsv` : `${stem}.tsv`;
+      const hasQuery = filters.length > 0 || sort.length > 0;
+      let exportName: string;
+      if (hasQuery) {
+        const hash = createHash('sha256').update(JSON.stringify({ filters, sort })).digest('hex').slice(0, 8);
+        exportName = `${stem}_${hash}.tsv`;
+      } else {
+        exportName = `${stem}.tsv`;
+      }
 
       res.setHeader('Content-Type', 'text/tab-separated-values; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${exportName}"`);
 
-      // Header row
-      res.write(colNames.join('\t') + '\n');
-
-      // Stream data chunks with backpressure
-      for await (const chunk of result) {
-        const numRows = chunk.rowCount;
-        const numCols = colNames.length;
-        for (let r = 0; r < numRows; r++) {
-          let line = '';
-          for (let c = 0; c < numCols; c++) {
-            if (c > 0) line += '\t';
-            const v = chunk.getColumnVector(c).getItem(r);
-            line += v === null || v === undefined ? '' : String(v);
-          }
-          line += '\n';
-          // Respect backpressure — if the kernel buffer is full, wait for drain
-          if (!res.write(line)) {
-            await new Promise<void>((resolve) => res.once('drain', resolve));
-          }
-        }
-      }
-
-      conn.closeSync();
-      res.end();
+      // pipeline handles backpressure, client disconnect, and teardown.
+      // The generator yields one TSV line at a time — constant memory.
+      await pipeline(Readable.from(generateTSV(result, colNames)), res);
     } catch (err) {
-      try { conn.closeSync(); } catch {}
+      // pipeline throws on client disconnect (ERR_STREAM_PREMATURE_CLOSE) — not an error.
+      if ((err as NodeJS.ErrnoException).code === 'ERR_STREAM_PREMATURE_CLOSE') return;
       console.error(
         JSON.stringify({
           tag: '[EXPORT_FAILED]',
@@ -445,11 +449,11 @@ router.post(
           timestamp: new Date().toISOString(),
         }),
       );
-      if (res.headersSent) {
-        res.destroy();
-      } else {
+      if (!res.headersSent) {
         res.status(500).json({ error: 'Export failed' });
       }
+    } finally {
+      conn.closeSync();
     }
   }),
 );
