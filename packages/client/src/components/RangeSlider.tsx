@@ -407,7 +407,8 @@ function sliderReducer(state: SliderState, action: SliderAction): SliderState {
     case 'PENDING_START':
       return state.phase === 'dropped' ? { ...state, phase: 'querying' } : state;
     case 'SETTLE':
-      return state.phase === 'querying' ? { phase: 'idle', seal: null } : state;
+      return state.phase === 'querying' || state.phase === 'dropped'
+        ? { phase: 'idle', seal: null } : state;
     default:
       return state;
   }
@@ -517,11 +518,14 @@ const RangeSlider = React.memo(function RangeSlider({
     if (p) onDrag(name, p.lo, p.hi);
   }, [onDrag, name]);
 
-  // ── Spring animator lifecycle ────────────────────────────────────────────
+  // ── Imperative lifecycle — spring animator + debounce timer cleanup ─────
   useEffect(() => {
     if (!trackRef.current) return;
     animatorRef.current = new SpringAnimator(trackRef.current);
-    return () => animatorRef.current?.dispose();
+    return () => {
+      animatorRef.current?.dispose();
+      if (dragTimerRef.current !== null) clearTimeout(dragTimerRef.current);
+    };
   }, []);
 
   // ── Phase derivation ─────────────────────────────────────────────────────
