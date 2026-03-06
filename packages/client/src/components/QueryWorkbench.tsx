@@ -989,7 +989,7 @@ export default function QueryWorkbench({
   const [drawerState, setDrawerState] = useState<'closed' | 'opening' | 'open'>('closed');
 
   // ── Query engine — reacts to filter intent automatically ──
-  const { lifecycle, snapshot, store } = useFileQuery(fileId, filters.specs, filters.sortSpecs, drawerState !== 'closed');
+  const { lifecycle, snapshot, settledSnapshot, store } = useFileQuery(fileId, filters.specs, filters.sortSpecs, drawerState !== 'closed');
   const {
     columns,
     baseProfile,
@@ -1361,11 +1361,12 @@ export default function QueryWorkbench({
           </div>
         </div>
 
-        {/* River Base — zero-margin gauge as bottom border */}
-        {snapshot.total > 0 && (
+        {/* River Base — zero-margin gauge as bottom border.
+            Reads settledSnapshot so percentage resolves at the same instant as Ready. */}
+        {settledSnapshot.total > 0 && (
           <RiverGauge
-            current={snapshot.count}
-            total={snapshot.total}
+            current={settledSnapshot.count}
+            total={settledSnapshot.total}
             flowState={structural.flowState}
             accent={dataState.hasFilter}
             variant="tide"

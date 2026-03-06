@@ -141,7 +141,7 @@ Skeleton overlay is `position: absolute; inset: 0`. Visibility controlled by `op
 **21. Global Animation Ticker — One rAF for All Springs** (`lib/AnimationTicker.ts`)
 Game engines have one main loop. `AnimationTicker` is the singleton rAF clock. All spring physics (`SpringAnimator`, `SingleSpring`) and breathing animations subscribe `(now: DOMHighResTimeStamp) => boolean` tick functions — return `true` to keep ticking, `false` to auto-unsubscribe. With 20+ numeric columns, this consolidates 50-75 independent rAF callbacks into one contiguous tick. All canvases paint in the same frame (no visual tearing). Zero subscribers → `rafId = null` → zero idle CPU. `Set<TickFn>` guarantees O(1) subscribe/unsubscribe and safe deletion during `for...of` iteration (per ECMAScript spec). Try-catch per subscriber prevents one throw from killing the clock.
 
-**Delta-time trap:** When a spring settles and unsubscribes, its `lastTime` goes stale. If it wakes up seconds later, `now - lastTime` produces a catastrophic dt that explodes the physics. Every wake-up path (`setTarget`/`setTargets`) resets `lastTime = 0`. The tick method treats `lastTime === 0` as "first frame" — anchors the timestamp, flushes the current position, and skips physics for that single frame.
+**Sleep/wake guard:** Each spring tracks an `isAwake` flag. `setTarget()`/`setTargets()` only reset `lastTime = 0` and subscribe to the ticker on the sleep→wake transition (`!this.isAwake`). While awake, target updates pass through without touching the clock — the running tick loop picks up the moving goalpost naturally. When the spring settles, `isAwake = false` before returning `false` (auto-unsubscribe). This prevents the **Integration Stunlock**: without the guard, every `setTargets()` call unconditionally resets `lastTime = 0`, causing `tick()` to hit the `lastTime === 0` "first frame" guard every frame and skip physics integration. During a 60fps drag, the spring would never integrate — the animation freezes until the user stops moving.
 
 **22. `clipPath` on RiverGauge** (`RiverGauge.tsx`)
 ```tsx
@@ -242,13 +242,14 @@ React batches `setState` within synchronous handlers. Calling `setSelected(next)
 `dragVisuals` is the write buffer — high-frequency, visual-only, never observed by the query effect. `rangeOverrides` is the committed store — low-frequency, durable, watched by the query effect. On `pointerUp`, `commitRange` checkpoints the buffer into the store and flushes the buffer. Invariant: the query effect's dependency set contains `rangeOverrides` but never `dragVisuals`. This guarantees `queries_during_drag = 0`. The 80ms debounce serves as the equivalent checkpoint for text filters (which have no discrete commit event).
 
 **47. Atomic Query Lifecycle — Total State Machine** (`useFileQuery.ts: queryReducer`)
-`isQuerying`, `queryError`, and `QuerySnapshot` are co-located in a single reducer. Three actions govern transitions:
+`isQuerying`, `queryError`, `QuerySnapshot`, and `settledSnapshot` are co-located in a single reducer. Three actions govern transitions:
 ```
-START_QUERY  → { isQuerying: true,  queryError: null     }
-QUERY_DATA   → { isQuerying: false, queryError: null     }  (when done: true)
+START_QUERY  → { isQuerying: true,  queryError: null, settledSnapshot: frozen  }
+QUERY_DATA   → { isQuerying: false, queryError: null, settledSnapshot: catches up  }  (when done: true)
+QUERY_DATA   → { snapshot: updated, settledSnapshot: unchanged }  (mid-stream, isQuerying still true)
 QUERY_ERROR  → { isQuerying: false, queryError: payload  }
 ```
-State transitions are total functions — every action produces a fully-specified next state. Invariant: `¬(isQuerying ∧ queryError ≠ null)`. No orphaned spinners, no lingering errors after success. `FATAL_ERROR` handles initialization failures (unrecoverable); `QUERY_ERROR` handles query failures from the `ready` phase (recoverable — next query clears it).
+`settledSnapshot` is the committed projection of query results — it only advances when `done: true` fires, or when `QUERY_DATA` arrives while no query is active (profile hydration). `snapshot` updates mid-stream as Arrow frames arrive. River reads `settledSnapshot` so its percentage resolves at the exact same instant as the Stepper's "Ready" (convergenceStep 3). State transitions are total functions — every action produces a fully-specified next state. Invariant: `¬(isQuerying ∧ queryError ≠ null)`. No orphaned spinners, no lingering errors after success. `FATAL_ERROR` handles initialization failures (unrecoverable); `QUERY_ERROR` handles query failures from the `ready` phase (recoverable — next query clears it).
 
 **48. Controller / View Separation** (`RiverGauge.tsx`)
 RiverGauge accepts `flowState: 'normal' | 'pending' | 'stalled'` and an optional `statusLabel`. It knows nothing about queries, errors, or pipeline phases. The controller (`QueryWorkbench.tsx`) maps domain state to visual state: `queryError ? 'stalled' : isQuerying ? 'pending' : 'normal'`. CSS implements the transitions: `.river-fill.pending` pulses, `.river-fill.stalled` turns amber. The gauge is a pure morphism: `(flowState, ratio, label) → pixels`. All domain logic stays in the controller.
@@ -259,16 +260,21 @@ All inline `opacity`, `fontSize`, `letterSpacing`, `color`, `textTransform`, and
 **50. Unified Scroll Container** (`QueryWorkbench.tsx`)
 Header and body share one `overflow-auto` element. Header uses `position: sticky; top: 0; z-index: 10`. No JS scroll sync (`onScroll` + `scrollLeft` mirror deleted). The browser's compositor handles horizontal lock natively — zero JS per scroll frame. The previous dual-container approach required JS to mirror `scrollLeft` between two elements, producing a 1-frame desync visible as header/body misalignment during fast horizontal scroll.
 
-**51. ViewState — Pure Projection Function** (`QueryWorkbench.tsx: deriveViewState`)
-`f: (Lifecycle × Snapshot × Bool × ℕ × ℕ) → ViewState`. Computes every visual boolean the component needs: `convergenceStep`, `convergenceSteps`, `isReady`, `isTerminal`, `flowState`, `flowLabel`, `isPending`, `hasFilter`, `noResults`, `showSkeleton`. Called once via `useMemo`, consumed as `viewState.*` throughout. This is common-subexpression elimination applied to view logic — 12+ scattered boolean expressions that interrogated the same inputs with subtly inconsistent logic, collapsed into one referentially transparent function. Adding a new `QueryPhase` requires touching exactly one function.
+**51. Structural / Data View Split** (`QueryWorkbench.tsx: deriveStructuralState + deriveDataState`)
+Two pure projection functions split view derivation by change frequency:
+- `deriveStructuralState: (Lifecycle × Bool × ℕ) → StructuralState` — phase-dependent visuals: `convergenceStep`, `convergenceSteps`, `isReady`, `isTerminal`, `flowState`, `flowLabel`, `isPending`, `showSkeleton`. Deps: `lifecycle.*`, `isFetchingRange`, `cacheGen`.
+- `deriveDataState: (ℕ × ℕ) → DataState` — count-dependent visuals: `hasFilter`, `noResults`. Deps: `filterCount`, `snapshotCount`.
 
-**52. QueryState / QuerySnapshot / store — Three Orthogonal Projections** (`useFileQuery.ts`)
-The hook partitions its output into three orthogonal slices:
+Each called once via `useMemo`. The split prevents count-only changes (mid-stream `QUERY_DATA`) from re-deriving structural booleans, and phase changes from re-deriving data booleans. Adding a new `QueryPhase` requires touching exactly one function (`deriveStructuralState`).
+
+**52. QueryState / QuerySnapshot / store — Four Orthogonal Projections** (`useFileQuery.ts`)
+The hook partitions its output into four orthogonal slices:
 - **lifecycle** `{ phase, isQuerying, error, queryError }` — the state machine's current node
-- **snapshot** `{ count, total, stats, histograms }` — point-in-time query results (immutable between queries)
+- **snapshot** `{ count, total, stats, histograms }` — live query results (updates mid-stream as Arrow frames arrive)
+- **settledSnapshot** `{ count, total, stats, histograms }` — committed query results (advances only on `done: true` or during non-query hydration). River reads this so its percentage resolves simultaneously with the Stepper's "Ready"
 - **store** `{ columns, baseProfile, getCell, hasRow, fetchRange, clearCache, isFetchingRange, cacheGen }` — data accessors (stable references)
 
-`QuerySnapshot` is updated via `QUERY_DATA` actions — partial merges as Arrow frames arrive. `QUERY_DATA { done: true }` finalizes the cycle (`isQuerying ← false`). No standalone `useState` for count, total, stats, or histograms — all live inside the reducer as atomic state transitions. The `queryReducer` is the single writer; the component reads three projections.
+`snapshot` is updated via `QUERY_DATA` actions — partial merges as Arrow frames arrive. `settledSnapshot` is frozen during active queries and catches up atomically when `QUERY_DATA { done: true }` finalizes the cycle (`isQuerying ← false`). No standalone `useState` for count, total, stats, or histograms — all live inside the reducer as atomic state transitions. The `queryReducer` is the single writer; the component reads four projections.
 
 ---
 
@@ -322,6 +328,8 @@ const projConMin = hadAmberLo ? activeConMin : undefined;
 
 **57. Spring-Driven Canvas Bars** (`lib/SpringAnimator.ts → RangeSlider.tsx: paintCanvas`)
 Histogram bars are underdamped springs (tension 180, friction 12, mass 1) with Euler integration, not CSS transitions. `SpringAnimator` drives a 64-bin `Float64Array` of normalized positions and flushes to a paint callback each frame — a pure physics engine with no DOM coupling. `SingleSpring` drives a single scalar value via the same math (used by RiverGauge for `clip-path` animation). Both subscribe to the global `AnimationTicker` rather than managing their own rAF loops.
+
+Both classes use an `isAwake` sleep/wake flag (see #21) to prevent the Integration Stunlock. Target updates while awake pass through to the target array without resetting the clock — the running tick loop tracks the moving goalpost seamlessly. Both `SpringAnimator` and `RiverGauge`'s `SingleSpring` create their instances in `useLayoutEffect`, guaranteeing they subscribe to the ticker in the same React commit phase — frame-locked by the reconciler, not by custom scheduling.
 
 The spring architecture is general-purpose — histograms are the first visualization built on it, not the last. Any future visualization (scatter plots, heatmaps, network graphs) plugs into the same physics layer by implementing a paint callback that receives the current `Float64Array` positions.
 

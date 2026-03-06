@@ -34,6 +34,7 @@ export class SingleSpring {
   private lastTime = 0;
   private disposed = false;
   private hasRun = false;
+  private isAwake = false;
   private boundTick: (now: number) => boolean;
 
   constructor(writeFn: (value: number) => void) {
@@ -51,7 +52,8 @@ export class SingleSpring {
       this.writeFn(value);
       return;
     }
-    if (!this.disposed) {
+    if (!this.disposed && !this.isAwake) {
+      this.isAwake = true;
       this.lastTime = 0; // prevent stale dt explosion on wake
       ticker.subscribe(this.boundTick);
     }
@@ -62,12 +64,14 @@ export class SingleSpring {
     this.position = value;
     this.velocity = 0;
     this.target = value;
+    this.isAwake = false;
     ticker.unsubscribe(this.boundTick);
     this.writeFn(value);
   }
 
   dispose(): void {
     this.disposed = true;
+    this.isAwake = false;
     ticker.unsubscribe(this.boundTick);
   }
 
@@ -96,8 +100,12 @@ export class SingleSpring {
 
     this.writeFn(this.position);
 
-    // Settled — auto-unsubscribe from ticker
-    return !(this.position === this.target && this.velocity === 0);
+    // Settled — go to sleep, auto-unsubscribe from ticker
+    if (this.position === this.target && this.velocity === 0) {
+      this.isAwake = false;
+      return false;
+    }
+    return true;
   }
 }
 
@@ -111,6 +119,7 @@ export class SpringAnimator {
   private lastTime = 0;
   private disposed = false;
   private hasRun = false;
+  private isAwake = false;
   private boundTick: (now: number) => boolean;
 
   constructor(onFlush: (positions: Float64Array) => void) {
@@ -142,7 +151,8 @@ export class SpringAnimator {
       this.flush();
       return;
     }
-    if (!this.disposed) {
+    if (!this.disposed && !this.isAwake) {
+      this.isAwake = true;
       this.lastTime = 0; // prevent stale dt explosion on wake
       ticker.subscribe(this.boundTick);
     }
@@ -150,6 +160,7 @@ export class SpringAnimator {
 
   dispose(): void {
     this.disposed = true;
+    this.isAwake = false;
     ticker.unsubscribe(this.boundTick);
   }
 
@@ -192,7 +203,12 @@ export class SpringAnimator {
 
     this.flush();
 
-    return !allSettled; // true = keep ticking, false = settled
+    // Settled — go to sleep, auto-unsubscribe from ticker
+    if (allSettled) {
+      this.isAwake = false;
+      return false;
+    }
+    return true;
   }
 
   private flush(): void {

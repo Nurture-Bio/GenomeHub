@@ -444,7 +444,10 @@ const RangeSlider = React.memo(function RangeSlider({
   }, []);
 
   // ── Imperative lifecycle — spring animator + debounce timer cleanup ─────
-  useEffect(() => {
+  // useLayoutEffect so the animator exists before the target-setting layout
+  // effect (below) runs, and subscribes to the AnimationTicker in the same
+  // execution phase as RiverGauge's SingleSpring — guaranteeing frame-lock.
+  useLayoutEffect(() => {
     animatorRef.current = new SpringAnimator((positions) => {
       springPositionsRef.current = positions;
       paintCanvas();

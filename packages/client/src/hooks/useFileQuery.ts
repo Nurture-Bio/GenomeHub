@@ -60,6 +60,9 @@ export interface QueryState {
   queryError: Error | string | null;
   isQuerying: boolean;
   snapshot: QuerySnapshot;
+  /** Committed snapshot — only advances when the query fully completes (done: true).
+   *  River reads from this so its percentage resolves at the same instant as Ready. */
+  settledSnapshot: QuerySnapshot;
 }
 
 export type QueryAction =
@@ -77,7 +80,7 @@ function queryReducer(state: QueryState, signal: QueryAction): QueryState {
   switch (signal.type) {
     case 'START_POLL':
       return state.phase === 'idle'
-        ? { activeStep: 0, phase: 'loading', error: null, queryError: null, isQuerying: false, snapshot: state.snapshot }
+        ? { activeStep: 0, phase: 'loading', error: null, queryError: null, isQuerying: false, snapshot: state.snapshot, settledSnapshot: state.settledSnapshot }
         : state;
 
     case 'PREFLIGHT_DATA_READY':
@@ -87,10 +90,10 @@ function queryReducer(state: QueryState, signal: QueryAction): QueryState {
       return { ...state, activeStep: 4, phase: 'ready', error: null };
 
     case 'UNAVAILABLE':
-      return { activeStep: 0, phase: 'unavailable', error: null, queryError: null, isQuerying: false, snapshot: state.snapshot };
+      return { activeStep: 0, phase: 'unavailable', error: null, queryError: null, isQuerying: false, snapshot: state.snapshot, settledSnapshot: state.settledSnapshot };
 
     case 'CONVERSION_FAILED':
-      return { activeStep: 0, phase: 'failed', error: null, queryError: null, isQuerying: false, snapshot: state.snapshot };
+      return { activeStep: 0, phase: 'failed', error: null, queryError: null, isQuerying: false, snapshot: state.snapshot, settledSnapshot: state.settledSnapshot };
 
     case 'FATAL_ERROR':
       if (state.phase === 'ready_background_work' || state.phase === 'ready') return state;
@@ -98,7 +101,7 @@ function queryReducer(state: QueryState, signal: QueryAction): QueryState {
 
     case 'START_QUERY':
       // Stale-while-revalidate: preserve previous stats and histograms.
-      // Consumers show stale D with a loading indicator until fresh arrives via QUERY_DATA.
+      // settledSnapshot frozen — River holds its previous value until done.
       return {
         ...state,
         isQuerying: true,
@@ -107,10 +110,16 @@ function queryReducer(state: QueryState, signal: QueryAction): QueryState {
 
     case 'QUERY_DATA': {
       const { done, ...snapshotData } = signal.payload;
+      const newSnapshot = { ...state.snapshot, ...snapshotData };
       return {
         ...state,
-        snapshot: { ...state.snapshot, ...snapshotData },
-        ...(done ? { isQuerying: false, queryError: null } : {}),
+        snapshot: newSnapshot,
+        // settledSnapshot advances when: query completes (done), or no active query (hydration/profile)
+        ...(done
+          ? { isQuerying: false, queryError: null, settledSnapshot: newSnapshot }
+          : !state.isQuerying
+            ? { settledSnapshot: newSnapshot }
+            : {}),
       };
     }
 
@@ -400,8 +409,8 @@ export function useFileQuery(
     histograms: {},
   };
   const initialState: QueryState = cachedEntry?.parquetUrl
-    ? { activeStep: 4, phase: 'ready_background_work', error: null, queryError: null, isQuerying: false, snapshot: initialSnapshot }
-    : { activeStep: 0, phase: 'idle', error: null, queryError: null, isQuerying: false, snapshot: initialSnapshot };
+    ? { activeStep: 4, phase: 'ready_background_work', error: null, queryError: null, isQuerying: false, snapshot: initialSnapshot, settledSnapshot: initialSnapshot }
+    : { activeStep: 0, phase: 'idle', error: null, queryError: null, isQuerying: false, snapshot: initialSnapshot, settledSnapshot: initialSnapshot };
   const [state, dispatch] = useReducer(queryReducer, initialState);
 
   // Data state
@@ -726,6 +735,7 @@ export function useFileQuery(
   return {
     lifecycle: { phase: state.phase, isQuerying: state.isQuerying, error: state.error, queryError: state.queryError },
     snapshot: state.snapshot,
+    settledSnapshot: state.settledSnapshot,
     store: { columns, baseProfile, getCell, hasRow, fetchRange, clearCache, isFetchingRange, cacheGen },
   };
 }
