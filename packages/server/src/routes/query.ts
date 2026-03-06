@@ -24,7 +24,7 @@
  *   For each table:
  *     [4 bytes LE: table_byte_length]
  *     [table_byte_length bytes: Arrow IPC]
- *   Table order: [god_query, viewport, hist_col_0, hist_col_1, ...]
+ *   Table order: [viewport, god_query, hist_col_0, hist_col_1, ...]
  *
  * Security: column names validated against schema allowlist; all filter values
  * use $N parameterized queries. Zero SQL injection.
@@ -268,15 +268,15 @@ router.post(
 
       res.write(writeU32LE(numTables));
 
-      // 1. God Query — count + constrained stats (fastest, ~4ms)
-      const godBuf = await arrowQuery(conn, godSql, whereParams);
-      res.write(writeU32LE(godBuf.byteLength));
-      res.write(godBuf);
-
-      // 2. Viewport — paginated rows
+      // 1. Viewport — paginated rows (fastest: stops at first qualifying row group)
       const viewportBuf = await arrowQuery(conn, viewportSql, viewportParams);
       res.write(writeU32LE(viewportBuf.byteLength));
       res.write(viewportBuf);
+
+      // 2. God Query — count + constrained stats (full scan)
+      const godBuf = await arrowQuery(conn, godSql, whereParams);
+      res.write(writeU32LE(godBuf.byteLength));
+      res.write(godBuf);
 
       // 3. Histograms — one per numeric column, flushed individually
       for (const h of histQueryBuilders) {

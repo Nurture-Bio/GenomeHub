@@ -256,7 +256,7 @@ function parseHistTable(histTable: ArrowTable): number[] {
 // Wire format:
 //   [4B LE: num_tables]
 //   For each table: [4B LE: byte_length] [byte_length bytes: Arrow IPC]
-//   Table order: god, viewport, hist_0, hist_1, ...
+//   Table order: viewport, god, hist_0, hist_1, ...
 
 async function* streamArrowFrames(
   body: ReadableStream<Uint8Array>,
@@ -309,10 +309,10 @@ async function* streamArrowFrames(
 /**
  * Query the server and decode Arrow IPC frames.
  *
- * When `callbacks` is provided, `onGod` fires the instant the God Query
- * frame arrives (before viewport or histograms). `onViewport` fires when
- * rows are ready. This lets the UI update incrementally while histograms
- * are still in flight.
+ * When `callbacks` is provided, `onViewport` fires the instant the viewport
+ * frame arrives (first frame — rows appear before count). `onGod` fires when
+ * the god query completes. This lets the UI show rows while count + stats
+ * are still computing.
  */
 async function serverQuery(
   fileId: string,
@@ -349,15 +349,15 @@ async function serverQuery(
     if (!table) continue;
 
     if (index === 0) {
-      // God Query — count + constrained stats
+      // Viewport — rows arrive first (fastest: stops at first qualifying row group)
+      viewportTable = table;
+      callbacks?.onViewport?.(table);
+    } else if (index === 1) {
+      // God Query — count + constrained stats (full scan)
       const god = parseGodTable(table);
       filteredCount = god.filteredCount;
       constrainedStats = god.constrainedStats;
       callbacks?.onGod?.(god);
-    } else if (index === 1) {
-      // Viewport — keep the raw Arrow table, no materialization
-      viewportTable = table;
-      callbacks?.onViewport?.(table);
     } else {
       // Histogram frame
       if (histIndex < histColNames.length) {
