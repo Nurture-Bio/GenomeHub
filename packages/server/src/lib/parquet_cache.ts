@@ -17,7 +17,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
-import { isLocal, storagePath, duckdbSrc } from './storage.js';
+import { isLocal, storagePath } from './storage.js';
 import { s3, BUCKET } from './s3.js';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 
@@ -69,30 +69,16 @@ export async function resolveLocalParquet(s3Key: string): Promise<string> {
     // Not cached — fall through to background warmup
   }
 
-  // Background warmup: start download if not already in flight.
-  // Do NOT await — the caller gets the S3 path immediately.
+  // Download and wait — DuckDB's S3 streaming is unreliable in ECS.
+  // Concurrent callers share one promise per key.
   if (!inflight.has(s3Key)) {
     const promise = download(s3Key, local);
     inflight.set(s3Key, promise);
-    promise
-      .catch((err) => {
-        console.error(
-          JSON.stringify({
-            tag: '[PARQUET_CACHE]',
-            action: 'download_failed',
-            s3Key,
-            error: err instanceof Error ? err.message : String(err),
-            timestamp: new Date().toISOString(),
-          }),
-        );
-      })
-      .finally(() => {
-        inflight.delete(s3Key);
-      });
+    promise.finally(() => inflight.delete(s3Key));
   }
 
-  // Return the S3 URI — DuckDB streams natively while the cache warms
-  return duckdbSrc(s3Key);
+  await inflight.get(s3Key);
+  return local;
 }
 
 /** Stream S3 object to local disk. */
