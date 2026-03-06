@@ -985,8 +985,11 @@ export default function QueryWorkbench({
   // ── Filter state ──
   const filters = useFilterState(columnStats);
 
+  // ── Drawer state (declared early — useFileQuery gates preflight on it) ──
+  const [drawerState, setDrawerState] = useState<'closed' | 'opening' | 'open'>('closed');
+
   // ── Query engine — reacts to filter intent automatically ──
-  const { lifecycle, snapshot, store } = useFileQuery(fileId, filters.specs, filters.sortSpecs);
+  const { lifecycle, snapshot, store } = useFileQuery(fileId, filters.specs, filters.sortSpecs, drawerState !== 'closed');
   const {
     columns,
     baseProfile,
@@ -1084,8 +1087,7 @@ export default function QueryWorkbench({
     return result;
   }, [columns, columnStats, filters.dragVisuals, filters.rangeOverrides]);
 
-  // ── Drawer & column visibility state ────────────────────────────────────────
-  const [drawerState, setDrawerState] = useState<'closed' | 'opening' | 'open'>('closed');
+  // ── Column visibility state ─────────────────────────────────────────────────
 
   const [visibleColumns, setVisibleColumns] = useState<Set<string>>(
     () => new Set(columns.map((c) => c.name)),

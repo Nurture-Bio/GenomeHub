@@ -381,6 +381,7 @@ export function useFileQuery(
   fileId: string,
   activeFilterSpecs?: FilterSpec[],
   sortSpecs?: SortSpec[],
+  enablePreflight = false,
 ) {
   const { getValidFileProfile, setFileProfile } = useAppStore();
 
@@ -625,7 +626,11 @@ export function useFileQuery(
     const currentFilterKey = JSON.stringify(filters);
 
     // ── Preflight: fire immediately (0ms) — god query only ──────────────
+    // Skip when drawer is closed — the god query is the expensive full scan.
     preflightRef.current?.abort.abort();
+    if (!enablePreflight) {
+      preflightRef.current = null;
+    } else {
     const pfAbort = new AbortController();
     preflightRef.current = { abort: pfAbort, filterKey: currentFilterKey };
 
@@ -656,6 +661,7 @@ export function useFileQuery(
         }
       })
       .catch(() => {}); // Aborted or failed — silently ignore
+    }
 
     // ── Full query: 80ms debounce ───────────────────────────────────────
     const timer = setTimeout(() => {
