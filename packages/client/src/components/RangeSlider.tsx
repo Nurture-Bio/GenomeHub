@@ -108,7 +108,8 @@ const DistributionPlot = memo(
           clipPath={`url(#${clipId})`}
           style={{
             opacity: pending ? 0.4 : 1,
-            transition: 'opacity 382ms var(--ease-phi)',
+            transition: pending ? undefined : 'opacity 382ms var(--ease-phi)',
+            animation: pending ? 'distPlotBreath 1.5s ease-in-out infinite' : 'none',
           }}
         >
           {dynamicRects}
