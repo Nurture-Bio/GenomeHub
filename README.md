@@ -482,6 +482,14 @@ The same `FilterSidebar` pattern from the Strand pipeline is reused. Control sel
 
 Constrained stats (min/max within the current filter set) power the constraint band overlay and amber out-of-bounds indicators, identical to the Strand implementation.
 
+#### Canvas for the data, DOM for the interface
+
+In high-performance web engineering, there is a golden rule: **Canvas for the data, DOM for the interface.** Canvas is for things you cannot touch — if the user can't click it, focus it, or type into it, it belongs on canvas.
+
+Each `RangeSlider` histogram is a single `<canvas>` element driven by `SpringAnimator` — a pure physics engine that writes `Float64Array` spring positions into a paint callback. One rAF loop, zero CSS custom properties, direct bitmap paint. The slider track, thumbs, amber void indicators, and editable labels remain DOM elements — things you touch.
+
+**Why this matters at scale:** With 20+ filterable columns, an SVG approach would create 2,500+ DOM nodes (64 `<rect>` elements per histogram, static + dynamic layers). Every frame, the browser would recalculate styles for each node reading a CSS variable. Canvas replaces all of that with one composite operation per slider — the GPU composites a single bitmap instead of walking a paint tree of hundreds of elements.
+
 #### Parquet conversion status lifecycle
 
 ```

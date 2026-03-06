@@ -1,8 +1,12 @@
 /**
  * Spring physics — imperative underdamped springs for UI animation.
  *
- * SpringAnimator: drives 64 CSS custom properties (--dyn-0 … --dyn-63)
- * for histogram bars via a rAF loop.
+ * Canvas for the data, DOM for the interface.
+ * Canvas is for things you cannot touch.
+ *
+ * SpringAnimator: drives 64 histogram bar positions via a rAF loop,
+ * flushing to a paint callback each frame (zero DOM / CSS var writes).
+ * One canvas element replaces 128 SVG rects per slider.
  *
  * SingleSpring: drives a single value via a write callback. Same constants,
  * same Euler-step math. Used by RiverGauge for clip-path animation.
@@ -103,7 +107,7 @@ export class SingleSpring {
 /* ── SpringAnimator — 64-bin histogram bars ── */
 
 export class SpringAnimator {
-  private el: HTMLElement;
+  private onFlush: (positions: Float64Array) => void;
   private positions: Float64Array;
   private velocities: Float64Array;
   private targets: Float64Array;
@@ -112,8 +116,8 @@ export class SpringAnimator {
   private disposed = false;
   private hasRun = false;
 
-  constructor(el: HTMLElement) {
-    this.el = el;
+  constructor(onFlush: (positions: Float64Array) => void) {
+    this.onFlush = onFlush;
     this.positions = new Float64Array(64);
     this.velocities = new Float64Array(64);
     this.targets = new Float64Array(64);
@@ -143,7 +147,6 @@ export class SpringAnimator {
     // Start loop if not already running
     if (this.rafId === null && !this.disposed) {
       this.lastTime = 0;
-      this.el.setAttribute('data-settling', '');
       this.rafId = requestAnimationFrame((t) => this.tick(t));
     }
   }
@@ -198,16 +201,12 @@ export class SpringAnimator {
 
     if (allSettled) {
       this.rafId = null;
-      this.el.removeAttribute('data-settling');
     } else {
       this.rafId = requestAnimationFrame((t) => this.tick(t));
     }
   }
 
   private flush(): void {
-    const s = this.el.style;
-    for (let i = 0; i < 64; i++) {
-      s.setProperty(`--dyn-${i}`, String(this.positions[i]));
-    }
+    this.onFlush(this.positions);
   }
 }

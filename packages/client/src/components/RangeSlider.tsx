@@ -2,141 +2,19 @@
  * RangeSlider — dual-thumb range input with histogram overlay,
  * constrained-axis math, void detection, and panning.
  *
- * Extracted from QueryWorkbench for maintainability.
+ * Canvas for the data, DOM for the interface.
+ * Canvas is for things you cannot touch.
+ * Histogram bars are painted to a single <canvas> element via SpringAnimator.
+ * The slider track, thumbs, void indicators, and labels remain DOM — things you touch.
  */
 
 import type { CSSProperties } from 'react';
-import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { SpringAnimator } from '../lib/SpringAnimator';
 
-// ── DistributionPlot ──────────────────────────────────────────────────────────
-// Ghost mask clip is driven purely by inherited CSS vars (--lo, --hi) from the
-// parent track container — zero JS overhead, zero imperative handles.
-
-const DistributionPlot = memo(
-  function DistributionPlot({
-    staticBins,
-    height,
-    pending,
-  }: {
-    staticBins: number[];
-    height: number;
-    pending?: boolean;
-  }) {
-    const n = staticBins.length;
-    if (n === 0) return null;
-
-    const staticMax = useMemo(() => Math.max(...staticBins, 1), [staticBins]);
-    const binW = 100 / n;
-
-    const clipId = useRef(`ghost-mask-${Math.random().toString(36).slice(2, 8)}`).current;
-
-    // Static rects — full-height bars scaled by scaleY, no main-thread animation.
-    const staticRects = useMemo(
-      () =>
-        staticBins.map((v, i) => (
-          <rect
-            key={i}
-            x={i * binW}
-            y={0}
-            width={binW}
-            height={height}
-            fill="var(--color-cyan)"
-            style={{ transformOrigin: 'bottom', transform: `scaleY(${v / staticMax})` }}
-          />
-        )),
-      [staticBins, staticMax, height, binW],
-    );
-
-    // Dynamic rects — stable DOM, driven by CSS custom properties.
-    // Each bar reads its scale from --dyn-N, written imperatively by syncHistogram.
-    // React never re-renders these during drag — only the CSS vars change.
-    // transition: transform fires on the compositor thread when vars update.
-    const dynamicRects = useMemo(
-      () =>
-        Array.from({ length: n }, (_, i) => (
-          <rect
-            key={i}
-            x={i * binW}
-            y={0}
-            width={binW}
-            height={height}
-            fill="var(--color-cyan)"
-            opacity={0.45}
-            style={{
-              transformOrigin: 'bottom',
-              transform: `scaleY(var(--dyn-${i}, 0))`,
-            }}
-          />
-        )),
-      [n, height, binW], // No data dependency — bars are stable, CSS vars drive scale
-    );
-
-    return (
-      <svg
-        viewBox={`0 0 100 ${height}`}
-        preserveAspectRatio="none"
-        style={{
-          position: 'absolute',
-          inset: 0,
-          width: '100%',
-          height: '100%',
-          pointerEvents: 'none',
-        }}
-      >
-        <defs>
-          <clipPath id={clipId}>
-            <rect
-              y="0"
-              height={height}
-              style={
-                {
-                  x: 'calc(var(--lo) * 1%)',
-                  width: 'max(0px, calc((var(--hi) - var(--lo)) * 1%))',
-                } as React.CSSProperties
-              }
-            />
-          </clipPath>
-        </defs>
-
-        {/* Static layer — absolute reference shape, never clipped */}
-        <g opacity={0.12}>{staticRects}</g>
-
-        {/* Dynamic layer — always mounted. Bars driven by CSS vars (--dyn-N)
-           written by syncHistogram. No React re-render during drag. */}
-        <g
-          clipPath={`url(#${clipId})`}
-          style={{
-            opacity: pending ? 0.4 : 1,
-            transition: pending ? undefined : 'opacity 382ms var(--ease-phi)',
-            animation: pending ? 'distPlotBreath 1.5s ease-in-out infinite' : 'none',
-          }}
-        >
-          {dynamicRects}
-        </g>
-
-        {/* Empty confirmation — server confirmed zero rows in this range.
-            Reads --empty (1 = confirmed empty, 0 = has data or loading). */}
-        <line
-          x1="0" y1={height} x2="100" y2={height}
-          stroke="var(--color-amber)"
-          strokeWidth={1}
-          clipPath={`url(#${clipId})`}
-          style={{
-            opacity: 'calc(var(--empty, 0) * 0.5)',
-            transition: 'opacity 300ms cubic-bezier(0.382, 0, 0.618, 1)',
-          }}
-        />
-      </svg>
-    );
-  },
-  // Re-render only when static data or pending changes.
-  // Dynamic bars are driven by CSS vars — never trigger re-render.
-  (prev, next) =>
-    prev.staticBins === next.staticBins &&
-    prev.height === next.height &&
-    prev.pending === next.pending,
-);
+// ── Canvas color constants — oklch strings work directly as fillStyle ────────
+const CANVAS_CYAN = 'oklch(0.75 0.18 195)';
+const CANVAS_AMBER = 'oklch(0.75 0.185 60)';
 
 // ── EditableNumber ────────────────────────────────────────────────────────────
 
@@ -241,7 +119,7 @@ function EditableNumber({
 
 // ── Optimistic Histogram Projection ───────────────────────────────────────────
 // Project the constrained histogram locally from static bins + thumb positions.
-// Zeroes bins outside the selected range; DistributionPlot's activeMax rescales
+// Zeroes bins outside the selected range; the canvas paintCanvas() rescales
 // the local peak to full height. Valid for the active column only — cross-column
 // effects require the server. Replaced by real constrained histogram on arrival.
 
@@ -483,6 +361,12 @@ const RangeSlider = React.memo(function RangeSlider({
   const highInputRef = useRef<HTMLInputElement>(null);
   const lowRef = useRef(low);
   const highRef = useRef(high);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const staticBinsRef = useRef<number[]>([]);
+  const clipBoundsRef = useRef({ lo: 0, hi: 100 });
+  const springPositionsRef = useRef<Float64Array>(new Float64Array(64));
+  const emptyRef = useRef(0);  // dormant — --empty is never set by JS today
+  const breathRafRef = useRef<number | null>(null);
   // Only sync refs from props when idle — during active phases (dragging,
   // dropped, querying) the imperative onChange/pan handlers own these refs.
   // Overwriting mid-drag causes clamping against stale prop values, snapping
@@ -519,15 +403,97 @@ const RangeSlider = React.memo(function RangeSlider({
     if (p) onDrag(name, p.lo, p.hi);
   }, [onDrag, name]);
 
+  // ── Canvas paint — imperative draw function ────────────────────────────
+  const paintCanvas = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    const w = rect.width;
+    const h = rect.height;
+    if (w === 0 || h === 0) return;
+
+    // Resize backing store if needed
+    const targetW = Math.round(w * dpr);
+    const targetH = Math.round(h * dpr);
+    if (canvas.width !== targetW || canvas.height !== targetH) {
+      canvas.width = targetW;
+      canvas.height = targetH;
+    }
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    const bins = staticBinsRef.current;
+    const n = bins.length;
+    if (n === 0) return;
+
+    let staticMax = 0;
+    for (let i = 0; i < n; i++) if (bins[i] > staticMax) staticMax = bins[i];
+    if (staticMax === 0) staticMax = 1;
+    const binW = w / n;
+    const positions = springPositionsRef.current;
+    const { lo, hi } = clipBoundsRef.current;
+    const pend = pendingRef.current;
+
+    // Static layer — full reference shape, unclipped
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = CANVAS_CYAN;
+    for (let i = 0; i < n; i++) {
+      const barH = (bins[i] / staticMax) * h;
+      ctx.fillRect(i * binW, h - barH, binW, barH);
+    }
+
+    // Dynamic layer — clipped to [lo, hi], spring-driven heights
+    const clipX = (lo / 100) * w;
+    const clipW = Math.max(0, ((hi - lo) / 100) * w);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(clipX, 0, clipW, h);
+    ctx.clip();
+
+    let dynAlpha = 0.45;
+    if (pend) {
+      // Replicate distPlotBreath: sinusoidal between 0.25 and 0.5
+      const t = (performance.now() % 1500) / 1500;
+      dynAlpha = 0.25 + 0.125 * (1 - Math.cos(2 * Math.PI * t));
+    }
+
+    ctx.globalAlpha = dynAlpha;
+    ctx.fillStyle = CANVAS_CYAN;
+    for (let i = 0; i < n; i++) {
+      const barH = positions[i] * h;
+      ctx.fillRect(i * binW, h - barH, binW, barH);
+    }
+
+    // Empty confirmation — amber line at bottom (dormant — emptyRef is always 0)
+    const emptyVal = emptyRef.current;
+    if (emptyVal > 0) {
+      ctx.globalAlpha = emptyVal * 0.5;
+      ctx.strokeStyle = CANVAS_AMBER;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, h - 0.5);
+      ctx.lineTo(clipW > 0 ? clipX + clipW : w, h - 0.5);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }, []);
+
   // ── Imperative lifecycle — spring animator + debounce timer cleanup ─────
   useEffect(() => {
-    if (!trackRef.current) return;
-    animatorRef.current = new SpringAnimator(trackRef.current);
+    animatorRef.current = new SpringAnimator((positions) => {
+      springPositionsRef.current = positions;
+      paintCanvas();
+    });
     return () => {
       animatorRef.current?.dispose();
       if (dragTimerRef.current !== null) clearTimeout(dragTimerRef.current);
     };
-  }, []);
+  }, [paintCanvas]);
 
   // ── Phase derivation ─────────────────────────────────────────────────────
   // effectivePhase snaps querying→idle on the same render pending flips false,
@@ -562,6 +528,11 @@ const RangeSlider = React.memo(function RangeSlider({
     return projectHistogram(staticHistogram, low, high, min, max, pb?.conMin, pb?.conMax);
   }, [staticHistogram, low, high, min, max, full, sealed, axis]);
 
+  // ── Sync static bins ref for canvas paint ─────────────────────────────────
+  useLayoutEffect(() => {
+    if (staticHistogram) staticBinsRef.current = staticHistogram;
+  }, [staticHistogram]);
+
   // ── Visual layer — three dumb writers ─────────────────────────────────────
 
   /** syncTrack — owns --lo, --hi, --oob-lo, --oob-hi, thumb colors.
@@ -583,6 +554,8 @@ const RangeSlider = React.memo(function RangeSlider({
       const p = ax.pct(loVal, hiVal);
       el.style.setProperty('--lo', String(p.lo));
       el.style.setProperty('--hi', String(p.hi));
+      clipBoundsRef.current = { lo: p.lo, hi: p.hi };
+      paintCanvas();
       const c = ax.conPct();
       el.style.setProperty('--c-lo', String(c.lo));
       el.style.setProperty('--c-hi', String(c.hi));
@@ -621,13 +594,39 @@ const RangeSlider = React.memo(function RangeSlider({
     [],
   );
 
-  /** syncHistogram — owns --dyn-N via spring animator. */
+  /** syncHistogram — drives spring-animated bars via canvas paint callback. */
   const syncHistogram = useCallback(
     (bins: number[]) => {
       animatorRef.current?.setTargets(bins);
     },
     [],
   );
+
+  // ── Canvas ResizeObserver ──────────────────────────────────────────────────
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ro = new ResizeObserver(() => paintCanvas());
+    ro.observe(canvas);
+    return () => ro.disconnect();
+  }, [paintCanvas]);
+
+  // ── Breathing rAF loop — runs only when pending and spring is idle ────────
+  useEffect(() => {
+    if (!pending) {
+      paintCanvas();  // clear breathing state
+      return;
+    }
+    const loop = () => {
+      paintCanvas();
+      breathRafRef.current = requestAnimationFrame(loop);
+    };
+    breathRafRef.current = requestAnimationFrame(loop);
+    return () => {
+      if (breathRafRef.current !== null) cancelAnimationFrame(breathRafRef.current);
+      breathRafRef.current = null;
+    };
+  }, [pending, paintCanvas]);
 
   // ── Settle — close the querying→idle loop when the server responds ────────
   useLayoutEffect(() => {
@@ -792,10 +791,15 @@ const RangeSlider = React.memo(function RangeSlider({
     >
       {staticHistogram && staticHistogram.length > 0 && (
         <div className="relative" style={{ height: PLOT_H, marginBottom: 2 }}>
-          <DistributionPlot
-            staticBins={staticHistogram}
-            height={PLOT_H}
-            pending={pending}
+          <canvas
+            ref={canvasRef}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              pointerEvents: 'none',
+            }}
           />
         </div>
       )}
