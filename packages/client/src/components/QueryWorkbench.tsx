@@ -423,7 +423,7 @@ const RangeSliderCard = memo(function RangeSliderCard({
   constrainedStats,
   rangeState,
   hasAnyFilter,
-  isQuerying,
+  isPending,
   staticHistogram,
   dynamicHistogram,
   onDrag,
@@ -436,7 +436,7 @@ const RangeSliderCard = memo(function RangeSliderCard({
   constrainedStats: ColumnStats | undefined;
   rangeState: [number, number] | undefined;
   hasAnyFilter: boolean;
-  isQuerying: boolean;
+  isPending: boolean;
   staticHistogram: number[] | undefined;
   dynamicHistogram: number[] | undefined;
   onDrag: (name: string, lo: number, hi: number) => void;
@@ -518,7 +518,7 @@ const RangeSliderCard = memo(function RangeSliderCard({
           high={rangeState?.[1] ?? stats.max}
           constrainedMin={hasAnyFilter ? constrainedStats?.min : undefined}
           constrainedMax={hasAnyFilter ? constrainedStats?.max : undefined}
-          pending={isQuerying}
+          pending={isPending}
           hasAnyFilter={hasAnyFilter}
           onDrag={onDrag}
           onCommit={onCommit}
@@ -545,7 +545,7 @@ const ControlCenter = memo(function ControlCenter({
   hasAnyFilter,
   constrainedStats,
   noResults,
-  isQuerying,
+  isPending,
   staticHistograms,
   constrainedHistograms,
   visibleColumns,
@@ -565,7 +565,7 @@ const ControlCenter = memo(function ControlCenter({
   hasAnyFilter: boolean;
   constrainedStats: Record<string, ColumnStats>;
   noResults: boolean;
-  isQuerying: boolean;
+  isPending: boolean;
   staticHistograms: Record<string, number[]>;
   constrainedHistograms: Record<string, number[]>;
   visibleColumns: Set<string>;
@@ -725,7 +725,7 @@ const ControlCenter = memo(function ControlCenter({
                 constrainedStats={constrainedStats[c.name]}
                 rangeState={rangeState[c.name]}
                 hasAnyFilter={hasAnyFilter}
-                isQuerying={isQuerying}
+                isPending={isPending}
                 staticHistogram={staticHistograms[c.name]}
                 dynamicHistogram={constrainedHistograms[c.name]}
                 onDrag={onRangeDrag}
@@ -1432,9 +1432,9 @@ export default function QueryWorkbench({
               onClearSelect={filters.clearCategory}
               onTextChange={filters.setTextFilter}
               hasAnyFilter={dataState.hasFilter}
-              constrainedStats={snapshot.stats}
+              constrainedStats={lifecycle.isPending ? {} : snapshot.stats}
               noResults={dataState.noResults}
-              isQuerying={lifecycle.isQuerying}
+              isPending={lifecycle.isPending}
               staticHistograms={staticHistograms}
               constrainedHistograms={snapshot.histograms}
               visibleColumns={visibleColumns}

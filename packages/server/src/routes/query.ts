@@ -212,6 +212,13 @@ router.post(
     const safeSrc = localPath.replace(/'/g, "''");
     const readParquet = `read_parquet('${safeSrc}')`;
 
+    // Track client disconnect so we can bail out between DuckDB queries.
+    // When the client aborts (e.g. new slider position fires a new query),
+    // the HTTP socket closes. Continuing to call conn.runAndReadAll() after
+    // that risks a native DuckDB crash when res.write() fails mid-stream.
+    let clientGone = false;
+    req.on('close', () => { clientGone = true; });
+
     try {
       const { clause: whereClause, params: whereParams } = compileWhere(filters, colMap);
       const orderByClause = compileOrderBy(sort, colMap);
@@ -235,11 +242,13 @@ router.post(
 
       // ── Preflight mode: god query only (count + stats, no rows/histograms) ──
       if (mode === 'preflight') {
+        if (clientGone) { conn.closeSync(); return; }
         res.setHeader('Content-Type', 'application/vnd.apache.arrow.stream');
         res.setHeader('X-Arrow-Tables', '1');
         res.setHeader('X-Hist-Columns', '');
         res.write(writeU32LE(1));
         const godBuf = await arrowQuery(conn, godSql, whereParams);
+        if (clientGone) { conn.closeSync(); return; }
         res.write(writeU32LE(godBuf.byteLength));
         res.write(godBuf);
         conn.closeSync();
@@ -279,6 +288,10 @@ router.post(
       // DuckDB serializes queries on a single connection — Promise.all is a
       // lie. Execute sequentially and flush each Arrow frame to the client
       // the instant DuckDB releases it.
+      //
+      // Between each query, check clientGone — if the client aborted, close
+      // the connection cleanly and bail. Writing to a destroyed socket while
+      // DuckDB's native thread is active can crash the process.
 
       const numTables = 2 + histQueryBuilders.length;
 
@@ -290,32 +303,39 @@ router.post(
 
       // 1. Viewport — paginated rows (fastest: stops at first qualifying row group)
       const viewportBuf = await arrowQuery(conn, viewportSql, viewportParams);
+      if (clientGone) { conn.closeSync(); return; }
       res.write(writeU32LE(viewportBuf.byteLength));
       res.write(viewportBuf);
 
       // 2. God Query — count + constrained stats (full scan)
       const godBuf = await arrowQuery(conn, godSql, whereParams);
+      if (clientGone) { conn.closeSync(); return; }
       res.write(writeU32LE(godBuf.byteLength));
       res.write(godBuf);
 
       // 3. Histograms — one per numeric column, flushed individually
       for (const h of histQueryBuilders) {
+        if (clientGone) break;
         try {
           const histBuf = await arrowQuery(conn, h.sql, h.params);
+          if (clientGone) break;
           res.write(writeU32LE(histBuf.byteLength));
           res.write(histBuf);
         } catch {
+          if (clientGone) break;
           // Empty frame — client sees 0-length table
           res.write(writeU32LE(0));
         }
       }
 
       conn.closeSync();
-      res.end();
+      if (!clientGone) res.end();
     } catch (err) {
       try {
         conn.closeSync();
       } catch {}
+      // Client already disconnected — nothing to report
+      if (clientGone) return;
       console.error(
         JSON.stringify({
           tag: '[QUERY_FAILED]',

@@ -82,9 +82,25 @@ if (isLocal) {
   console.log(`[storage] Local mode — serving files from ${localRoot()}`);
 }
 
+// ─── Demo file bypass ───────────────────────────────────────
+// Allow unauthenticated access to specific files for investor demos.
+const DEMO_FILE_IDS = new Set(
+  (process.env.DEMO_FILE_IDS ?? '').split(',').filter(Boolean),
+);
+if (DEMO_FILE_IDS.size > 0) {
+  app.use('/api/files/:id', (req: Request, res: Response, next: NextFunction) => {
+    if (DEMO_FILE_IDS.has(req.params.id)) {
+      res.locals.user = { id: 'demo', email: 'demo@genomehub', name: 'Demo' };
+    }
+    next();
+  });
+}
+
 // ─── Auth guard ─────────────────────────────────────────────
 
 app.use('/api', (req: Request, res: Response, next: NextFunction) => {
+  // Demo bypass already resolved user — skip auth
+  if (res.locals.user) { next(); return; }
   resolveUser(req)
     .then((user) => {
       if (!user) {

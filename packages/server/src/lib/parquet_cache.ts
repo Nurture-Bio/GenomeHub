@@ -72,9 +72,10 @@ export async function resolveLocalParquet(s3Key: string): Promise<string> {
   // Download and wait — DuckDB's S3 streaming is unreliable in ECS.
   // Concurrent callers share one promise per key.
   if (!inflight.has(s3Key)) {
-    const promise = download(s3Key, local);
+    // Chain cleanup into the promise itself — a floating .finally() on a
+    // separate chain creates an unhandled rejection that kills Node v25.
+    const promise = download(s3Key, local).finally(() => inflight.delete(s3Key));
     inflight.set(s3Key, promise);
-    promise.finally(() => inflight.delete(s3Key));
   }
 
   await inflight.get(s3Key);

@@ -170,6 +170,7 @@ export class GenomeHubStack extends cdk.Stack {
         S3_BUCKET:        bucket.bucketName,
         GOOGLE_CLIENT_ID: '631098657995-b6gm7u609caa7si5h8ep3tj1cf8m9in2.apps.googleusercontent.com',
         NEEDLETAIL_URL:   'http://localhost:8002',
+        DEMO_FILE_IDS:    'ddb0b0e6-9246-4704-8b29-0fd087dd4d92',
       },
       secrets: {
         DATABASE_URL: ecs.Secret.fromSecretsManager(db.secret!),

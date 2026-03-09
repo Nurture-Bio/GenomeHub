@@ -63,6 +63,8 @@ export interface QueryState {
   /** Committed snapshot — only advances when the query fully completes (done: true).
    *  River reads from this so its percentage resolves at the same instant as Ready. */
   settledSnapshot: QuerySnapshot;
+  /** The filter+sort key that produced settledSnapshot. Used to derive isPending. */
+  settledKey: string;
 }
 
 export type QueryAction =
@@ -73,14 +75,14 @@ export type QueryAction =
   | { type: 'CONVERSION_FAILED' }
   | { type: 'FATAL_ERROR'; payload: string }
   | { type: 'START_QUERY' }
-  | { type: 'QUERY_DATA'; payload: Partial<QuerySnapshot> & { done?: boolean } }
+  | { type: 'QUERY_DATA'; payload: Partial<QuerySnapshot> & { done?: boolean; settledKey?: string } }
   | { type: 'QUERY_ERROR'; payload: Error | string };
 
 function queryReducer(state: QueryState, signal: QueryAction): QueryState {
   switch (signal.type) {
     case 'START_POLL':
       return state.phase === 'idle'
-        ? { activeStep: 0, phase: 'loading', error: null, queryError: null, isQuerying: false, snapshot: state.snapshot, settledSnapshot: state.settledSnapshot }
+        ? { activeStep: 0, phase: 'loading', error: null, queryError: null, isQuerying: false, snapshot: state.snapshot, settledSnapshot: state.settledSnapshot, settledKey: state.settledKey }
         : state;
 
     case 'PREFLIGHT_DATA_READY':
@@ -90,10 +92,10 @@ function queryReducer(state: QueryState, signal: QueryAction): QueryState {
       return { ...state, activeStep: 4, phase: 'ready', error: null };
 
     case 'UNAVAILABLE':
-      return { activeStep: 0, phase: 'unavailable', error: null, queryError: null, isQuerying: false, snapshot: state.snapshot, settledSnapshot: state.settledSnapshot };
+      return { activeStep: 0, phase: 'unavailable', error: null, queryError: null, isQuerying: false, snapshot: state.snapshot, settledSnapshot: state.settledSnapshot, settledKey: state.settledKey };
 
     case 'CONVERSION_FAILED':
-      return { activeStep: 0, phase: 'failed', error: null, queryError: null, isQuerying: false, snapshot: state.snapshot, settledSnapshot: state.settledSnapshot };
+      return { activeStep: 0, phase: 'failed', error: null, queryError: null, isQuerying: false, snapshot: state.snapshot, settledSnapshot: state.settledSnapshot, settledKey: state.settledKey };
 
     case 'FATAL_ERROR':
       if (state.phase === 'ready_background_work' || state.phase === 'ready') return state;
@@ -109,14 +111,15 @@ function queryReducer(state: QueryState, signal: QueryAction): QueryState {
       };
 
     case 'QUERY_DATA': {
-      const { done, ...snapshotData } = signal.payload;
+      const { done, settledKey, ...snapshotData } = signal.payload;
       const newSnapshot = { ...state.snapshot, ...snapshotData };
       return {
         ...state,
         snapshot: newSnapshot,
-        // settledSnapshot advances when: query completes (done), or no active query (hydration/profile)
+        // settledSnapshot + settledKey advance atomically when query completes (done: true),
+        // or on hydration/profile when no active query is running.
         ...(done
-          ? { isQuerying: false, queryError: null, settledSnapshot: newSnapshot }
+          ? { isQuerying: false, queryError: null, settledSnapshot: newSnapshot, settledKey: settledKey ?? state.settledKey }
           : !state.isQuerying
             ? { settledSnapshot: newSnapshot }
             : {}),
@@ -408,9 +411,14 @@ export function useFileQuery(
     stats: {},
     histograms: {},
   };
+  // ── Stable identity keys for the Basin ──
+  const filterKey = JSON.stringify(activeFilterSpecs ?? []);
+  const sortKey = JSON.stringify(sortSpecs ?? []);
+  const currentKey = filterKey + sortKey;
+
   const initialState: QueryState = cachedEntry?.parquetUrl
-    ? { activeStep: 4, phase: 'ready_background_work', error: null, queryError: null, isQuerying: false, snapshot: initialSnapshot, settledSnapshot: initialSnapshot }
-    : { activeStep: 0, phase: 'idle', error: null, queryError: null, isQuerying: false, snapshot: initialSnapshot, settledSnapshot: initialSnapshot };
+    ? { activeStep: 4, phase: 'ready_background_work', error: null, queryError: null, isQuerying: false, snapshot: initialSnapshot, settledSnapshot: initialSnapshot, settledKey: currentKey }
+    : { activeStep: 0, phase: 'idle', error: null, queryError: null, isQuerying: false, snapshot: initialSnapshot, settledSnapshot: initialSnapshot, settledKey: currentKey };
   const [state, dispatch] = useReducer(queryReducer, initialState);
 
   // Data state
@@ -419,10 +427,6 @@ export function useFileQuery(
   const [cacheGen, setCacheGen] = useState(0);
   const fetchingCountRef = useRef(0);
   const [isFetchingRange, setIsFetchingRange] = useState(false);
-
-  // ── Stable identity keys for the Basin ──
-  const filterKey = JSON.stringify(activeFilterSpecs ?? []);
-  const sortKey = JSON.stringify(sortSpecs ?? []);
 
   // Arrow table cache: window offset → raw Arrow Table (zero-copy from IPC)
   const arrowCache = useRef<Map<number, ArrowTable>>(new Map());
@@ -634,51 +638,17 @@ export function useFileQuery(
     const sort = sortSpecs ?? [];
     const currentFilterKey = JSON.stringify(filters);
 
-    // ── Preflight: fire immediately (0ms) — god query only ──────────────
-    // Skip when drawer is closed — the god query is the expensive full scan.
-    preflightRef.current?.abort.abort();
-    if (!enablePreflight) {
-      preflightRef.current = null;
-    } else {
-    const pfAbort = new AbortController();
-    preflightRef.current = { abort: pfAbort, filterKey: currentFilterKey };
+    // ── Debounced query: 200ms ─────────────────────────────────────────
+    // Don't abort the in-flight query immediately — let it run during the
+    // debounce window. If it finishes before the timer fires, the user gets
+    // results faster. Only abort when we're actually ready to fire the new one.
 
-    apiFetch(`/api/files/${fileId}/query`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filters, sort, offset: 0, limit: 0, mode: 'preflight' }),
-      signal: pfAbort.signal,
-    })
-      .then((res) => {
-        if (!res.ok || !res.body) return null;
-        return streamArrowFrames(res.body);
-      })
-      .then(async (frames) => {
-        if (!frames) return;
-        for await (const { table } of frames) {
-          if (!table) continue;
-          // Preflight returns exactly 1 frame: the god query
-          const god = parseGodTable(table);
-          // Only promote if filterKey hasn't diverged
-          if (preflightRef.current?.filterKey === currentFilterKey) {
-            dispatch({ type: 'QUERY_DATA', payload: {
-              count: god.filteredCount,
-              stats: Object.keys(god.constrainedStats).length > 0 ? god.constrainedStats : {},
-              ...(filters.length === 0 ? { total: god.filteredCount } : {}),
-            } });
-          }
-        }
-      })
-      .catch(() => {}); // Aborted or failed — silently ignore
-    }
-
-    // ── Full query: 80ms debounce ───────────────────────────────────────
     const timer = setTimeout(() => {
-      // Cancel preflight — full query will provide everything
+      // NOW abort stale queries — the user has stopped moving for 200ms
       preflightRef.current?.abort.abort();
       preflightRef.current = null;
-
       abortRef.current?.abort();
+
       const controller = new AbortController();
       abortRef.current = controller;
 
@@ -691,9 +661,45 @@ export function useFileQuery(
       fallbackRows.current.clear();
       setCacheGen((g) => g + 1);
 
+      // ── Preflight: god query only (count + stats, no rows/histograms) ──
+      if (enablePreflight) {
+        const pfAbort = new AbortController();
+        preflightRef.current = { abort: pfAbort, filterKey: currentFilterKey };
+
+        apiFetch(`/api/files/${fileId}/query`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filters, sort, offset: 0, limit: 0, mode: 'preflight' }),
+          signal: pfAbort.signal,
+        })
+          .then((res) => {
+            if (!res.ok || !res.body) return null;
+            return streamArrowFrames(res.body);
+          })
+          .then(async (frames) => {
+            if (!frames) return;
+            for await (const { table } of frames) {
+              if (!table) continue;
+              const god = parseGodTable(table);
+              if (preflightRef.current?.filterKey === currentFilterKey) {
+                dispatch({ type: 'QUERY_DATA', payload: {
+                  count: god.filteredCount,
+                  stats: Object.keys(god.constrainedStats).length > 0 ? god.constrainedStats : {},
+                  ...(filters.length === 0 ? { total: god.filteredCount } : {}),
+                } });
+              }
+            }
+          })
+          .catch(() => {});
+      }
+
+      // ── Full query ────────────────────────────────────────────────────
       dispatch({ type: 'START_QUERY' });
       serverQuery(fileId, filters, sort, 0, WINDOW_SIZE, controller.signal, {
         onGod: ({ filteredCount: fc }) => {
+          // Cancel preflight — full query supersedes
+          preflightRef.current?.abort.abort();
+          preflightRef.current = null;
           dispatch({ type: 'QUERY_DATA', payload: { count: fc, ...(filters.length === 0 ? { total: fc } : {}) } });
         },
         onViewport: (table) => {
@@ -707,6 +713,7 @@ export function useFileQuery(
             stats: Object.keys(result.constrainedStats).length > 0 ? result.constrainedStats : {},
             histograms: Object.keys(result.dynamicHistograms).length > 0 ? result.dynamicHistograms : {},
             done: true,
+            settledKey: currentKey,
           } });
         })
         .catch((err) => {
@@ -714,12 +721,15 @@ export function useFileQuery(
           console.error('[useFileQuery] filter query error:', err);
           dispatch({ type: 'QUERY_ERROR', payload: err });
         });
-    }, 80);
+    }, 200);
 
     return () => {
       clearTimeout(timer);
+      // New input arrived — kill everything from the previous cycle.
+      // The 200ms debounce restarts; no stale queries survive.
       preflightRef.current?.abort.abort();
       preflightRef.current = null;
+      abortRef.current?.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileId, state.phase, filterKey, sortKey, enablePreflight]);
@@ -732,8 +742,13 @@ export function useFileQuery(
     setCacheGen((g) => g + 1);
   }, []);
 
+  // isPending: true from the instant filters change until the matching query settles.
+  // Three states covered: debouncing (timer running), querying (in-flight), aborted (stale stats).
+  // All in the reducer — one atomic state transition on QUERY_DATA { done, settledKey }.
+  const isPending = state.isQuerying || currentKey !== state.settledKey;
+
   return {
-    lifecycle: { phase: state.phase, isQuerying: state.isQuerying, error: state.error, queryError: state.queryError },
+    lifecycle: { phase: state.phase, isQuerying: state.isQuerying, isPending, error: state.error, queryError: state.queryError },
     snapshot: state.snapshot,
     settledSnapshot: state.settledSnapshot,
     store: { columns, baseProfile, getCell, hasRow, fetchRange, clearCache, isFetchingRange, cacheGen },

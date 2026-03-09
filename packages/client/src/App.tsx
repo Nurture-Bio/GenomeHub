@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
-import { Route, NavLink, Navigate, useParams } from 'react-router-dom';
+import { Route, NavLink, Navigate, useParams, useLocation } from 'react-router-dom';
+import DemoPage from './pages/DemoPage';
 import AnimatedRoutes from './components/PageTransition';
 import * as Dialog from '@radix-ui/react-dialog';
 import { cx } from 'class-variance-authority';
@@ -259,6 +260,16 @@ function LegacyCollectionRedirect() {
 export default function App() {
   const { user, loading, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const location = useLocation();
+
+  // Demo mode — bypass auth, no sidebar, standalone viewer
+  if (location.pathname.startsWith('/demo/')) {
+    return (
+      <AnimatedRoutes>
+        <Route path="/demo/:fileId" element={<DemoPage />} />
+      </AnimatedRoutes>
+    );
+  }
 
   if (loading) {
     return (
