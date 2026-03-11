@@ -28,9 +28,6 @@ import EnginePanel from './components/EnginePanel';
 
 const DevRangePage = lazy(() => import('./pages/DevRangePage'));
 
-// ── Hub icon ─────────────────────────────────────────────
-import { AppLogo } from './components/AppLogo';
-
 // ── Navigation icons ──────────────────────────────────────
 
 const icons: Record<string, ReactNode> = {
@@ -155,11 +152,8 @@ const NAV_ITEMS: { to: string; label: string; icon: string; end?: boolean }[] = 
 function SidebarBrand() {
   return (
     <div className="flex items-center gap-2.5 px-4 py-4 border-b border-white/10 shrink-0">
-      <span className="logo-glow">
-        <AppLogo size={28} />
-      </span>
       <Heading as="span" level="subheading" className="font-display font-bold tracking-tight">
-        GenomeHub
+        Tellus
       </Heading>
     </div>
   );
@@ -307,15 +301,12 @@ export default function App() {
         className="flex md:hidden items-center gap-2 px-3 py-2 border-b border-line shrink-0"
         style={{ background: 'var(--color-void)' }}
       >
-        <span className="logo-glow">
-          <AppLogo size={28} />
-        </span>
         <Heading
           as="span"
           level="subheading"
           className="font-display font-bold tracking-tight flex-1"
         >
-          GenomeHub
+          Tellus
         </Heading>
         <button
           onClick={() => setMobileMenuOpen(true)}
