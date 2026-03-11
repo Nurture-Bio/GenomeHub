@@ -1,6 +1,20 @@
 FROM node:22-slim AS base
 WORKDIR /app
 
+# ── Build duckhts DuckDB extension ───────────────────────
+FROM base AS build-duckhts
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential cmake python3 python3-venv git ca-certificates \
+    zlib1g-dev libbz2-dev liblzma-dev libcurl4-openssl-dev libssl-dev \
+    autoconf autoheader2man && rm -rf /var/lib/apt/lists/*
+ARG DUCKHTS_COMMIT=6bedfa79fcf67473f58498c5f9ff8bd40c7b11e7
+RUN git clone https://github.com/RGenomicsETL/duckhts.git /duckhts \
+    && cd /duckhts \
+    && git checkout ${DUCKHTS_COMMIT} \
+    && git submodule update --init --recursive \
+    && make configure \
+    && make release
+
 # ── Install all deps ──────────────────────────────────────
 FROM base AS deps
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
@@ -39,6 +53,7 @@ COPY --from=build-server /app/packages/server/dist  ./packages/server/dist
 COPY --from=build-server /app/packages/server/src/migrations  ./packages/server/migrations
 COPY --from=build-client /app/dist/client           ./dist/client
 COPY --from=build-shared /app/packages/shared/dist  ./packages/shared/dist
+COPY --from=build-duckhts /duckhts/build/release/duckhts.duckdb_extension ./packages/server/extensions/duckhts.duckdb_extension
 COPY package*.json ./
 COPY packages/shared/package*.json ./packages/shared/
 COPY packages/server/package*.json ./packages/server/

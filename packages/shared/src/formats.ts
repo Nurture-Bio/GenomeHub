@@ -21,7 +21,7 @@ export function detectFormat(filename: string): string {
  * Formats that can be converted to Parquet sidecars by the server.
  * DuckDB reads these via read_json_auto or read_csv_auto.
  */
-const CONVERTIBLE_FORMATS = new Set(['json', 'csv', 'tsv', 'bed', 'vcf', 'gff', 'gtf']);
+const CONVERTIBLE_FORMATS = new Set(['json', 'csv', 'tsv', 'bed', 'vcf', 'gff', 'gtf', 'bam', 'sam', 'cram']);
 
 /**
  * True when the file's format can be server-converted to a Parquet sidecar

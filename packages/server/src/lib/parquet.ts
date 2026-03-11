@@ -107,6 +107,10 @@ function duckDbReader(src: string, format: string): string {
     case 'gff':
     case 'gtf':
       return `read_csv_auto('${safeSrc}', delim='\\t', comment='#', header=false)`;
+    case 'bam':
+    case 'sam':
+    case 'cram':
+      return `read_bam('${safeSrc}')`;
     default:
       return `read_csv_auto('${safeSrc}')`;
   }

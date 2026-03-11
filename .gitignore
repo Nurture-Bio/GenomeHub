@@ -36,3 +36,6 @@ genome-hub-fixed/
 
 # Storybook
 storybook-static/
+
+# DuckDB extensions (built from source)
+*.duckdb_extension
