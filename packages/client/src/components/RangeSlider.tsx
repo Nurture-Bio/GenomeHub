@@ -10,6 +10,7 @@
 
 import type { CSSProperties } from 'react';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
+import * as ContextMenu from '@radix-ui/react-context-menu';
 import { ticker } from '../lib/AnimationTicker';
 import { histogramProjection } from '../lib/HistogramProjection';
 import { SpringAnimator } from '../lib/SpringAnimator';
@@ -300,6 +301,9 @@ const RangeSlider = React.memo(function RangeSlider({
   const [sm, dispatch] = useReducer(sliderReducer, SLIDER_INIT);
   const { phase, seal: sealed } = sm;
   const [isPanning, setIsPanning] = useState(false);
+  const [logY, setLogY] = useState(false);
+  const logYRef = useRef(false);
+  logYRef.current = logY;
 
   // ── Refs ──────────────────────────────────────────────────────────────────
   // Refs mirror state-machine derivations for closure access in syncTrack
@@ -398,10 +402,15 @@ const RangeSlider = React.memo(function RangeSlider({
     const pend = pendingRef.current;
 
     // Static layer — full reference shape, unclipped
+    // When log is active, transform counts to match the spring targets
+    const useLog = logYRef.current;
+    const logMax = useLog ? Math.log10(staticMax + 1) : 1;
     ctx.globalAlpha = 0.12;
     ctx.fillStyle = CANVAS_CYAN;
     for (let i = 0; i < n; i++) {
-      const barH = (bins[i] / staticMax) * h;
+      const barH = useLog
+        ? (Math.log10(bins[i] + 1) / logMax) * h
+        : (bins[i] / staticMax) * h;
       ctx.fillRect(i * binW, h - barH, binW, barH);
     }
 
@@ -497,6 +506,13 @@ const RangeSlider = React.memo(function RangeSlider({
     if (staticHistogram) staticBinsRef.current = staticHistogram;
   }, [staticHistogram]);
 
+  // ── Log toggle — re-target springs so bars bounce to new positions ────────
+  useLayoutEffect(() => {
+    const bins = dynamicHistogram ?? projectedHistogram ?? staticHistogram;
+    if (bins) syncHistogram(bins);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logY]);
+
   // ── Visual layer — three dumb writers ─────────────────────────────────────
 
   /** syncTrack — owns --lo, --hi, --oob-lo, --oob-hi, thumb colors.
@@ -558,10 +574,21 @@ const RangeSlider = React.memo(function RangeSlider({
     [],
   );
 
-  /** syncHistogram — drives spring-animated bars via canvas paint callback. */
+  /** syncHistogram — drives spring-animated bars via canvas paint callback.
+   *  When logY is active, targets are log-transformed so the springs animate
+   *  to the log positions and bounce on toggle. */
   const syncHistogram = useCallback(
     (bins: number[]) => {
-      animatorRef.current?.setTargets(bins);
+      if (logYRef.current) {
+        let mx = 0;
+        for (let i = 0; i < bins.length; i++) if (bins[i] > mx) mx = bins[i];
+        if (mx === 0) mx = 1;
+        const logMax = Math.log10(mx + 1);
+        const logBins = bins.map((v) => (Math.log10(v + 1) / logMax) * mx);
+        animatorRef.current?.setTargets(logBins);
+      } else {
+        animatorRef.current?.setTargets(bins);
+      }
     },
     [],
   );
@@ -777,6 +804,8 @@ const RangeSlider = React.memo(function RangeSlider({
   const oob = axis.oob(low, high);
 
   return (
+    <ContextMenu.Root>
+    <ContextMenu.Trigger asChild>
     <div
       ref={trackRef}
       data-column={name}
@@ -963,6 +992,32 @@ const RangeSlider = React.memo(function RangeSlider({
         />
       </div>
     </div>
+    </ContextMenu.Trigger>
+    <ContextMenu.Portal>
+      <ContextMenu.Content
+        className="min-w-[140px] rounded-md border py-1"
+        style={{
+          background: 'oklch(0.15 0.01 240)',
+          borderColor: 'oklch(0.3 0.01 240)',
+          boxShadow: '0 8px 24px oklch(0 0 0 / 0.5)',
+          zIndex: 50,
+        }}
+      >
+        <ContextMenu.CheckboxItem
+          className="flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none"
+          style={{ color: 'var(--color-fg-2)' }}
+          checked={logY}
+          onCheckedChange={(v) => { setLogY(!!v); requestAnimationFrame(() => paintCanvas()); }}
+          onSelect={(e) => e.preventDefault()}
+        >
+          <span className="inline-flex w-3 justify-center" style={{ color: 'var(--color-cyan)' }}>
+            {logY ? '\u2713' : ''}
+          </span>
+          Log scale (Y)
+        </ContextMenu.CheckboxItem>
+      </ContextMenu.Content>
+    </ContextMenu.Portal>
+    </ContextMenu.Root>
   );
 });
 

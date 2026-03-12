@@ -107,6 +107,12 @@ function duckDbReader(src: string, format: string): string {
     case 'gff':
     case 'gtf':
       return `read_csv_auto('${safeSrc}', delim='\\t', comment='#', header=false)`;
+    // BAM/SAM/CRAM are domain-specific alignment formats (via DuckHTS read_bam).
+    // BED/VCF/GFF/GTF are domain-specific interval/variant formats.
+    // These all convert to parquet, but the generic QueryWorkbench table is not
+    // the right view — they need purpose-built genomic views (pileup, coverage,
+    // variant browser, etc.) that understand chromosomes, positions, and strands.
+    // TODO: design domain-aware ingestion + visualization for these formats.
     case 'bam':
     case 'sam':
     case 'cram':
@@ -114,6 +120,35 @@ function duckDbReader(src: string, format: string): string {
     default:
       return `read_csv_auto('${safeSrc}')`;
   }
+}
+
+/**
+ * BAM/SAM/CRAM SELECT projection — explodes the FLAG bitfield into 12 named
+ * booleans per the SAM spec, keeps useful alignment columns, drops raw noise
+ * (QUAL strings, RNEXT *, PNEXT/TLEN zeros, full SEQ).
+ */
+function bamSelectExpr(): string {
+  return [
+    'QNAME',
+    'RNAME',
+    'POS',
+    'MAPQ',
+    'CIGAR',
+    'LENGTH(SEQ) AS seq_length',
+    // FLAG → 12 named booleans (SAM spec §1.4)
+    '(FLAG & 1)    != 0 AS is_paired',
+    '(FLAG & 2)    != 0 AS is_proper_pair',
+    '(FLAG & 4)    != 0 AS is_unmapped',
+    '(FLAG & 8)    != 0 AS is_mate_unmapped',
+    '(FLAG & 16)   != 0 AS is_reverse',
+    '(FLAG & 32)   != 0 AS is_mate_reverse',
+    '(FLAG & 64)   != 0 AS is_read1',
+    '(FLAG & 128)  != 0 AS is_read2',
+    '(FLAG & 256)  != 0 AS is_secondary',
+    '(FLAG & 512)  != 0 AS is_qc_fail',
+    '(FLAG & 1024) != 0 AS is_duplicate',
+    '(FLAG & 2048) != 0 AS is_supplementary',
+  ].join(', ');
 }
 
 async function runDuckDbS3Conversion(ctx: ConversionContext): Promise<void> {
@@ -128,8 +163,11 @@ async function runDuckDbS3Conversion(ctx: ConversionContext): Promise<void> {
     if (isLocal) await ensureDir(ctx.parquetS3Key);
 
     const reader = duckDbReader(src, ctx.format);
+    const selectExpr = ctx.format === 'bam' || ctx.format === 'sam' || ctx.format === 'cram'
+      ? bamSelectExpr()
+      : '*';
     const sql =
-      `COPY (SELECT * FROM ${reader}) ` +
+      `COPY (SELECT ${selectExpr} FROM ${reader}) ` +
       `TO '${safeDst}' (FORMAT PARQUET, ROW_GROUP_SIZE 122880, COMPRESSION 'ZSTD')`;
 
     await conn.run(sql);

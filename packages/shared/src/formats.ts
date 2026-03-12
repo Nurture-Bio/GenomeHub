@@ -30,3 +30,13 @@ const CONVERTIBLE_FORMATS = new Set(['json', 'csv', 'tsv', 'bed', 'vcf', 'gff', 
 export function isConvertible(filename: string): boolean {
   return CONVERTIBLE_FORMATS.has(detectFormat(filename));
 }
+
+/**
+ * Formats that represent genomic intervals / alignments —
+ * these get a pileup view (per-chromosome histogram) in addition to the table.
+ */
+const PILEUP_FORMATS = new Set(['bam', 'sam', 'cram', 'bed', 'vcf', 'gff', 'gtf']);
+
+export function isPileupFormat(filename: string): boolean {
+  return PILEUP_FORMATS.has(detectFormat(filename));
+}
