@@ -6,7 +6,7 @@ FROM base AS build-duckhts
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential cmake python3 python3-venv git ca-certificates \
     zlib1g-dev libbz2-dev liblzma-dev libcurl4-openssl-dev libssl-dev \
-    autoconf autoheader2man && rm -rf /var/lib/apt/lists/*
+    autoconf && rm -rf /var/lib/apt/lists/*
 ARG DUCKHTS_COMMIT=6bedfa79fcf67473f58498c5f9ff8bd40c7b11e7
 RUN git clone https://github.com/RGenomicsETL/duckhts.git /duckhts \
     && cd /duckhts \
