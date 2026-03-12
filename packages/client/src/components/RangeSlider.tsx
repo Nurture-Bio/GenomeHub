@@ -166,17 +166,16 @@ type Axis = ReturnType<typeof createAxis>;
 
 function createAxis(min: number, max: number, conMin: number | undefined, conMax: number | undefined) {
   const range = max - min || 1;
-  const epsilon = range * 0.001;
   const hasCon = conMin !== undefined && conMax !== undefined;
 
   return {
-    min, max, range, epsilon, conMin, conMax, hasCon,
+    min, max, range, conMin, conMax, hasCon,
 
     /** Continuous OOB — R \ D ≠ ∅? */
     oob(lo: number, hi: number) {
       return {
-        lo: hasCon && lo < conMin! - epsilon,
-        hi: hasCon && hi > conMax! + epsilon,
+        lo: hasCon && lo < conMin!,
+        hi: hasCon && hi > conMax!,
       };
     },
 
@@ -198,8 +197,8 @@ function createAxis(min: number, max: number, conMin: number | undefined, conMax
 
     /** Seal at drag start — one-time void-at-start predicate + start position */
     seal(lo: number, hi: number): SealedAxis {
-      const hadVoidLo = hasCon && lo < conMin! - epsilon;
-      const hadVoidHi = hasCon && hi > conMax! + epsilon;
+      const hadVoidLo = hasCon && lo < conMin!;
+      const hadVoidHi = hasCon && hi > conMax!;
       return {
         lo, hi, hadVoidLo, hadVoidHi,
         projBounds(curLo: number, curHi: number, ax: Axis) {
@@ -341,6 +340,7 @@ const RangeSlider = React.memo(function RangeSlider({
 
   const isFloat = !Number.isInteger(min) || !Number.isInteger(max);
   const step = isFloat ? ('any' as const) : 1;
+  const snap = isFloat ? (v: number) => v : (v: number) => Math.round(v);
 
   // Debounced drag notification — imperative DOM at 60fps, React only on pause.
   // Resets on every drag event; fires 100ms after the user stops moving.
@@ -689,8 +689,8 @@ const RangeSlider = React.memo(function RangeSlider({
       coalescedFrameRef.current = null;
     }
     flushDragNotify();
-    const actualLo = lowInputRef.current ? Number(lowInputRef.current.value) : lowRef.current;
-    const actualHi = highInputRef.current ? Number(highInputRef.current.value) : highRef.current;
+    const actualLo = snap(lowInputRef.current ? Number(lowInputRef.current.value) : lowRef.current);
+    const actualHi = snap(highInputRef.current ? Number(highInputRef.current.value) : highRef.current);
     lowRef.current = actualLo;
     highRef.current = actualHi;
     syncTrack(actualLo, actualHi, axisRef.current);
@@ -745,8 +745,8 @@ const RangeSlider = React.memo(function RangeSlider({
         const curAx = axisRef.current;
         const deltaVal = (deltaPx / s.trackW) * curAx.range;
         const span = s.hi - s.lo;
-        let newLo = s.lo + deltaVal;
-        let newHi = s.hi + deltaVal;
+        let newLo = snap(s.lo + deltaVal);
+        let newHi = snap(s.hi + deltaVal);
         if (newLo < curAx.min) { newLo = curAx.min; newHi = curAx.min + span; }
         else if (newHi > curAx.max) { newHi = curAx.max; newLo = curAx.max - span; }
         lowRef.current = newLo;
