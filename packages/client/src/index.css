@@ -407,7 +407,7 @@
     width: 14px;
     height: 14px;
     border-radius: 9999px;
-    background: var(--range-thumb-color, var(--color-cyan));
+    background: var(--range-thumb-color, var(--color-fg-2));
     border: 2px solid var(--color-void);
     /* Ghost hitbox — 8px transparent border expands hit area to 30px */
     box-shadow: 0 0 0 8px transparent;
@@ -420,14 +420,14 @@
   }
   .range-thumb::-webkit-slider-thumb:hover {
     transform: scale(1.2);
-    box-shadow: 0 0 0 3px var(--range-thumb-glow, oklch(0.75 0.18 195 / 0.25));
+    box-shadow: 0 0 0 3px var(--range-thumb-glow, oklch(0.65 0.015 250 / 0.25));
     will-change: transform;
   }
   .range-thumb::-moz-range-thumb {
     width: 14px;
     height: 14px;
     border-radius: 9999px;
-    background: var(--range-thumb-color, var(--color-cyan));
+    background: var(--range-thumb-color, var(--color-fg-2));
     border: 2px solid var(--color-void);
     box-shadow: 0 0 0 8px transparent;
     cursor: pointer;
@@ -439,7 +439,7 @@
   }
   .range-thumb::-moz-range-thumb:hover {
     transform: scale(1.2);
-    box-shadow: 0 0 0 3px var(--range-thumb-glow, oklch(0.75 0.18 195 / 0.25));
+    box-shadow: 0 0 0 3px var(--range-thumb-glow, oklch(0.65 0.015 250 / 0.25));
     will-change: transform;
   }
   .range-thumb::-webkit-slider-runnable-track {

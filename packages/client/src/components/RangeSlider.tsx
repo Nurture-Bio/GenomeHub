@@ -256,8 +256,6 @@ const AMBER_COLOR = 'var(--color-amber)';
 const AMBER_GLOW = 'oklch(0.750 0.185 60 / 0.28)';
 const CYAN_COLOR = 'var(--color-cyan)';
 const CYAN_GLOW = 'oklch(0.750 0.180 195 / 0.25)';
-const GHOST_COLOR = 'var(--color-fg-3)';
-const GHOST_GLOW = 'oklch(0.750 0.000 0 / 0.10)';
 
 // ── RangeSlider Props ─────────────────────────────────────────────────────────
 
@@ -494,7 +492,6 @@ const RangeSlider = React.memo(function RangeSlider({
   // Ref mirror so drag closures always read the latest axis
   const axisRef = useRef(axis);
   axisRef.current = axis;
-  const renderOob = axis.oob(low, high);
   const projectedHistogram = useMemo(() => {
     if (!staticHistogram || full) return undefined;
     const pb = sealed?.projBounds(low, high, axis);
@@ -515,12 +512,7 @@ const RangeSlider = React.memo(function RangeSlider({
 
   // ── Visual layer — three dumb writers ─────────────────────────────────────
 
-  /** syncTrack — owns --lo, --hi, --oob-lo, --oob-hi, thumb colors.
-   *  Three visual states per side:
-   *    amber  = hadVoid ∧ oob  (confirmed void — started OOB, still OOB)
-   *    ghost  = ¬hadVoid ∧ oob (fog of war — crossed ∂D mid-drag)
-   *    normal = ¬oob           (in-band)
-   */
+  /** syncTrack — owns --lo, --hi, thumb values, input sync. */
   const syncTrack = useCallback(
     (loVal: number, hiVal: number, ax: Axis) => {
       const el = trackRef.current;
@@ -554,22 +546,8 @@ const RangeSlider = React.memo(function RangeSlider({
       if (loIn && Math.abs(Number(loIn.value) - loVal) > 1e-7) loIn.value = String(loVal);
       if (hiIn && Math.abs(Number(hiIn.value) - hiVal) > 1e-7) hiIn.value = String(hiVal);
       const oob = ax.oob(loVal, hiVal);
-      const ghostLo = oob.lo && actor && seal != null && !seal.hadVoidLo;
-      const ghostHi = oob.hi && actor && seal != null && !seal.hadVoidHi;
-      el.style.setProperty('--oob-lo', oob.lo && !ghostLo ? '0.5' : '0');
-      el.style.setProperty('--oob-hi', oob.hi && !ghostHi ? '0.5' : '0');
-      if (loIn) {
-        const [c, g] = ghostLo ? [GHOST_COLOR, GHOST_GLOW] : oob.lo ? [AMBER_COLOR, AMBER_GLOW] : [CYAN_COLOR, CYAN_GLOW];
-        loIn.style.setProperty('--range-thumb-color', c);
-        loIn.style.setProperty('--range-thumb-glow', g);
-        loIn.style.opacity = String(oob.lo ? (ghostLo ? 0.5 : 0.9) : 1);
-      }
-      if (hiIn) {
-        const [c, g] = ghostHi ? [GHOST_COLOR, GHOST_GLOW] : oob.hi ? [AMBER_COLOR, AMBER_GLOW] : [CYAN_COLOR, CYAN_GLOW];
-        hiIn.style.setProperty('--range-thumb-color', c);
-        hiIn.style.setProperty('--range-thumb-glow', g);
-        hiIn.style.opacity = String(oob.hi ? (ghostHi ? 0.5 : 0.9) : 1);
-      }
+      el.style.setProperty('--oob-lo', oob.lo ? '0.5' : '0');
+      el.style.setProperty('--oob-hi', oob.hi ? '0.5' : '0');
     },
     [],
   );
@@ -801,7 +779,6 @@ const RangeSlider = React.memo(function RangeSlider({
   // ── Render ────────────────────────────────────────────────────────────────
 
   const PLOT_H = 56;
-  const oob = axis.oob(low, high);
 
   return (
     <ContextMenu.Root>
@@ -960,13 +937,7 @@ const RangeSlider = React.memo(function RangeSlider({
           min={min}
           max={high}
           isFloat={isFloat}
-          color={
-            renderOob.lo
-              ? sealed && !sealed.hadVoidLo
-                ? 'var(--color-fg-3)'   // ghost — fog of war
-                : 'var(--color-amber)'  // confirmed void or settled OOB
-              : full ? 'var(--color-fg-3)' : 'var(--color-fg-2)'
-          }
+          color={full ? 'var(--color-fg-3)' : 'var(--color-fg-2)'}
           onCommit={(v) => {
             onDrag(name, v, high);
             onCommit(name, v, high);
@@ -977,13 +948,7 @@ const RangeSlider = React.memo(function RangeSlider({
           min={low}
           max={max}
           isFloat={isFloat}
-          color={
-            renderOob.hi
-              ? sealed && !sealed.hadVoidHi
-                ? 'var(--color-fg-3)'   // ghost — fog of war
-                : 'var(--color-amber)'  // confirmed void or settled OOB
-              : full ? 'var(--color-fg-3)' : 'var(--color-fg-2)'
-          }
+          color={full ? 'var(--color-fg-3)' : 'var(--color-fg-2)'}
           onCommit={(v) => {
             onDrag(name, low, v);
             onCommit(name, low, v);

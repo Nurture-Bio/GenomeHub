@@ -123,6 +123,83 @@ function compileWhere(
   return { clause: `WHERE ${conditions.join(' AND ')}`, params };
 }
 
+/**
+ * Build the LOO (Leave-One-Out) god query using a CTE bitmask pattern.
+ *
+ * Phase 1 — CTE: evaluate each filter predicate ONCE as a boolean mask column.
+ *   Parameters are bound here and only here.
+ *
+ * Phase 2 — SELECT: each column's MIN/MAX uses a FILTER that ANDs every mask
+ *   EXCEPT its own.  COUNT(*) uses ALL masks.
+ *
+ * Result: single table scan, each predicate evaluated once, bitmask ANDs in
+ * DuckDB's vectorized engine.
+ */
+function buildLooGodQuery(
+  readParquet: string,
+  filters: FilterSpec[],
+  colMap: Map<string, FlatColumn>,
+  numericCols: FlatColumn[],
+): { sql: string; params: DuckDBValue[] } {
+  const params: DuckDBValue[] = [];
+  let idx = 0;
+
+  // Phase 1: CTE masks — one boolean per active filter
+  const maskDefs: { alias: string; column: string; expr: string }[] = [];
+  for (const f of filters) {
+    const col = colMap.get(f.column)!;
+    const sqlExpr = col.sqlExpr;
+    let predicate: string;
+
+    switch (f.op.type) {
+      case 'between':
+        predicate = `${sqlExpr} BETWEEN $${++idx} AND $${++idx}`;
+        params.push(f.op.low, f.op.high);
+        break;
+      case 'in':
+        predicate = `${sqlExpr}::VARCHAR IN (${f.op.values.map(() => `$${++idx}`).join(', ')})`;
+        params.push(...f.op.values);
+        break;
+      case 'ilike':
+        predicate = `${sqlExpr}::VARCHAR ILIKE $${++idx}`;
+        params.push(`%${f.op.pattern}%`);
+        break;
+      default:
+        continue;
+    }
+
+    const maskAlias = safeName('f_' + col.name);
+    maskDefs.push({ alias: maskAlias, column: f.column, expr: `(${predicate}) AS ${maskAlias}` });
+  }
+
+  // Phase 2: LOO aggregates — each column excludes its own mask
+  const allMasks = maskDefs.map((m) => m.alias);
+  const allMasksClause = allMasks.length > 0 ? ` FILTER (WHERE ${allMasks.join(' AND ')})` : '';
+
+  const aggregates: string[] = [
+    `(COUNT(*)${allMasksClause})::INTEGER AS total_rows`,
+  ];
+
+  for (const col of numericCols) {
+    const otherMasks = maskDefs
+      .filter((m) => m.column !== col.name)
+      .map((m) => m.alias);
+    const filterClause = otherMasks.length > 0
+      ? ` FILTER (WHERE ${otherMasks.join(' AND ')})`
+      : '';
+    aggregates.push(`(MIN(${col.sqlExpr})${filterClause})::DOUBLE AS ${safeName(col.name + '_min')}`);
+    aggregates.push(`(MAX(${col.sqlExpr})${filterClause})::DOUBLE AS ${safeName(col.name + '_max')}`);
+  }
+
+  // Assembly
+  const sql = maskDefs.length > 0
+    ? `WITH filtered AS (SELECT *, ${maskDefs.map((m) => m.expr).join(', ')} FROM ${readParquet}) ` +
+      `SELECT ${aggregates.join(', ')} FROM filtered`
+    : `SELECT ${aggregates.join(', ')} FROM ${readParquet}`;
+
+  return { sql, params };
+}
+
 /** Build ORDER BY clause from validated SortSpecs. */
 function compileOrderBy(sort: SortSpec[], colMap: Map<string, FlatColumn>): string {
   if (sort.length === 0) return '';
@@ -233,12 +310,12 @@ router.post(
         return s && s.min !== s.max;
       });
 
-      const godSelectParts: string[] = ['COUNT(*)::INTEGER AS total_rows'];
-      for (const col of numericCols) {
-        godSelectParts.push(`MIN(${col.sqlExpr})::DOUBLE AS ${safeName(col.name + '_min')}`);
-        godSelectParts.push(`MAX(${col.sqlExpr})::DOUBLE AS ${safeName(col.name + '_max')}`);
-      }
-      const godSql = `SELECT ${godSelectParts.join(', ')} FROM ${readParquet} ${whereClause}`;
+      // LOO (Leave-One-Out) god query via CTE bitmask pattern:
+      // Phase 1 (CTE): evaluate each filter predicate once as a boolean column.
+      // Phase 2 (SELECT): each column's MIN/MAX ANDs every mask except its own.
+      const { sql: godSql, params: godParams } = buildLooGodQuery(
+        readParquet, filters, colMap, numericCols,
+      );
 
       // ── Preflight mode: god query only (count + stats, no rows/histograms) ──
       if (mode === 'preflight') {
@@ -247,7 +324,7 @@ router.post(
         res.setHeader('X-Arrow-Tables', '1');
         res.setHeader('X-Hist-Columns', '');
         res.write(writeU32LE(1));
-        const godBuf = await arrowQuery(conn, godSql, whereParams);
+        const godBuf = await arrowQuery(conn, godSql, godParams);
         if (clientGone) { conn.closeSync(); return; }
         res.write(writeU32LE(godBuf.byteLength));
         res.write(godBuf);
@@ -308,7 +385,7 @@ router.post(
       res.write(viewportBuf);
 
       // 2. God Query — count + constrained stats (full scan)
-      const godBuf = await arrowQuery(conn, godSql, whereParams);
+      const godBuf = await arrowQuery(conn, godSql, godParams);
       if (clientGone) { conn.closeSync(); return; }
       res.write(writeU32LE(godBuf.byteLength));
       res.write(godBuf);
