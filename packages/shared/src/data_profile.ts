@@ -56,6 +56,8 @@ export interface EnrichableAttributes {
   charLengths: Record<string, DataProfileCharLengths>;
   initialRows: JsonObject[];
   histograms: Record<string, number[]>;
+  /** Pairwise Pearson correlations between numeric columns. Key: "colA:colB" (sorted). */
+  correlations: Record<string, number>;
 }
 
 // ── Histogram helpers — shared between server and client DuckDB ──────────────

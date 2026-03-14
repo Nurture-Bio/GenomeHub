@@ -273,6 +273,7 @@ interface RangeSliderProps {
   hasAnyFilter?: boolean;
   staticHistogram?: number[];
   dynamicHistogram?: number[];
+  onSortByCorrelation?: () => void;
 }
 
 // ── RangeSlider ───────────────────────────────────────────────────────────────
@@ -291,6 +292,7 @@ const RangeSlider = React.memo(function RangeSlider({
   hasAnyFilter,
   staticHistogram,
   dynamicHistogram,
+  onSortByCorrelation,
 }: RangeSliderProps) {
   // ── State machine ────────────────────────────────────────────────────────
   //  idle ──DRAG_START──► dragging ──DRAG_END──► dropped ──PENDING_START──► querying ──SETTLE──► idle
@@ -980,6 +982,16 @@ const RangeSlider = React.memo(function RangeSlider({
           </span>
           Log scale (Y)
         </ContextMenu.CheckboxItem>
+        {onSortByCorrelation && (
+          <ContextMenu.Item
+            className="flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none"
+            style={{ color: 'var(--color-fg-2)' }}
+            onSelect={() => onSortByCorrelation()}
+          >
+            <span className="inline-flex w-3 justify-center" style={{ color: 'var(--color-cyan)' }}>⇅</span>
+            Sort by correlation
+          </ContextMenu.Item>
+        )}
       </ContextMenu.Content>
     </ContextMenu.Portal>
     </ContextMenu.Root>

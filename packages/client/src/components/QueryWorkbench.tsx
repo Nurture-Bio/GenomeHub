@@ -17,7 +17,6 @@ import type {
   ColumnInfo,
   ColumnStats,
   QueryPhase,
-  QuerySnapshot,
 } from '../hooks/useFileQuery';
 import { DROPDOWN_MAX, isNumericType, useFileQuery, WINDOW_SIZE } from '../hooks/useFileQuery';
 import { useFilterState } from '../hooks/useFilterState';
@@ -428,6 +427,7 @@ const RangeSliderCard = memo(function RangeSliderCard({
   dynamicHistogram,
   onDrag,
   onCommit,
+  onSortByCorrelation,
   visible,
   onToggleVisible,
 }: {
@@ -441,6 +441,7 @@ const RangeSliderCard = memo(function RangeSliderCard({
   dynamicHistogram: number[] | undefined;
   onDrag: (name: string, lo: number, hi: number) => void;
   onCommit: (name: string, lo: number, hi: number) => void;
+  onSortByCorrelation?: () => void;
   visible: boolean;
   onToggleVisible: (name: string) => void;
 }) {
@@ -524,6 +525,7 @@ const RangeSliderCard = memo(function RangeSliderCard({
           onCommit={onCommit}
           staticHistogram={staticHistogram}
           dynamicHistogram={hasAnyFilter ? dynamicHistogram : undefined}
+          onSortByCorrelation={onSortByCorrelation}
         />
       )}
     </div>
@@ -550,6 +552,7 @@ const ControlCenter = memo(function ControlCenter({
   constrainedHistograms,
   visibleColumns,
   onToggleVisible,
+  profileCorrelations,
 }: {
   columns: ColumnInfo[];
   columnStats: Record<string, ColumnStats>;
@@ -570,7 +573,11 @@ const ControlCenter = memo(function ControlCenter({
   constrainedHistograms: Record<string, number[]>;
   visibleColumns: Set<string>;
   onToggleVisible: (name: string) => void;
+  profileCorrelations: Record<string, number> | null;
 }) {
+  // ── Sort by correlation — right-click a slider → reorder by |r| ───────
+  const [corrSortCol, setCorrSortCol] = useState<string | null>(null);
+
   // Partition into low-cardinality chips, numerics, and text columns
   const lowCard: { col: ColumnInfo; card: ColumnCardinality; sel: Set<string> }[] = [];
   const numerics: ColumnInfo[] = [];
@@ -588,6 +595,18 @@ const ControlCenter = memo(function ControlCenter({
       texts.push(c);
     }
   }
+
+  // Sort numerics by correlation to a selected column, or keep original order
+  const sortedNumerics = useMemo(() => {
+    if (!corrSortCol || !profileCorrelations) return numerics;
+    const getCorr = (name: string): number => {
+      if (name === corrSortCol) return Infinity; // pinned column goes first
+      const key1 = `${corrSortCol}:${name}`;
+      const key2 = `${name}:${corrSortCol}`;
+      return Math.abs(profileCorrelations[key1] ?? profileCorrelations[key2] ?? 0);
+    };
+    return [...numerics].sort((a, b) => getCorr(b.name) - getCorr(a.name));
+  }, [numerics, corrSortCol, profileCorrelations]);
 
   const renderTextCard = (c: ColumnInfo) => {
     const card = columnCardinality[c.name];
@@ -712,12 +731,21 @@ const ControlCenter = memo(function ControlCenter({
         className="grid gap-4 p-4"
         style={{ gridTemplateColumns: numerics.length > 0 && texts.length > 0 ? '1fr 1fr' : '1fr' }}
       >
-        {numerics.length > 0 && (
+        {sortedNumerics.length > 0 && (
           <div
             className="grid gap-4 content-start"
             style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}
           >
-            {numerics.map((c) => (
+            {corrSortCol && (
+              <button
+                className="text-xs font-mono cursor-pointer bg-transparent border-none"
+                style={{ color: 'var(--color-fg-3)', justifySelf: 'start', padding: '0 0 4px' }}
+                onClick={() => setCorrSortCol(null)}
+              >
+                ✕ Clear correlation sort
+              </button>
+            )}
+            {sortedNumerics.map((c) => (
               <RangeSliderCard
                 key={c.name}
                 column={c}
@@ -730,6 +758,7 @@ const ControlCenter = memo(function ControlCenter({
                 dynamicHistogram={constrainedHistograms[c.name]}
                 onDrag={onRangeDrag}
                 onCommit={onRangeCommit}
+                onSortByCorrelation={profileCorrelations ? () => setCorrSortCol(c.name) : undefined}
                 visible={visibleColumns.has(c.name)}
                 onToggleVisible={onToggleVisible}
               />
@@ -948,7 +977,7 @@ export default function QueryWorkbench({
 
   const { profile } = useDataProfile(
     cachedProfile?.schema?.length ? fileId : null,
-    ['columnStats', 'cardinality', 'charLengths', 'initialRows', 'histograms'],
+    ['columnStats', 'cardinality', 'charLengths', 'initialRows', 'histograms', 'correlations'],
     cachedProfile,
   );
 
@@ -1439,6 +1468,7 @@ export default function QueryWorkbench({
               constrainedHistograms={snapshot.histograms}
               visibleColumns={visibleColumns}
               onToggleVisible={handleToggleVisible}
+              profileCorrelations={profile?.correlations ?? null}
             />
           </>
         ) : (

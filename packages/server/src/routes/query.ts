@@ -124,23 +124,28 @@ function compileWhere(
 }
 
 /**
- * Build the LOO (Leave-One-Out) god query using a CTE bitmask pattern.
+ * Build the LOO (Leave-One-Out) god query + state matrix using a CTE bitmask
+ * pattern.
  *
  * Phase 1 — CTE: evaluate each filter predicate ONCE as a boolean mask column.
  *   Parameters are bound here and only here.
  *
- * Phase 2 — SELECT: each column's MIN/MAX uses a FILTER that ANDs every mask
- *   EXCEPT its own.  COUNT(*) uses ALL masks.
+ * Phase 2a — God query SELECT: each column's MIN/MAX uses a FILTER that ANDs
+ *   every mask EXCEPT its own.  COUNT(*) uses ALL masks.
  *
- * Result: single table scan, each predicate evaluated once, bitmask ANDs in
- * DuckDB's vectorized engine.
+ * Phase 2b — State matrix SELECT: pack all boolean masks into a single integer
+ *   via bitwise shifts, GROUP BY → 2^N rows of {state, count}. Gives the
+ *   client every possible filter intersection in one scan.
+ *
+ * Both queries share the same CTE and params — run them sequentially on the
+ * same connection with the same bound params.
  */
-function buildLooGodQuery(
+function buildLooQueries(
   readParquet: string,
   filters: FilterSpec[],
   colMap: Map<string, FlatColumn>,
   numericCols: FlatColumn[],
-): { sql: string; params: DuckDBValue[] } {
+): { godSql: string; stateSql: string | null; params: DuckDBValue[]; maskColumns: string[] } {
   const params: DuckDBValue[] = [];
   let idx = 0;
 
@@ -172,7 +177,12 @@ function buildLooGodQuery(
     maskDefs.push({ alias: maskAlias, column: f.column, expr: `(${predicate}) AS ${maskAlias}` });
   }
 
-  // Phase 2: LOO aggregates — each column excludes its own mask
+  const ctePreamble = maskDefs.length > 0
+    ? `WITH filtered AS (SELECT *, ${maskDefs.map((m) => m.expr).join(', ')} FROM ${readParquet}) `
+    : '';
+  const fromClause = maskDefs.length > 0 ? 'filtered' : readParquet;
+
+  // Phase 2a: LOO aggregates — each column excludes its own mask
   const allMasks = maskDefs.map((m) => m.alias);
   const allMasksClause = allMasks.length > 0 ? ` FILTER (WHERE ${allMasks.join(' AND ')})` : '';
 
@@ -191,13 +201,21 @@ function buildLooGodQuery(
     aggregates.push(`(MAX(${col.sqlExpr})${filterClause})::DOUBLE AS ${safeName(col.name + '_max')}`);
   }
 
-  // Assembly
-  const sql = maskDefs.length > 0
-    ? `WITH filtered AS (SELECT *, ${maskDefs.map((m) => m.expr).join(', ')} FROM ${readParquet}) ` +
-      `SELECT ${aggregates.join(', ')} FROM filtered`
-    : `SELECT ${aggregates.join(', ')} FROM ${readParquet}`;
+  const godSql = `${ctePreamble}SELECT ${aggregates.join(', ')} FROM ${fromClause}`;
 
-  return { sql, params };
+  // Phase 2b: State matrix — pack boolean masks into a single integer, GROUP BY
+  // Only meaningful with ≥2 active filters (need at least 2 bits for correlation)
+  let stateSql: string | null = null;
+  const maskColumns: string[] = [];
+  if (maskDefs.length >= 2) {
+    const stateExpr = maskDefs
+      .map((m, i) => `(${m.alias}::INTEGER << ${i})`)
+      .join(' | ');
+    stateSql = `${ctePreamble}SELECT (${stateExpr})::INTEGER AS filter_state, COUNT(*)::INTEGER AS cnt FROM ${fromClause} GROUP BY filter_state ORDER BY filter_state`;
+    for (const m of maskDefs) maskColumns.push(m.column);
+  }
+
+  return { godSql, stateSql, params, maskColumns };
 }
 
 /** Build ORDER BY clause from validated SortSpecs. */
@@ -310,10 +328,11 @@ router.post(
         return s && s.min !== s.max;
       });
 
-      // LOO (Leave-One-Out) god query via CTE bitmask pattern:
+      // LOO (Leave-One-Out) god query + state matrix via CTE bitmask pattern:
       // Phase 1 (CTE): evaluate each filter predicate once as a boolean column.
-      // Phase 2 (SELECT): each column's MIN/MAX ANDs every mask except its own.
-      const { sql: godSql, params: godParams } = buildLooGodQuery(
+      // Phase 2a (god): each column's MIN/MAX ANDs every mask except its own.
+      // Phase 2b (state): pack masks into integer, GROUP BY → correlation data.
+      const { godSql, stateSql, params: godParams, maskColumns } = buildLooQueries(
         readParquet, filters, colMap, numericCols,
       );
 
@@ -370,11 +389,16 @@ router.post(
       // the connection cleanly and bail. Writing to a destroyed socket while
       // DuckDB's native thread is active can crash the process.
 
-      const numTables = 2 + histQueryBuilders.length;
+      const hasStateMatrix = stateSql !== null;
+      const numTables = 2 + histQueryBuilders.length + (hasStateMatrix ? 1 : 0);
 
       res.setHeader('Content-Type', 'application/vnd.apache.arrow.stream');
       res.setHeader('X-Arrow-Tables', numTables.toString());
       res.setHeader('X-Hist-Columns', histCols.map((c) => c.name).join(','));
+      // Bit position → column name mapping for the state matrix
+      if (hasStateMatrix) {
+        res.setHeader('X-State-Columns', maskColumns.join(','));
+      }
 
       res.write(writeU32LE(numTables));
 
@@ -402,6 +426,19 @@ router.post(
           if (clientGone) break;
           // Empty frame — client sees 0-length table
           res.write(writeU32LE(0));
+        }
+      }
+
+      // 4. State matrix — filter intersection counts (only with ≥2 filters)
+      if (hasStateMatrix && !clientGone) {
+        try {
+          const stateBuf = await arrowQuery(conn, stateSql!, godParams);
+          if (!clientGone) {
+            res.write(writeU32LE(stateBuf.byteLength));
+            res.write(stateBuf);
+          }
+        } catch {
+          if (!clientGone) res.write(writeU32LE(0));
         }
       }
 

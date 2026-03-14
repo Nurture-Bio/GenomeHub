@@ -51,6 +51,7 @@ export interface QuerySnapshot {
   total: number;
   stats: Record<string, { min: number; max: number }>;
   histograms: Record<string, number[]>;
+  stateMatrix: StateMatrix | null;
 }
 
 export interface QueryState {
@@ -211,6 +212,7 @@ interface ServerQueryResult {
   filteredCount: number;
   constrainedStats: Record<string, { min: number; max: number }>;
   dynamicHistograms: Record<string, number[]>;
+  stateMatrix: StateMatrix | null;
 }
 
 /** Callbacks fired as each Arrow frame arrives over the wire. */
@@ -257,6 +259,75 @@ function parseHistTable(histTable: ArrowTable): number[] {
     bins[i] = Number(cntVec.get(i) ?? 0);
   }
   return bins;
+}
+
+/** State matrix: {filter_state → count} pairs from the bitwise GROUP BY. */
+export interface StateMatrix {
+  /** Bit position → column name (e.g. bit 0 = "POS", bit 1 = "MAPQ") */
+  columns: string[];
+  /** Array of {state, count} — state is a bitmask, count is the row count */
+  entries: { state: number; count: number }[];
+}
+
+/**
+ * Derive pairwise correlation strengths from the state matrix.
+ *
+ * For a grabbed column G (bit index gIdx), compute each other column O's
+ * "sensitivity" to G: how much does O's pass-rate change when G flips?
+ *
+ * sensitivity(G,O) = |P(O=1 | G=1) - P(O=1 | G=0)|
+ *
+ * Returns values in [0, 1]. Higher = more correlated = should glow brighter.
+ */
+export function deriveCorrelations(
+  matrix: StateMatrix,
+  grabbedColumn: string,
+): Record<string, number> {
+  const gIdx = matrix.columns.indexOf(grabbedColumn);
+  if (gIdx < 0) return {};
+
+  const gBit = 1 << gIdx;
+  const result: Record<string, number> = {};
+
+  for (let oIdx = 0; oIdx < matrix.columns.length; oIdx++) {
+    if (oIdx === gIdx) continue;
+    const oBit = 1 << oIdx;
+
+    // Split by G=1 vs G=0, count O=1 in each partition
+    let gOnTotal = 0, gOnOPass = 0;
+    let gOffTotal = 0, gOffOPass = 0;
+
+    for (const { state, count } of matrix.entries) {
+      if (state & gBit) {
+        gOnTotal += count;
+        if (state & oBit) gOnOPass += count;
+      } else {
+        gOffTotal += count;
+        if (state & oBit) gOffOPass += count;
+      }
+    }
+
+    const pOGivenGOn = gOnTotal > 0 ? gOnOPass / gOnTotal : 0;
+    const pOGivenGOff = gOffTotal > 0 ? gOffOPass / gOffTotal : 0;
+    result[matrix.columns[oIdx]] = Math.abs(pOGivenGOn - pOGivenGOff);
+  }
+
+  return result;
+}
+
+function parseStateMatrix(table: ArrowTable, columns: string[]): StateMatrix {
+  const stateVec = table.getChild('filter_state');
+  const cntVec = table.getChild('cnt');
+  const entries: { state: number; count: number }[] = [];
+  if (stateVec && cntVec) {
+    for (let i = 0; i < stateVec.length; i++) {
+      entries.push({
+        state: Number(stateVec.get(i) ?? 0),
+        count: Number(cntVec.get(i) ?? 0),
+      });
+    }
+  }
+  return { columns, entries };
 }
 
 // ── Streaming frame decoder ──────────────────────────────
@@ -349,12 +420,18 @@ async function serverQuery(
 
   const histColHeader = res.headers.get('X-Hist-Columns') ?? '';
   const histColNames = histColHeader ? histColHeader.split(',') : [];
+  const stateColHeader = res.headers.get('X-State-Columns') ?? '';
+  const stateColNames = stateColHeader ? stateColHeader.split(',') : [];
+  const hasStateMatrix = stateColNames.length >= 2;
 
   let filteredCount = 0;
   let constrainedStats: Record<string, { min: number; max: number }> = {};
   let viewportTable: ArrowTable | null = null;
   const dynamicHistograms: Record<string, number[]> = {};
+  let stateMatrix: StateMatrix | null = null;
 
+  // Table indices: 0=viewport, 1=god, 2..2+N-1=histograms, last=state matrix (if present)
+  const stateMatrixIndex = hasStateMatrix ? 2 + histColNames.length : -1;
   let histIndex = 0;
 
   for await (const { index, table } of streamArrowFrames(res.body!)) {
@@ -370,6 +447,9 @@ async function serverQuery(
       filteredCount = god.filteredCount;
       constrainedStats = god.constrainedStats;
       callbacks?.onGod?.(god);
+    } else if (index === stateMatrixIndex) {
+      // State matrix — filter intersection counts
+      stateMatrix = parseStateMatrix(table, stateColNames);
     } else {
       // Histogram frame
       if (histIndex < histColNames.length) {
@@ -379,7 +459,7 @@ async function serverQuery(
     }
   }
 
-  return { viewportTable, filteredCount, constrainedStats, dynamicHistograms };
+  return { viewportTable, filteredCount, constrainedStats, dynamicHistograms, stateMatrix };
 }
 
 // ── Constants ────────────────────────────────────────────
@@ -410,6 +490,7 @@ export function useFileQuery(
     total: cachedProfile?.rowCount ?? 0,
     stats: {},
     histograms: {},
+    stateMatrix: null,
   };
   // ── Stable identity keys for the Basin ──
   const filterKey = JSON.stringify(activeFilterSpecs ?? []);
@@ -712,6 +793,7 @@ export function useFileQuery(
           dispatch({ type: 'QUERY_DATA', payload: {
             stats: Object.keys(result.constrainedStats).length > 0 ? result.constrainedStats : {},
             histograms: Object.keys(result.dynamicHistograms).length > 0 ? result.dynamicHistograms : {},
+            stateMatrix: result.stateMatrix,
             done: true,
             settledKey: currentKey,
           } });

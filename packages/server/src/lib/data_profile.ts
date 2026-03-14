@@ -45,6 +45,7 @@ const VALID_KEYS = new Set<keyof EnrichableAttributes>([
   'charLengths',
   'initialRows',
   'histograms',
+  'correlations',
 ]);
 
 /** All enrichable attribute keys — used for eager compute at upload time. */
@@ -187,6 +188,14 @@ async function hydrateAttribute(
       } catch (err) {
         console.error('[HISTOGRAMS] enrichHistograms failed:', err);
         profile.histograms = null;
+      }
+      return;
+    case 'correlations':
+      if (profile.correlations !== undefined) return;
+      try {
+        profile.correlations = await enrichCorrelations(session, profile);
+      } catch {
+        profile.correlations = null;
       }
       return;
   }
@@ -499,5 +508,53 @@ async function enrichHistograms(
     result[col.name] = bins;
   }
 
+  return result;
+}
+
+async function enrichCorrelations(
+  session: DuckDbSession,
+  profile: DataProfile,
+): Promise<Record<string, number>> {
+  // Dependency: need columnStats to know which columns vary
+  if (profile.columnStats === undefined) {
+    profile.columnStats = await enrichColumnStats(session, profile);
+  }
+  if (!profile.columnStats) return {};
+
+  const flatCols = expandSchema(profile.schema);
+  const numericCols = flatCols.filter((c) => {
+    const s = profile.columnStats?.[c.name];
+    return s && isNumeric(c.type) && s.min !== s.max;
+  });
+
+  // Need ≥2 columns for pairwise correlation
+  if (numericCols.length < 2 || profile.rowCount === 0) return {};
+
+  // Build all N*(N-1)/2 CORR() expressions in a single query
+  const corrParts: { key: string; expr: string }[] = [];
+  for (let i = 0; i < numericCols.length; i++) {
+    for (let j = i + 1; j < numericCols.length; j++) {
+      const a = numericCols[i];
+      const b = numericCols[j];
+      // Sorted key ensures consistent lookup
+      const key = `${a.name}:${b.name}`;
+      corrParts.push({
+        key,
+        expr: `CORR(${a.sqlExpr}::DOUBLE, ${b.sqlExpr}::DOUBLE) AS "${key}"`,
+      });
+    }
+  }
+
+  const rows = await session.query(
+    `SELECT ${corrParts.map((p) => p.expr).join(', ')} FROM read_parquet('${session.safeSrc}')`,
+  );
+  if (rows.length === 0) return {};
+
+  const row = rows[0];
+  const result: Record<string, number> = {};
+  for (const p of corrParts) {
+    const val = Number(row[p.key]);
+    if (!isNaN(val)) result[p.key] = val;
+  }
   return result;
 }
