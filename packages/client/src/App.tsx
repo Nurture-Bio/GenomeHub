@@ -8,6 +8,7 @@ import { cx } from 'class-variance-authority';
 import { navLink, iconAction } from './ui/recipes';
 import { Text, Heading } from './ui';
 import { useAuth } from './hooks/useAuth';
+import CSSDebugOverlay from './components/CSSDebugOverlay';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import FilesPage from './pages/FilesPage';
@@ -203,16 +204,16 @@ function SidebarFooter({
       ) : (
         <div
           className="w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-body font-bold"
-          style={{ background: 'var(--color-cyan)', color: 'var(--color-void)' }}
+          style={{ background: 'var(--color-interactive)', color: 'var(--color-surface-sunken)' }}
         >
           {user.name.charAt(0).toUpperCase()}
         </div>
       )}
       <div className="flex-1 min-w-0">
-        <Text as="div" variant="dim" className="text-fg truncate">
+        <Text as="div" variant="dim" className="text-text truncate">
           {user.name}
         </Text>
-        <Text as="div" variant="dim" className="text-fg-3 truncate">
+        <Text as="div" variant="dim" className="text-text-faint truncate">
           {user.email}
         </Text>
       </div>
@@ -267,7 +268,7 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="flex flex-col md:flex-row h-full" style={{ background: 'var(--color-void)' }}>
+      <div className="flex flex-col md:flex-row h-full" style={{ background: 'var(--color-surface-sunken)' }}>
         {/* Skeleton sidebar */}
         <aside
           className="hidden md:flex flex-col shrink-0 sidebar-surface"
@@ -292,14 +293,17 @@ export default function App() {
     );
   }
 
-  if (!user) return <LoginPage />;
+  if (!user) return <><CSSDebugOverlay /><LoginPage /></>;
+
+  // Debug overlay — toggle with Ctrl+Shift+D
 
   return (
-    <div className="flex flex-col md:flex-row h-full" style={{ background: 'var(--color-void)' }}>
+    <div className="flex flex-col md:flex-row h-full" style={{ background: 'var(--color-surface-sunken)' }}>
+      <CSSDebugOverlay />
       {/* Mobile top bar */}
       <header
-        className="flex md:hidden items-center gap-2 px-3 py-2 border-b border-line shrink-0"
-        style={{ background: 'var(--color-void)' }}
+        className="flex md:hidden items-center gap-2 px-3 py-2 border-b border-border shrink-0"
+        style={{ background: 'var(--color-surface-sunken)' }}
       >
         <Heading
           as="span"

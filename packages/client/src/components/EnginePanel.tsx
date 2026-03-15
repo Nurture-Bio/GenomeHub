@@ -163,7 +163,7 @@ function MethodForm({ engineId, method }: { engineId: string; method: EngineMeth
   const stepHealth = deriveStepHealth(engine.pollLost, activeStep, baseSteps);
 
   return (
-    <div className="flex flex-col gap-2 py-2 border-t border-line">
+    <div className="flex flex-col gap-2 py-2 border-t border-border">
       {isActive ? (
         <Stepper
           steps={stepperSteps}
@@ -259,11 +259,11 @@ function MethodForm({ engineId, method }: { engineId: string; method: EngineMeth
                         {Object.entries(sel.parameters).map(([k, v]) => (
                           <span
                             key={k}
-                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-sm bg-raised font-mono"
+                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-sm bg-surface-raised font-mono"
                             style={{ fontSize: '0.8em' }}
                           >
-                            <span className="text-fg-3">{k.replace(/_/g, ' ')}</span>
-                            <span className="text-cyan">{String(v)}</span>
+                            <span className="text-text-faint">{k.replace(/_/g, ' ')}</span>
+                            <span className="text-interactive">{String(v)}</span>
                           </span>
                         ))}
                       </div>
@@ -390,8 +390,8 @@ function MethodDetail({ engine }: { engine: ReturnType<typeof useEngineMethod> }
           className="flex items-center justify-center gap-1.5 rounded-sm font-mono"
           style={{
             fontSize: 'var(--font-size-xs)',
-            color: 'var(--color-amber)',
-            background: 'var(--color-amber-wash)',
+            color: 'var(--color-warning)',
+            background: 'var(--color-warning-subtle)',
             padding: '4px 8px',
             animation: 'pulse 1.5s ease-in-out infinite',
           }}
@@ -406,9 +406,9 @@ function MethodDetail({ engine }: { engine: ReturnType<typeof useEngineMethod> }
           className="self-center font-mono cursor-pointer border rounded-sm transition-colors"
           style={{
             fontSize: 'var(--font-size-xs)',
-            color: 'var(--color-red)',
-            borderColor: 'var(--color-red-dim)',
-            background: 'var(--color-red-wash)',
+            color: 'var(--color-danger)',
+            borderColor: 'var(--color-danger-border)',
+            background: 'var(--color-danger-subtle)',
             padding: '4px 12px',
           }}
         >
@@ -422,9 +422,9 @@ function MethodDetail({ engine }: { engine: ReturnType<typeof useEngineMethod> }
           className="self-center font-mono cursor-pointer border rounded-sm transition-colors"
           style={{
             fontSize: 'var(--font-size-xs)',
-            color: 'var(--color-amber)',
-            borderColor: 'var(--color-amber-dim)',
-            background: 'var(--color-amber-wash)',
+            color: 'var(--color-warning)',
+            borderColor: 'var(--color-warning-border)',
+            background: 'var(--color-warning-subtle)',
             padding: '4px 12px',
           }}
         >
@@ -461,7 +461,7 @@ function EngineMethodDialog({
         <Dialog.Overlay className={modalOverlay()} />
         <Dialog.Content
           className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-modal
-                     bg-elevated border border-line rounded-lg shadow-lg
+                     bg-surface-elevated border border-border rounded-lg shadow-lg
                      p-3 w-full max-w-embed mx-2 max-h-[80vh] overflow-y-auto animate-fade-in"
           onPointerDownOutside={() => handleClose(false)}
         >
@@ -487,7 +487,7 @@ function EngineMethodDialog({
             <>
               <button
                 onClick={() => setSelectedId(null)}
-                className="flex items-center gap-1 bg-transparent border-none cursor-pointer p-0 mb-2 text-fg-3 hover:text-cyan transition-colors duration-fast font-sans text-body"
+                className="flex items-center gap-1 bg-transparent border-none cursor-pointer p-0 mb-2 text-text-faint hover:text-interactive transition-colors duration-fast font-sans text-body"
               >
                 <svg width="12" height="12" viewBox="0 0 12 12" className="shrink-0">
                   <path
@@ -517,8 +517,8 @@ function EngineMethodDialog({
                     <button
                       key={m.id}
                       onClick={() => setSelectedId(m.id)}
-                      className="flex flex-col gap-0.5 p-2 rounded-sm bg-transparent border border-line cursor-pointer
-                                 hover:border-cyan hover:bg-base transition-colors duration-fast text-left"
+                      className="flex flex-col gap-0.5 p-2 rounded-sm bg-transparent border border-border cursor-pointer
+                                 hover:border-interactive hover:bg-surface transition-colors duration-fast text-left"
                     >
                       <Text variant="body" className="font-semibold">
                         {m.name}
@@ -526,7 +526,7 @@ function EngineMethodDialog({
                       <Text variant="dim" as="div">
                         {m.description}
                       </Text>
-                      <Text variant="dim" className="text-fg-3">
+                      <Text variant="dim" className="text-text-faint">
                         {m.parameters.length} parameter{m.parameters.length !== 1 ? 's' : ''}
                       </Text>
                     </button>
@@ -555,12 +555,12 @@ function EngineDownBar({ name, since }: { name: string; since: number }) {
   const ss = elapsed % 60;
   return (
     <div
-      className="flex items-center gap-1.5 px-4 py-1.5 border-t border-line font-mono"
+      className="flex items-center gap-1.5 px-4 py-1.5 border-t border-border font-mono"
       style={{ fontSize: 'var(--font-size-xs)' }}
     >
       <div className={statusDot({ status: 'disconnected', size: 'sm' })} />
       <Text variant="dim">{name}</Text>
-      <Text variant="dim" className="ml-auto tabular-nums" style={{ color: 'var(--color-amber)' }}>
+      <Text variant="dim" className="ml-auto tabular-nums" style={{ color: 'var(--color-warning)' }}>
         {mm > 0 ? `${mm}m ${String(ss).padStart(2, '0')}s` : `${ss}s`} ago
       </Text>
     </div>

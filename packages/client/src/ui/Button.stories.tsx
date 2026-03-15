@@ -60,7 +60,7 @@ export const IntentSizeGrid: Story = {
       >
         <div />
         {sizes.map((s) => (
-          <span key={s} className="text-fg-3 font-mono text-body text-center">
+          <span key={s} className="text-text-faint font-mono text-body text-center">
             {s}
           </span>
         ))}
@@ -68,7 +68,7 @@ export const IntentSizeGrid: Story = {
           <>
             <span
               key={`label-${intent}`}
-              className="text-fg-3 font-mono text-body self-center"
+              className="text-text-faint font-mono text-body self-center"
             >
               {intent}
             </span>

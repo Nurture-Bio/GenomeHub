@@ -1,0 +1,18 @@
+/* ── Exceptions — data-driven state variations ───────── */
+
+/* Hash filter active state */
+.hash-filter-btn[data-active='true'] {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  border-color: var(--color-border-strong);
+}
+
+/* Collapse expand state */
+.collapse-container[data-expanded='true'] {
+  grid-template-rows: 1fr;
+}
+
+/* Collapse chevron rotation */
+.collapse-chevron[data-expanded='true'] {
+  transform: rotate(90deg);
+}

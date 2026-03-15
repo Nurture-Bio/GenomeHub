@@ -76,7 +76,7 @@ export default function CollectionDetailPage() {
         <div className="skeleton h-[1lh] w-1/3" />
         <div className="flex flex-col gap-1">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="py-1.5 border-b border-line">
+            <div key={i} className="py-1.5 border-b border-border">
               <div className="skeleton h-[1lh] w-3/4" />
             </div>
           ))}
@@ -185,7 +185,7 @@ export default function CollectionDetailPage() {
         {/* Add files panel */}
         <div className="collapse-container" data-expanded={showAddPanel ? 'true' : 'false'}>
           <div className="collapse-inner">
-            <div className="border border-line rounded-md p-2.5 mb-2 bg-raised">
+            <div className="border border-border rounded-md p-2.5 mb-2 bg-surface-raised">
               <div className="flex items-center gap-2 mb-2">
                 <Input
                   variant="surface"
@@ -233,7 +233,7 @@ export default function CollectionDetailPage() {
                               return next;
                             });
                           }}
-                          className="accent-cyan shrink-0"
+                          className="accent-interactive shrink-0"
                         />
                         <HashChip label={meta.label} colorKey={fmt} />
                         <Text variant="mono" className="truncate flex-1 min-w-0">
@@ -258,10 +258,10 @@ export default function CollectionDetailPage() {
         {collection.files.length === 0 && !showAddPanel ? (
           <Text variant="dim">No files yet. Click "+ add files" above.</Text>
         ) : (
-          <div className="border border-line rounded-md bg-base overflow-hidden">
+          <div className="border border-border rounded-md bg-surface overflow-hidden">
             <table className="w-full border-collapse text-left">
               <thead>
-                <tr className="border-b border-line surface-header">
+                <tr className="border-b border-border surface-header">
                   <th className="tbl-cell">
                     <Text variant="muted">File</Text>
                   </th>
@@ -284,7 +284,7 @@ export default function CollectionDetailPage() {
                   return (
                     <tr
                       key={file.id}
-                      className="border-b border-line group stagger-item row-hover"
+                      className="border-b border-border group stagger-item row-hover"
                       style={{ '--i': Math.min(i, 15) } as React.CSSProperties}
                     >
                       <td className="tbl-cell">
@@ -293,7 +293,7 @@ export default function CollectionDetailPage() {
                           <Link to={`/files/${file.id}`} className="no-underline">
                             <Text
                               variant="mono"
-                              className="truncate hover:text-cyan transition-colors duration-fast"
+                              className="truncate hover:text-interactive transition-colors duration-fast"
                             >
                               {file.filename}
                             </Text>

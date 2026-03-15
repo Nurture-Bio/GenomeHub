@@ -26,9 +26,9 @@ export default function ErrorsPage() {
       </div>
 
       {/* Table */}
-      <div className="flex flex-col flex-1 min-h-0 border border-line rounded-md bg-base overflow-hidden">
+      <div className="flex flex-col flex-1 min-h-0 border border-border rounded-md bg-surface overflow-hidden">
         {/* Header row */}
-        <div className="shrink-0 border-b border-line bg-raised tbl-row">
+        <div className="shrink-0 border-b border-border bg-surface-raised tbl-row">
           <div
             className="grid items-center"
             style={{ gridTemplateColumns: '1fr 80px 100px 100px', gap: '0 12px' }}
@@ -47,7 +47,7 @@ export default function ErrorsPage() {
               {Array.from({ length: 5 }).map((_, i) => (
                 <div
                   key={i}
-                  className="grid items-center border-b border-line tbl-row"
+                  className="grid items-center border-b border-border tbl-row"
                   style={{ gridTemplateColumns: '1fr 80px 100px 100px', gap: '0 12px' }}
                 >
                   <div className="skeleton h-[1lh] w-3/4" />
@@ -61,7 +61,7 @@ export default function ErrorsPage() {
         >
           {count === 0 ? (
             <div className="flex-1 flex items-center justify-center">
-              <Text variant="body" className="text-fg-3 animate-fade-up">
+              <Text variant="body" className="text-text-faint animate-fade-up">
                 No pipeline errors.
               </Text>
             </div>
@@ -70,7 +70,7 @@ export default function ErrorsPage() {
               {data!.map((f, i) => (
                 <div
                   key={f.id}
-                  className="border-b border-line stagger-item row-hover"
+                  className="border-b border-border stagger-item row-hover"
                   style={{ '--i': Math.min(i, 15) } as React.CSSProperties}
                 >
                   {/* Summary row */}
@@ -80,7 +80,7 @@ export default function ErrorsPage() {
                   >
                     <div className="min-w-0">
                       <Link to={`/files/${f.id}`} className="no-underline">
-                        <span className="font-mono text-sm truncate block hover:text-cyan transition-colors duration-fast tabular-nums">
+                        <span className="font-mono text-sm truncate block hover:text-interactive transition-colors duration-fast tabular-nums">
                           {f.filename}
                         </span>
                       </Link>
@@ -96,11 +96,11 @@ export default function ErrorsPage() {
                   {f.parquetError && (
                     <div className="px-3 pb-2">
                       <div
-                        className="font-mono rounded border border-line px-3 py-2"
+                        className="font-mono rounded border border-border px-3 py-2"
                         style={{
                           fontSize: 'calc(var(--font-size-xs) - 1px)',
-                          color: 'var(--color-fg-3)',
-                          background: 'var(--color-void)',
+                          color: 'var(--color-text-faint)',
+                          background: 'var(--color-surface-sunken)',
                           wordBreak: 'break-word',
                           lineHeight: 1.5,
                         }}

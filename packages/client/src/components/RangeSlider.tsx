@@ -84,12 +84,12 @@ function EditableNumber({
         className="font-mono bg-transparent border-none outline-none"
         style={{
           fontSize: 'inherit',
-          color: 'var(--color-cyan)',
+          color: 'var(--color-interactive)',
           width: `${Math.max(display.length, 4) + 1}ch`,
           textAlign: align,
           padding: 0,
           margin: 0,
-          borderBottom: '1px solid var(--color-cyan)',
+          borderBottom: '1px solid var(--color-interactive)',
         }}
         autoFocus
       />
@@ -109,7 +109,7 @@ function EditableNumber({
         transition: 'border-color var(--t-fast)',
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = 'var(--color-fg-3)';
+        e.currentTarget.style.borderColor = 'var(--color-text-faint)';
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.borderColor = 'transparent';
@@ -252,10 +252,9 @@ function sliderReducer(state: SliderState, action: SliderAction): SliderState {
 }
 
 // Stable color constants — module-level so useCallback deps never churn
-const AMBER_COLOR = 'var(--color-amber)';
-const AMBER_GLOW = 'oklch(0.750 0.185 60 / 0.28)';
-const CYAN_COLOR = 'var(--color-cyan)';
-const CYAN_GLOW = 'oklch(0.750 0.180 195 / 0.25)';
+const AMBER_COLOR = 'var(--color-warning)';
+const AMBER_GLOW = 'color-mix(in srgb, var(--color-warning) 28%, transparent)';
+const CYAN_COLOR = 'var(--color-interactive)';
 
 // ── RangeSlider Props ─────────────────────────────────────────────────────────
 
@@ -789,7 +788,7 @@ const RangeSlider = React.memo(function RangeSlider({
       ref={trackRef}
       data-column={name}
       style={{
-        background: 'oklch(0.13 0.01 240 / 0.5)',
+        background: 'color-mix(in srgb, var(--color-surface-sunken) 50%, transparent)',
         borderRadius: 6,
         padding: '6px 8px 4px',
       }}
@@ -939,7 +938,7 @@ const RangeSlider = React.memo(function RangeSlider({
           min={min}
           max={high}
           isFloat={isFloat}
-          color={full ? 'var(--color-fg-3)' : 'var(--color-fg-2)'}
+          color={full ? 'var(--color-text-faint)' : 'var(--color-text-muted)'}
           onCommit={(v) => {
             onDrag(name, v, high);
             onCommit(name, v, high);
@@ -950,7 +949,7 @@ const RangeSlider = React.memo(function RangeSlider({
           min={low}
           max={max}
           isFloat={isFloat}
-          color={full ? 'var(--color-fg-3)' : 'var(--color-fg-2)'}
+          color={full ? 'var(--color-text-faint)' : 'var(--color-text-muted)'}
           onCommit={(v) => {
             onDrag(name, low, v);
             onCommit(name, low, v);
@@ -964,20 +963,20 @@ const RangeSlider = React.memo(function RangeSlider({
       <ContextMenu.Content
         className="min-w-[140px] rounded-md border py-1"
         style={{
-          background: 'oklch(0.15 0.01 240)',
-          borderColor: 'oklch(0.3 0.01 240)',
-          boxShadow: '0 8px 24px oklch(0 0 0 / 0.5)',
+          background: 'var(--color-surface)',
+          borderColor: 'var(--color-border-strong)',
+          boxShadow: 'var(--shadow-lg)',
           zIndex: 50,
         }}
       >
         <ContextMenu.CheckboxItem
           className="flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none"
-          style={{ color: 'var(--color-fg-2)' }}
+          style={{ color: 'var(--color-text-muted)' }}
           checked={logY}
           onCheckedChange={(v) => { setLogY(!!v); requestAnimationFrame(() => paintCanvas()); }}
           onSelect={(e) => e.preventDefault()}
         >
-          <span className="inline-flex w-3 justify-center" style={{ color: 'var(--color-cyan)' }}>
+          <span className="inline-flex w-3 justify-center" style={{ color: 'var(--color-interactive)' }}>
             {logY ? '\u2713' : ''}
           </span>
           Log scale (Y)
@@ -985,10 +984,10 @@ const RangeSlider = React.memo(function RangeSlider({
         {onSortByCorrelation && (
           <ContextMenu.Item
             className="flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none"
-            style={{ color: 'var(--color-fg-2)' }}
+            style={{ color: 'var(--color-text-muted)' }}
             onSelect={() => onSortByCorrelation()}
           >
-            <span className="inline-flex w-3 justify-center" style={{ color: 'var(--color-cyan)' }}>⇅</span>
+            <span className="inline-flex w-3 justify-center" style={{ color: 'var(--color-interactive)' }}>⇅</span>
             Sort by correlation
           </ContextMenu.Item>
         )}

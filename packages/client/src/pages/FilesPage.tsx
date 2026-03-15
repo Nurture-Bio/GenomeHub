@@ -63,7 +63,7 @@ function FormatIcon({
 function SkeletonGridRow() {
   return (
     <div
-      className="grid items-center border-b border-line tbl-row"
+      className="grid items-center border-b border-border tbl-row"
       style={{ gridTemplateColumns: GRID_COLS, gap: GRID_GAP }}
     >
       <div className="skeleton skel-check" />
@@ -132,12 +132,12 @@ function FileRow({
 }: FileRowProps) {
   return (
     <div
-      className="grid items-center border-b border-line tbl-row stagger-item row-hover"
+      className="grid items-center border-b border-border tbl-row stagger-item row-hover"
       style={
         {
           gridTemplateColumns: GRID_COLS,
           gap: GRID_GAP,
-          background: selected ? 'var(--color-raised)' : undefined,
+          background: selected ? 'var(--color-surface-raised)' : undefined,
           '--i': Math.min(index ?? 0, 15),
         } as React.CSSProperties
       }
@@ -147,7 +147,7 @@ function FileRow({
         type="checkbox"
         checked={selected}
         onChange={(e) => onSelect(id, e.target.checked)}
-        className="accent-cyan cursor-pointer"
+        className="accent-interactive cursor-pointer"
       />
 
       {/* File: icon + name + size */}
@@ -159,11 +159,11 @@ function FileRow({
             className="no-underline"
             onMouseEnter={() => prefetchFileQuery(id)}
           >
-            <span className="font-mono text-sm truncate block hover:text-cyan transition-colors duration-fast tabular-nums">
+            <span className="font-mono text-sm truncate block hover:text-interactive transition-colors duration-fast tabular-nums">
               {filename}
             </span>
           </Link>
-          <span className="text-sm" style={{ color: 'var(--color-fg-2)' }}>
+          <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
             {formatBytes(sizeBytes)}
           </span>
         </div>
@@ -189,7 +189,7 @@ function FileRow({
       </div>
 
       {/* Time */}
-      <span className="text-sm whitespace-nowrap" style={{ color: 'var(--color-fg-2)' }}>
+      <span className="text-sm whitespace-nowrap" style={{ color: 'var(--color-text-muted)' }}>
         {formatRelativeTime(uploadedAt)}
       </span>
 
@@ -261,14 +261,14 @@ function FileCard({ file, loading = false, onDownload, selected, onSelect }: Fil
   return (
     <Card
       className="p-2.5 flex flex-col gap-1.5"
-      style={{ background: selected ? 'var(--color-raised)' : undefined }}
+      style={{ background: selected ? 'var(--color-surface-raised)' : undefined }}
     >
       <div className="flex items-center gap-2">
         <input
           type="checkbox"
           checked={selected}
           onChange={(e) => onSelect(file.id, e.target.checked)}
-          className="accent-cyan cursor-pointer shrink-0"
+          className="accent-interactive cursor-pointer shrink-0"
           disabled={loading}
         />
         {loading ? (
@@ -284,7 +284,7 @@ function FileCard({ file, loading = false, onDownload, selected, onSelect }: Fil
             className="no-underline flex-1 min-w-0"
             onMouseEnter={() => prefetchFileQuery(file.id)}
           >
-            <span className="font-mono text-sm truncate block hover:text-cyan transition-colors duration-fast tabular-nums">
+            <span className="font-mono text-sm truncate block hover:text-interactive transition-colors duration-fast tabular-nums">
               {file.filename}
             </span>
           </Link>
@@ -583,9 +583,9 @@ export default function FilesPage() {
       </div>
 
       {/* Desktop — CSS Grid table, hidden below md */}
-      <div className="hidden md:flex flex-col flex-1 min-h-0 border border-line rounded-md bg-base overflow-hidden">
+      <div className="hidden md:flex flex-col flex-1 min-h-0 border border-border rounded-md bg-surface overflow-hidden">
         {/* Sticky header row */}
-        <div className="shrink-0 border-b border-line bg-raised tbl-row">
+        <div className="shrink-0 border-b border-border bg-surface-raised tbl-row">
           <div
             className="grid items-center"
             style={{ gridTemplateColumns: GRID_COLS, gap: '0 12px' }}
@@ -594,7 +594,7 @@ export default function FilesPage() {
               type="checkbox"
               checked={allSelected}
               onChange={toggleAll}
-              className="accent-cyan cursor-pointer"
+              className="accent-interactive cursor-pointer"
             />
             <Text variant="muted">File</Text>
             <Text variant="muted">Status</Text>
@@ -618,7 +618,7 @@ export default function FilesPage() {
         >
           {files.length === 0 ? (
             <div className="flex-1 flex items-center justify-center">
-              <Text variant="body" className="text-fg-3 animate-fade-up">
+              <Text variant="body" className="text-text-faint animate-fade-up">
                 {emptyMessage}
               </Text>
             </div>
@@ -660,7 +660,7 @@ export default function FilesPage() {
               type="checkbox"
               checked={allSelected}
               onChange={toggleAll}
-              className="accent-cyan cursor-pointer"
+              className="accent-interactive cursor-pointer"
             />
             <Text variant="dim">Select all</Text>
           </label>
@@ -680,7 +680,7 @@ export default function FilesPage() {
           ))}
         >
           {files.length === 0 ? (
-            <Text variant="body" className="py-8 text-center text-fg-3 animate-fade-up">
+            <Text variant="body" className="py-8 text-center text-text-faint animate-fade-up">
               {emptyMessage}
             </Text>
           ) : (

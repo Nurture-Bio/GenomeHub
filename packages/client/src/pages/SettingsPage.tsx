@@ -36,7 +36,7 @@ interface EditableRowProps {
 function EditableRow({ id, index, name, description, onSave, onDelete }: EditableRowProps) {
   return (
     <tr
-      className="border-b border-line group stagger-item row-hover"
+      className="border-b border-border group stagger-item row-hover"
       style={{ '--i': Math.min(index ?? 0, 15) } as React.CSSProperties}
     >
       <td className="tbl-cell overflow-hidden">
@@ -98,7 +98,7 @@ function AddRow({
   const hasInput = name.trim().length > 0;
 
   return (
-    <tr className="text-fg-3">
+    <tr className="text-text-faint">
       <td className="tbl-cell overflow-hidden">
         <input
           ref={nameRef}
@@ -167,10 +167,10 @@ function SectionTable({
         <Heading level="subheading">{title}</Heading>
         <Text variant="dim">{subtitle}</Text>
       </div>
-      <div className="border border-line rounded-md bg-base overflow-hidden">
+      <div className="border border-border rounded-md bg-surface overflow-hidden">
         <table className="w-full border-collapse text-left table-fixed">
           <thead>
-            <tr className="border-b border-line surface-header">
+            <tr className="border-b border-border surface-header">
               <th className="tbl-cell w-44">
                 <Text variant="muted">Name</Text>
               </th>
@@ -202,7 +202,7 @@ interface EngineRowProps {
 function EngineRow({ id, index, name, url, status, onSave, onDelete }: EngineRowProps) {
   return (
     <tr
-      className="border-b border-line group stagger-item row-hover"
+      className="border-b border-border group stagger-item row-hover"
       style={{ '--i': Math.min(index ?? 0, 15) } as React.CSSProperties}
     >
       <td className="tbl-cell overflow-hidden">
@@ -259,7 +259,7 @@ function EngineAddRow({ onAdd }: { onAdd: (name: string, url: string) => Promise
   const hasInput = name.trim().length > 0 && url.trim().length > 0;
 
   return (
-    <tr className="text-fg-3">
+    <tr className="text-text-faint">
       <td className="tbl-cell overflow-hidden">
         <input
           ref={nameRef}
@@ -318,10 +318,10 @@ function EngineTable({ children }: { children: React.ReactNode }) {
         <Heading level="subheading">Engines</Heading>
         <Text variant="dim">External analysis services. Must respond to GET /api/health.</Text>
       </div>
-      <div className="border border-line rounded-md bg-base overflow-hidden">
+      <div className="border border-border rounded-md bg-surface overflow-hidden">
         <table className="w-full border-collapse text-left table-fixed">
           <thead>
-            <tr className="border-b border-line surface-header">
+            <tr className="border-b border-border surface-header">
               <th className="tbl-cell w-44">
                 <Text variant="muted">Name</Text>
               </th>

@@ -54,13 +54,13 @@ export const CustomColorKey: Story = {
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
         <HashChip label="Display A" colorKey="same-key" />
-        <span className="text-fg-3 font-mono text-body">colorKey="same-key"</span>
+        <span className="text-text-faint font-mono text-body">colorKey="same-key"</span>
       </div>
       <div className="flex items-center gap-2">
         <HashChip label="Display B" colorKey="same-key" />
-        <span className="text-fg-3 font-mono text-body">colorKey="same-key"</span>
+        <span className="text-text-faint font-mono text-body">colorKey="same-key"</span>
       </div>
-      <span className="text-fg-3 font-mono text-body">Same colorKey = same color, different labels</span>
+      <span className="text-text-faint font-mono text-body">Same colorKey = same color, different labels</span>
     </div>
   ),
 };

@@ -1,0 +1,417 @@
+/* ══════════════════════════════════════════════════════════════
+   LAYER 2 — Design Tokens & Element Defaults
+   This is the ONLY file that contains raw color values,
+   pixel sizes, hex codes, or numeric literals.
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Self-hosted fonts (COEP: require-corp blocks Google Fonts CDN) ── */
+
+/* DM Sans — latin */
+@font-face {
+  font-family: 'DM Sans';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/dm-sans-latin.woff2') format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* DM Sans — latin-ext */
+@font-face {
+  font-family: 'DM Sans';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/dm-sans-latin-ext.woff2') format('woff2');
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
+}
+/* DM Sans italic — latin */
+@font-face {
+  font-family: 'DM Sans';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/dm-sans-italic-latin.woff2') format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* DM Sans italic — latin-ext */
+@font-face {
+  font-family: 'DM Sans';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/dm-sans-italic-latin-ext.woff2') format('woff2');
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
+}
+
+/* JetBrains Mono — latin */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-latin.woff2') format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* JetBrains Mono — latin-ext */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-latin-ext.woff2') format('woff2');
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
+}
+
+/* Outfit — latin */
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/outfit-latin.woff2') format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* Outfit — latin-ext */
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/outfit-latin-ext.woff2') format('woff2');
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
+}
+
+@import 'tailwindcss';
+
+@theme {
+  /* ═══════════════════════════════════════════════════════
+     DESIGN TOKENS — Midnight Navy + Electric Cyan
+     ═══════════════════════════════════════════════════════ */
+
+  --spacing: 0.5rem;
+
+  /* ── Typography — Outfit display + DM Sans body ─────── */
+
+  --font-size-*: initial;
+  --font-size-xs: 0.75rem; /* 12px — captions, fine print */
+  --font-size-sm: 0.75rem; /* 12px — overlines, labels */
+  --font-size-body: 0.875rem; /* 14px — body text */
+  --font-size-lg: 1.0625rem; /* 17px — subheadings */
+  --font-size-heading: 1.3125rem; /* 21px — section headings */
+  --font-size-title: 1.625rem; /* 26px — page titles */
+  --font-size-display: 2.25rem; /* 36px — stat numbers, hero */
+
+  /* ── Heading element styles ─────────────────────────── */
+
+  --font-sans: 'DM Sans', system-ui, sans-serif;
+  --font-display: 'Outfit', 'DM Sans', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* ── Neutral Ramp — blue-violet undertone (hue 250) ──── */
+
+  --neutral-50:  oklch(0.97  0.005 250);
+  --neutral-100: oklch(0.93  0.008 250);
+  --neutral-150: oklch(0.91  0.010 250);
+  --neutral-200: oklch(0.87  0.013 250);
+  --neutral-300: oklch(0.80  0.017 250);
+  --neutral-400: oklch(0.65  0.020 250);
+  --neutral-500: oklch(0.55  0.026 250);
+  --neutral-600: oklch(0.44  0.024 250);
+  --neutral-700: oklch(0.26  0.032 250);
+  --neutral-800: oklch(0.205 0.028 250);
+  --neutral-900: oklch(0.15  0.024 250);
+  --neutral-950: oklch(0.10  0.020 250);
+  --white: #fff;
+
+  /* ── Surfaces (dark mode) ──────────────────────────── */
+
+  --color-surface-sunken:   var(--neutral-950);
+  --color-surface:          var(--neutral-900);
+  --color-surface-raised:   var(--neutral-800);
+  --color-surface-elevated: var(--neutral-700);
+  --color-surface-frosted:  oklch(0 0 0 / 0.4);
+  --color-row-stripe:       var(--color-surface);
+
+  /* ── Text (dark mode) ──────────────────────────────── */
+
+  --color-text:         var(--neutral-100);
+  --color-text-muted:   var(--neutral-400);
+  --color-text-faint:   var(--neutral-600);
+  --color-text-inverse: var(--neutral-950);
+
+  /* ── Borders (dark mode) ───────────────────────────── */
+
+  --color-border:         var(--neutral-700);
+  --color-border-strong:  oklch(0.34 0.024 250);
+  --color-border-frosted: oklch(1 0 0 / 0.10);
+
+  /* ── Controls & Selection (dark mode) ──────────────── */
+
+  --color-control:   var(--neutral-500);
+  --color-selection: var(--neutral-700);
+
+  /* ── Interactive — Electric Cyan (hue 195) ─────────── */
+
+  --color-interactive: oklch(0.75 0.18 195);
+  --color-interactive-hover: oklch(0.8 0.18 195);
+  --color-interactive-dim: oklch(0.54 0.12 195);
+  --color-interactive-wash: oklch(0.22 0.04 195);
+  --color-accent: var(--color-interactive);
+  --color-accent-dim: var(--color-interactive-dim);
+
+  /* ── Warning — Warm Amber (hue 60) ─────────────────── */
+
+  --color-warning: oklch(0.75 0.185 60);
+  --color-warning-hover: oklch(0.8 0.185 60);
+  --color-warning-border: oklch(0.54 0.12 60);
+  --color-warning-subtle: oklch(0.22 0.04 60);
+
+  /* ── Secondary — Soft Violet (hue 280) ─────────────── */
+
+  --color-secondary: oklch(0.62 0.15 280);
+  --color-secondary-dim: oklch(0.44 0.1 280);
+  --color-secondary-wash: oklch(0.2 0.04 280);
+
+  /* ── Glows ───────────────────────────────────────────── */
+
+  --glow-interactive: 0 0 24px oklch(0.75 0.18 195 / 0.25);
+  --glow-interactive-sm: 0 0 12px oklch(0.75 0.18 195 / 0.2);
+  --glow-secondary: 0 0 24px oklch(0.62 0.15 280 / 0.2);
+  --glow-secondary-sm: 0 0 12px oklch(0.62 0.15 280 / 0.15);
+  --glow-focus: 0 0 0 2px oklch(0.75 0.18 195 / 0.5), 0 0 16px oklch(0.75 0.18 195 / 0.15);
+
+  /* ── Danger — Red (hue 25) ──────────────────────────── */
+
+  --color-danger: oklch(0.65 0.2 25);
+  --color-danger-border: oklch(0.35 0.1 25);
+  --color-danger-subtle: oklch(0.2 0.04 25);
+
+  /* ── Success ─────────────────────────────────────────── */
+
+  --color-success: oklch(0.64 0.17 145);
+
+  /* ── Border radius ───────────────────────────────────── */
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 9999px;
+
+  /* ── Opacity ─────────────────────────────────────────── */
+
+  --opacity-1: 0.03;
+  --opacity-2: 0.055;
+  --opacity-3: 0.1;
+  --opacity-4: 0.18;
+  --opacity-5: 0.33;
+  --opacity-6: 0.6;
+  --opacity-7: 1;
+
+  /* ── Timing — phi x 160ms ──────────────────────────────── */
+
+  --t-instant: 61ms;
+  --t-fast: 99ms;
+  --t-base: 160ms;
+  --t-ease: 259ms;
+  --t-slow: 419ms;
+  --t-drift: 678ms;
+
+  /* Tailwind compat aliases */
+  --duration-instant: var(--t-instant);
+  --duration-fast: var(--t-fast);
+  --duration-normal: var(--t-base);
+  --duration-slow: var(--t-slow);
+  --duration-slower: var(--t-drift);
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-move: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* phi-based reveal — control points at 1/phi^2 and 1/phi */
+  --t-phi: 382ms;
+  --t-phi-half: 191ms;
+  --ease-phi: cubic-bezier(0.382, 0, 0.618, 1);
+
+  /* Legacy aliases for transition utilities */
+  --ease-standard: var(--ease-move);
+  --ease-decelerate: var(--ease-out);
+  --ease-accelerate: var(--ease-in);
+
+  /* ── Shadows ─────────────────────────────────────────── */
+
+  --shadow-sm: 0 1px 3px oklch(0.05 0.01 250 / 0.3), 0 1px 2px oklch(0.05 0.01 250 / 0.2);
+  --shadow-md: 0 4px 12px oklch(0.05 0.01 250 / 0.4), 0 2px 4px oklch(0.05 0.01 250 / 0.2);
+  --shadow-lg: 0 12px 40px oklch(0.05 0.01 250 / 0.5), 0 4px 12px oklch(0.05 0.01 250 / 0.3);
+
+  /* ── Touch targets ───────────────────────────────────── */
+
+  --target-min: 48px;
+
+  /* ── Letter spacing ──────────────────────────────────── */
+
+  --letter-spacing-overline: 0.1em;
+  --letter-spacing-wide: 0.04em;
+  --letter-spacing-sigil: 0.15em;
+
+  /* ── Container max-widths ────────────────────────────── */
+
+  --container-content: 1200px;
+  --container-terminal: 680px;
+  --container-embed: 600px;
+  --container-message: 704px;
+  --container-sidebar: 280px;
+
+  /* ── Z-index ─────────────────────────────────────────── */
+
+  --z-index-sticky: 10;
+  --z-index-dropdown: 20;
+  --z-index-overlay: 30;
+  --z-index-modal: 40;
+  --z-index-popover: 50;
+  --z-index-toast: 60;
+
+  /* ── Animations ──────────────────────────────────────── */
+
+  --animate-fade-in: fadeIn var(--t-fast) var(--ease-out);
+  --animate-slide-in-left: slideInLeft var(--t-fast) var(--ease-out);
+  --animate-alt-row-enter: fadeIn var(--t-fast) var(--ease-out) both;
+  --animate-pulse-slow: pulse calc(var(--t-drift) * 2) var(--ease-move) infinite;
+  --animate-page-enter: pageEnter var(--t-base) var(--ease-out) both;
+  --animate-fade-up: fadeUp var(--t-base) var(--ease-out) both;
+
+  /* ── Aspect ratios ───────────────────────────────────── */
+
+  --aspect-treemap: 2/1;
+  --aspect-treemap-mobile: 3/2;
+
+  /* ── Component-extracted raw values ──────────────────── */
+
+  --range-thumb-size: 14px;
+  --scrollbar-size: 12px;
+  --nav-indicator-width: 3px;
+  --blur-glass: 12px;
+
+  /* ── Pip colors (class-fantasy palette) ──────────────── */
+
+  --color-pip-cleric: #f0c040;
+  --color-pip-warrior: #d4ad80;
+  --color-pip-wizard: #69ccf0;
+  --color-pip-magician: #40b8b0;
+  --color-pip-enchanter: #b490d0;
+  --color-pip-necromancer: #bf50e0;
+  --color-pip-shadow-knight: #9545d0;
+  --color-pip-rogue: #d4e040;
+  --color-pip-ranger: #abd473;
+  --color-pip-druid: #ff7d0a;
+  --color-pip-monk: #00ff96;
+  --color-pip-bard: #f03070;
+  --color-pip-paladin: #f58cba;
+  --color-pip-shaman: #2890f0;
+}
+
+/* ── Shared layout constants ─────────────────────────── */
+:root {
+  --format-icon-size: 28px;
+  --target-min-icon: 18px;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Element-level defaults
+   No @layer wrapper — cascade controlled by import order.
+   ══════════════════════════════════════════════════════════════ */
+
+body {
+  font-family: var(--font-sans);
+  background: var(--color-surface-sunken);
+  color: var(--color-text);
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  font-size: var(--font-size-body);
+}
+
+h1 { font-size: var(--font-size-display); }
+h2 { font-size: var(--font-size-title); }
+h3 { font-size: var(--font-size-heading); }
+h4 { font-size: var(--font-size-lg); }
+
+#root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+}
+
+/* ── Global motion defaults ───────────────────────────── */
+
+main button,
+main a,
+main [role='button'],
+main input,
+main select,
+main textarea {
+  transition-property: color, background-color, border-color, opacity, box-shadow, transform;
+  transition-duration: var(--t-fast);
+  transition-timing-function: var(--ease-out);
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--glow-focus);
+}
+
+button:active:not(:disabled),
+[role='button']:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* ── The Stealth Track (Scrollbars) ───────────────────── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-frosted) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: var(--color-border-frosted);
+  border-radius: 6px;
+  border: 3px solid var(--color-surface-sunken);
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--color-border-frosted) 150%, white);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ── Selection highlight ──────────────────────────────── */
+::selection {
+  background-color: var(--color-selection);
+}

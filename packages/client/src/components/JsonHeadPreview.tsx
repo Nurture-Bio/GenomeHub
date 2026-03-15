@@ -158,7 +158,7 @@ export default function JsonHeadPreview({ url }: { url: string }) {
   if (status === 'error') {
     return (
       <div className="flex items-center justify-center py-8">
-        <Text variant="dim" style={{ color: 'var(--color-red)' }}>
+        <Text variant="dim" style={{ color: 'var(--color-danger)' }}>
           {error}
         </Text>
       </div>
@@ -169,7 +169,7 @@ export default function JsonHeadPreview({ url }: { url: string }) {
     return (
       <div
         className="flex items-center justify-center"
-        style={{ height: PANEL_H, background: 'var(--color-void)' }}
+        style={{ height: PANEL_H, background: 'var(--color-surface-sunken)' }}
       >
         <Text variant="dim">Loading preview…</Text>
       </div>
@@ -180,7 +180,7 @@ export default function JsonHeadPreview({ url }: { url: string }) {
     return (
       <div
         className="flex items-center justify-center"
-        style={{ height: PANEL_H, background: 'var(--color-void)' }}
+        style={{ height: PANEL_H, background: 'var(--color-surface-sunken)' }}
       >
         <Text variant="dim">No records found</Text>
       </div>
@@ -190,11 +190,11 @@ export default function JsonHeadPreview({ url }: { url: string }) {
   // ── Main layout ──────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col" style={{ background: 'var(--color-void)', height: PANEL_H }}>
+    <div className="flex flex-col" style={{ background: 'var(--color-surface-sunken)', height: PANEL_H }}>
       {/* Status bar */}
       <div
-        className="px-3 py-1.5 border-b border-line flex items-center gap-2 shrink-0"
-        style={{ background: 'var(--color-base)' }}
+        className="px-3 py-1.5 border-b border-border flex items-center gap-2 shrink-0"
+        style={{ background: 'var(--color-surface)' }}
       >
         <Text variant="dim">
           {rows.length.toLocaleString()} record{rows.length !== 1 ? 's' : ''}
@@ -216,14 +216,14 @@ export default function JsonHeadPreview({ url }: { url: string }) {
               return (
                 <div
                   key={name}
-                  className="text-left font-semibold text-fg-2 select-none relative group cursor-pointer"
+                  className="text-left font-semibold text-text-muted select-none relative group cursor-pointer"
                   style={{
                     width: w,
                     minWidth: 50,
                     flexShrink: 0,
                     padding: '3px 6px',
-                    background: 'var(--color-raised)',
-                    borderBottom: `2px solid ${sortDir ? 'var(--color-cyan)' : 'var(--color-line)'}`,
+                    background: 'var(--color-surface-raised)',
+                    borderBottom: `2px solid ${sortDir ? 'var(--color-interactive)' : 'var(--color-border)'}`,
                     whiteSpace: 'nowrap',
                     fontSize: 'var(--font-size-xs)',
                   }}
@@ -239,7 +239,7 @@ export default function JsonHeadPreview({ url }: { url: string }) {
                     style={{
                       width: 3,
                       cursor: 'col-resize',
-                      background: 'var(--color-line)',
+                      background: 'var(--color-border)',
                       transition: 'opacity var(--t-fast)',
                     }}
                     onMouseDown={(e) => {
@@ -247,10 +247,10 @@ export default function JsonHeadPreview({ url }: { url: string }) {
                       handleResizeStart(name, e.clientX, w);
                     }}
                     onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLElement).style.background = 'var(--color-cyan)';
+                      (e.currentTarget as HTMLElement).style.background = 'var(--color-interactive)';
                     }}
                     onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLElement).style.background = 'var(--color-line)';
+                      (e.currentTarget as HTMLElement).style.background = 'var(--color-border)';
                     }}
                   />
                 </div>
@@ -305,7 +305,7 @@ export default function JsonHeadPreview({ url }: { url: string }) {
                           minWidth: 50,
                           flexShrink: 0,
                           padding: '0 6px',
-                          borderBottom: '1px solid var(--color-line)',
+                          borderBottom: '1px solid var(--color-border)',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap',
@@ -317,7 +317,7 @@ export default function JsonHeadPreview({ url }: { url: string }) {
                         }}
                       >
                         {value === null || value === undefined ? (
-                          <span style={{ color: 'var(--color-fg-3)', fontStyle: 'italic' }}>
+                          <span style={{ color: 'var(--color-text-faint)', fontStyle: 'italic' }}>
                             {'\u2014'}
                           </span>
                         ) : (
@@ -350,7 +350,7 @@ function SortChevron({ dir }: { dir: 'asc' | 'desc' | null }) {
         transition: 'transform var(--t-fast) var(--ease-move)',
         transform: dir === 'desc' ? 'rotate(180deg)' : 'none',
         opacity: dir ? 1 : 0.3,
-        color: dir ? 'var(--color-cyan)' : 'inherit',
+        color: dir ? 'var(--color-interactive)' : 'inherit',
       }}
     >
       <path d="M4 0L7.5 4.5H0.5L4 0Z" />

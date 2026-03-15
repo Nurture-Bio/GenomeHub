@@ -91,11 +91,11 @@ export const Sizes: Story = {
     return (
       <div className="flex flex-col gap-3" style={{ width: 300 }}>
         <div>
-          <span className="text-fg-3 font-mono text-body block mb-1">sm</span>
+          <span className="text-text-faint font-mono text-body block mb-1">sm</span>
           <ComboBox items={ORGANISMS} value={v1} onValueChange={setV1} size="sm" placeholder="Small" />
         </div>
         <div>
-          <span className="text-fg-3 font-mono text-body block mb-1">md</span>
+          <span className="text-text-faint font-mono text-body block mb-1">md</span>
           <ComboBox items={ORGANISMS} value={v2} onValueChange={setV2} size="md" placeholder="Medium" />
         </div>
       </div>

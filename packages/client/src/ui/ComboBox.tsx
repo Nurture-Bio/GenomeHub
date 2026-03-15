@@ -80,7 +80,7 @@ export default function ComboBox({
             className={cx(
               input({ variant, size }),
               'flex items-center gap-1.5 text-left cursor-pointer',
-              !selected && 'text-fg-3',
+              !selected && 'text-text-faint',
               disabled && 'opacity-50 cursor-not-allowed',
               className,
             )}
@@ -92,7 +92,7 @@ export default function ComboBox({
                 <>
                   <span className="block truncate">{selected.label}</span>
                   {selected.description && (
-                    <span className="block truncate text-fg-3" style={{ fontSize: '0.85em' }}>
+                    <span className="block truncate text-text-faint" style={{ fontSize: '0.85em' }}>
                       {selected.description}
                     </span>
                   )}
@@ -101,7 +101,7 @@ export default function ComboBox({
                 placeholder
               )}
             </span>
-            <svg width="12" height="12" viewBox="0 0 12 12" className="shrink-0 text-fg-3">
+            <svg width="12" height="12" viewBox="0 0 12 12" className="shrink-0 text-text-faint">
               <path
                 d="M3 5l3 3 3-3"
                 fill="none"
@@ -119,18 +119,18 @@ export default function ComboBox({
         <Popover.Content
           sideOffset={4}
           align="start"
-          className="bg-base border border-line shadow-lg rounded-md overflow-hidden z-popover animate-fade-in flex flex-col"
+          className="bg-surface border border-border shadow-lg rounded-md overflow-hidden z-popover animate-fade-in flex flex-col"
           style={{ width: 'var(--radix-popover-trigger-width)', minWidth: 200, maxHeight: 300 }}
         >
           <Command shouldFilter={true} className="flex flex-col min-h-0 flex-1">
-            <div className="border-b border-line px-2 py-1 shrink-0">
+            <div className="border-b border-border px-2 py-1 shrink-0">
               <Command.Input
                 value={search}
                 onValueChange={setSearch}
                 placeholder="Filter..."
                 className={cx(
                   text({ variant: 'body' }),
-                  'w-full bg-transparent border-none outline-none text-body placeholder:text-fg-3',
+                  'w-full bg-transparent border-none outline-none text-body placeholder:text-text-faint',
                 )}
               />
             </div>
@@ -150,7 +150,7 @@ export default function ComboBox({
                   }}
                   className={cx(
                     text({ variant: 'dim' }),
-                    'px-2 py-1 cursor-pointer hover:bg-raised transition-colors duration-fast flex items-center',
+                    'px-2 py-1 cursor-pointer hover:bg-surface-raised transition-colors duration-fast flex items-center',
                   )}
                 >
                   {placeholder}
@@ -161,7 +161,7 @@ export default function ComboBox({
               {recentItems.length > 0 && (
                 <Command.Group
                   heading="Recent"
-                  className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1 [&_[cmdk-group-heading]]:text-body [&_[cmdk-group-heading]]:font-bold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-overline [&_[cmdk-group-heading]]:text-fg-3"
+                  className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1 [&_[cmdk-group-heading]]:text-body [&_[cmdk-group-heading]]:font-bold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-overline [&_[cmdk-group-heading]]:text-text-faint"
                 >
                   {recentItems.map((item) => (
                     <ComboBoxOption
@@ -194,7 +194,7 @@ export default function ComboBox({
                     <Command.Group
                       key={group}
                       heading={group || undefined}
-                      className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1 [&_[cmdk-group-heading]]:text-body [&_[cmdk-group-heading]]:font-bold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-overline [&_[cmdk-group-heading]]:text-fg-3"
+                      className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1 [&_[cmdk-group-heading]]:text-body [&_[cmdk-group-heading]]:font-bold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-overline [&_[cmdk-group-heading]]:text-text-faint"
                     >
                       {groupItems.map((item) => (
                         <ComboBoxOption
@@ -221,9 +221,9 @@ export default function ComboBox({
                   }}
                   className={cx(
                     text({ variant: 'dim' }),
-                    'px-2 py-1 cursor-pointer hover:bg-raised transition-colors duration-fast flex items-center gap-1 border-t border-line',
+                    'px-2 py-1 cursor-pointer hover:bg-surface-raised transition-colors duration-fast flex items-center gap-1 border-t border-border',
                   )}
-                  style={{ color: 'var(--color-cyan)' }}
+                  style={{ color: 'var(--color-interactive)' }}
                 >
                   + Create &ldquo;{search.trim()}&rdquo;
                 </Command.Item>
@@ -262,7 +262,7 @@ function ComboBoxOption({
       onClick={handle}
       className={cx(
         'px-2 py-1 cursor-pointer transition-colors duration-fast flex items-center gap-2',
-        selected ? 'bg-raised' : 'hover:bg-raised',
+        selected ? 'bg-surface-raised' : 'hover:bg-surface-raised',
       )}
     >
       {item.icon}
@@ -279,7 +279,7 @@ function ComboBoxOption({
         </div>
       )}
       {selected && (
-        <svg width="14" height="14" viewBox="0 0 14 14" className="shrink-0 text-cyan">
+        <svg width="14" height="14" viewBox="0 0 14 14" className="shrink-0 text-interactive">
           <path
             d="M3 7l3 3 5-5"
             fill="none"

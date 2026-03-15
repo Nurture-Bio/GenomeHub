@@ -72,19 +72,19 @@ export const FlowStates: Story = {
   render: () => (
     <div className="flex flex-col gap-6" style={{ width: 300 }}>
       <div>
-        <span className="text-fg-3 font-mono text-body block mb-1">
+        <span className="text-text-faint font-mono text-body block mb-1">
           normal
         </span>
         <RiverGauge current={6500} total={10000} flowState="normal" />
       </div>
       <div>
-        <span className="text-fg-3 font-mono text-body block mb-1">
+        <span className="text-text-faint font-mono text-body block mb-1">
           pending
         </span>
         <RiverGauge current={6500} total={10000} flowState="pending" />
       </div>
       <div>
-        <span className="text-fg-3 font-mono text-body block mb-1">
+        <span className="text-text-faint font-mono text-body block mb-1">
           stalled
         </span>
         <RiverGauge current={6500} total={10000} flowState="stalled" />
@@ -97,13 +97,13 @@ export const Compact: Story = {
   render: () => (
     <div className="flex flex-col gap-4" style={{ width: 200 }}>
       <div>
-        <span className="text-fg-3 font-mono text-body block mb-1">
+        <span className="text-text-faint font-mono text-body block mb-1">
           compact
         </span>
         <RiverGauge current={4200} total={10000} compact />
       </div>
       <div>
-        <span className="text-fg-3 font-mono text-body block mb-1">full</span>
+        <span className="text-text-faint font-mono text-body block mb-1">full</span>
         <RiverGauge current={4200} total={10000} />
       </div>
     </div>

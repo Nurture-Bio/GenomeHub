@@ -57,8 +57,13 @@ function FormatBar({ items }: { items: { format: string; bytes: number }[] }) {
         return (
           <div
             key={item.format}
+            className="format-bar-seg"
             title={`${meta.label}: ${formatBytes(item.bytes)} (${pct.toFixed(1)}%)`}
-            style={{ width: `${pct}%`, background: meta.color, opacity: 0.85 }}
+            style={{
+              '--seg-bg': meta.bg,
+              '--seg-fg': meta.color,
+              width: `${pct}%`,
+            } as React.CSSProperties}
           />
         );
       })}
@@ -104,7 +109,7 @@ export default function DashboardPage() {
 
       {/* Storage by format */}
       {!statsLoading && stats && stats.byFormat.length > 0 && (
-        <div className="bg-base border border-line rounded-md p-3 flex flex-col gap-2">
+        <div className="bg-surface border border-border rounded-md p-3 flex flex-col gap-2">
           <Text variant="muted">Storage by Format</Text>
           <FormatBar items={stats.byFormat} />
 
@@ -117,12 +122,12 @@ export default function DashboardPage() {
               return (
                 <div
                   key={item.format}
-                  className="flex items-center gap-1.5 p-1 bg-raised rounded-sm stagger-item"
+                  className="flex items-center gap-1.5 p-1 bg-surface-raised rounded-sm stagger-item"
                   style={{ '--i': Math.min(i, 15) } as React.CSSProperties}
                 >
                   <div
                     className="w-2 h-2 rounded-full shrink-0"
-                    style={{ background: meta.color }}
+                    style={{ background: meta.bg, boxShadow: `0 0 4px ${meta.color}` }}
                   />
                   <div className="min-w-0 flex-1">
                     <Text variant="body">{meta.label}</Text>

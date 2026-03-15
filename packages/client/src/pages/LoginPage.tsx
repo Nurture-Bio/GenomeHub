@@ -73,7 +73,7 @@ export default function LoginPage() {
   return (
     <div className="flex items-center justify-center h-full login-bg">
       <div
-        className="flex flex-col items-center gap-4 p-8 rounded-lg border border-line card-surface"
+        className="flex flex-col items-center gap-4 p-8 rounded-lg border border-border card-surface"
         style={{ width: 380 }}
       >
         <span className="logo-glow">

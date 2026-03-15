@@ -21,7 +21,7 @@ export default function ConfirmDialog() {
         <Dialog.Overlay className="fixed inset-0 bg-black/75 z-modal animate-fade-in" />
         <Dialog.Content
           className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-modal
-                     bg-elevated border border-line rounded-lg shadow-lg
+                     bg-surface-elevated border border-border rounded-lg shadow-lg
                      p-3 w-full max-w-sm mx-2 animate-fade-in"
           onPointerDownOutside={() => respond(false)}
         >

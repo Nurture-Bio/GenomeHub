@@ -12,7 +12,7 @@ import { formatRelativeTime } from '../lib/formats';
 
 function SkeletonRow() {
   return (
-    <tr className="border-b border-line">
+    <tr className="border-b border-border">
       <td className="tbl-cell">
         <div className="flex flex-col gap-1">
           <div className="skeleton h-[1lh] w-3/4" />
@@ -77,10 +77,10 @@ export default function OrganismsPage() {
       </div>
 
       {/* Desktop table */}
-      <div className="hidden md:block flex-1 overflow-auto min-h-0 border border-line rounded-md bg-base">
+      <div className="hidden md:block flex-1 overflow-auto min-h-0 border border-border rounded-md bg-surface">
         <table className="w-full border-collapse text-left table-fixed">
-          <thead className="sticky top-0 bg-raised z-sticky">
-            <tr className="border-b border-line">
+          <thead className="sticky top-0 bg-surface-raised z-sticky">
+            <tr className="border-b border-border">
               <th className="tbl-cell">
                 <Text variant="muted">Organism</Text>
               </th>
@@ -104,7 +104,7 @@ export default function OrganismsPage() {
                 {data?.map((o, i) => (
                   <tr
                     key={o.id}
-                    className="border-b border-line group stagger-item row-hover"
+                    className="border-b border-border group stagger-item row-hover"
                     style={{ '--i': Math.min(i, 15) } as React.CSSProperties}
                   >
                     <td className="tbl-cell overflow-hidden">
@@ -170,7 +170,7 @@ export default function OrganismsPage() {
                 ))}
 
                 {/* Inline add row */}
-                <tr className="text-fg-3">
+                <tr className="text-text-faint">
                   <td className="tbl-cell overflow-hidden">
                     <div className="flex items-baseline gap-1 min-w-0">
                       <input
@@ -239,16 +239,16 @@ export default function OrganismsPage() {
             </Card>
           ))
         ) : !data?.length ? (
-          <Text variant="body" className="py-8 text-center text-fg-3 animate-fade-up">
+          <Text variant="body" className="py-8 text-center text-text-faint animate-fade-up">
             No organisms yet.
           </Text>
         ) : (
           data.map((o) => (
             <Card key={o.id} className="p-2.5 flex flex-col gap-1">
               <Text variant="body">
-                <span className="text-fg-3 italic">{o.genus.charAt(0)}.</span>{' '}
+                <span className="text-text-faint italic">{o.genus.charAt(0)}.</span>{' '}
                 <span className="font-semibold">{o.species}</span>
-                {o.strain && <span className="text-fg-2 ml-1">{o.strain}</span>}
+                {o.strain && <span className="text-text-muted ml-1">{o.strain}</span>}
               </Text>
               {o.commonName && <Text variant="dim">{o.commonName}</Text>}
               <div className="flex items-center gap-2 flex-wrap">

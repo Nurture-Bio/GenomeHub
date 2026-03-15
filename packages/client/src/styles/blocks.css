@@ -1,0 +1,874 @@
+/* ═══════════════════════════════════════════════════════════════
+   BLOCKS — Component-scoped visual styles (CUBE CSS layer 4)
+
+   Background, color, border, border-radius, box-shadow, font-*,
+   transition, cursor, text-transform, white-space, opacity,
+   animation, filter, backdrop-filter, will-change, transform.
+
+   NO layout properties — those live in compositions.css.
+   NO raw values — reference tokens via var() only.
+
+   Exceptions (intentional raw oklch values):
+     - .btn-primary gradients (multi-stop design effect)
+     - .river-fill gradient (three-stop teal→cyan→pale)
+     - .login-bg radial gradient center color
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Row hover (visual split — geometry in compositions) ──── */
+
+.row-hover > td::before {
+  background: var(--row-hover-bg, var(--color-surface-raised));
+  opacity: 0;
+  transition: opacity var(--t-fast) var(--ease-out);
+}
+.row-hover:hover > td::before {
+  opacity: 1;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   VISUAL LANGUAGE — The Console
+
+   Every panel, surface, and border on this site speaks one
+   language. These are the materials, not the layout.
+
+   Materials (darkest → lightest):
+     Vault Door    black/40 → black/60 on hover
+     Sidebar       black/40 (matches vault resting)
+     Glass Canopy  void/85 + backdrop-blur
+
+   Borders:
+     Panel edge    white/10 (canopy, vault, sidebar dividers)
+     Sidebar seam  white/5  (right edge, barely visible)
+
+   Cyan spectrum (oklch 0.75 0.18 195):
+     --color-interactive         full — active text, indicators
+     cyan/70              muted — file extensions, ghost labels
+     cyan/30              whisper — hover borders, export glow
+     cyan/10              breath — hover backgrounds
+
+   River gradient:
+     oklch(0.55 0.16 195) → oklch(0.72 0.17 195) → oklch(0.80 0.14 195)
+     Dark teal → electric cyan → pale cyan
+
+   Groove (inset tracks):
+     oklch(0.15 0.01 240) with inset 0 1px 3px black/50
+
+   Heat map (numeric cells):
+     oklch(0.750 0.180 195 / 0–0.14)
+
+   Amber OOB (out-of-bounds warnings):
+     oklch(0.75 0.185 60) + glow at 0.28 opacity
+   ═══════════════════════════════════════════════════════════════ */
+
+
+/* ── Frosted glass materials ────────────────────────────────── */
+
+/* The Vault Door — dark frosted glass */
+.vault-door {
+  background: var(--color-surface-frosted);
+  border: 1px solid var(--color-border-frosted);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: background-color var(--t-fast) var(--ease-out);
+}
+.vault-door:hover {
+  background: color-mix(in srgb, var(--color-surface-frosted) 150%, black);
+  will-change: transform;
+}
+
+/* The Glass Canopy — frosted void */
+.glass-canopy {
+  --_glass-blur: blur(12px);
+  background: oklch(from var(--color-surface-sunken) l c h / 0.72);
+  -webkit-backdrop-filter: var(--_glass-blur);
+  backdrop-filter: var(--_glass-blur);
+  border: 1px solid var(--color-border-frosted);
+  border-radius: var(--radius-lg);
+}
+
+/* The Instrument Trench (Sidebar) */
+.sidebar-surface {
+  background: var(--color-surface-frosted);
+  border-right: 1px solid color-mix(in srgb, var(--color-border-frosted) 50%, transparent);
+}
+
+
+/* ── River Gauge — the flow indicator ───────────────────────── */
+
+.river-gauge {
+  opacity: 1;
+}
+.river-gauge.dissolved {
+  opacity: 0;
+  transition: opacity 500ms ease-in 300ms;
+}
+
+.river-readout {
+  font-size: var(--font-size-2xl);
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+  transition: color var(--t-fast);
+}
+.river-readout.compact {
+  font-size: var(--font-size-lg);
+}
+.river-readout.accent {
+  color: var(--color-interactive);
+}
+.river-readout.empty {
+  color: var(--color-danger);
+}
+
+.river-total {
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-faint);
+}
+
+.river-groove {
+  background: var(--color-surface);
+  box-shadow: inset 0 1px 3px color-mix(in srgb, var(--color-surface-frosted) 125%, black);
+  border-radius: var(--radius-full);
+}
+
+/* Raw oklch gradient — intentional three-stop teal→cyan→pale design effect */
+.river-fill {
+  background: linear-gradient(
+    to right,
+    oklch(0.55 0.16 195),
+    oklch(0.72 0.17 195),
+    oklch(0.80 0.14 195)
+  );
+  border-radius: var(--radius-full);
+}
+.river-fill.pending {
+  opacity: 0.5;
+  animation: distPlotBreath 1.5s ease-in-out infinite;
+}
+.river-fill.stalled {
+  background: linear-gradient(to right, var(--color-warning-border), var(--color-warning));
+  animation: none;
+}
+
+.river-total.stalled {
+  color: var(--color-warning);
+}
+
+.river-impact {
+  box-shadow: 0 0 8px 2px color-mix(in srgb, var(--color-interactive) 60%, transparent);
+  animation: riverImpactFlash 600ms ease-out both;
+}
+
+@keyframes riverImpactFlash {
+  0%   { box-shadow: 0 0 12px 4px color-mix(in srgb, var(--color-interactive-hover) 80%, transparent); }
+  100% { box-shadow: 0 0 4px 1px color-mix(in srgb, var(--color-interactive) 20%, transparent); }
+}
+
+@keyframes distPlotBreath {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+
+/* ── Range components ───────────────────────────────────────── */
+
+.range-track {
+  background: color-mix(in srgb, var(--color-surface-sunken) 50%, transparent);
+  border-radius: var(--radius-md);
+}
+
+.range-thumb {
+  pointer-events: none;
+}
+.range-thumb::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: var(--range-thumb-size);
+  height: var(--range-thumb-size);
+  border-radius: var(--radius-full);
+  background: var(--range-thumb-color, var(--color-text-muted));
+  border: 2px solid var(--color-surface-sunken);
+  /* Ghost hitbox — 8px transparent border expands hit area to 30px */
+  box-shadow: 0 0 0 8px transparent;
+  cursor: pointer;
+  pointer-events: auto;
+  transition:
+    transform var(--t-fast) var(--ease-move),
+    box-shadow var(--t-fast) var(--ease-move),
+    background var(--t-fast) var(--ease-move);
+}
+.range-thumb::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 0 3px var(--range-thumb-glow, oklch(0.65 0.015 250 / 0.25));
+  will-change: transform;
+}
+.range-thumb::-moz-range-thumb {
+  width: var(--range-thumb-size);
+  height: var(--range-thumb-size);
+  border-radius: var(--radius-full);
+  background: var(--range-thumb-color, var(--color-text-muted));
+  border: 2px solid var(--color-surface-sunken);
+  box-shadow: 0 0 0 8px transparent;
+  cursor: pointer;
+  pointer-events: auto;
+  transition:
+    transform var(--t-fast) var(--ease-move),
+    box-shadow var(--t-fast) var(--ease-move),
+    background var(--t-fast) var(--ease-move);
+}
+.range-thumb::-moz-range-thumb:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 0 3px var(--range-thumb-glow, oklch(0.65 0.015 250 / 0.25));
+  will-change: transform;
+}
+.range-thumb::-webkit-slider-runnable-track {
+  background: transparent;
+  height: 0;
+}
+.range-thumb::-moz-range-track {
+  background: transparent;
+  height: 0;
+}
+
+
+/* ── Sigil control ──────────────────────────────────────────── */
+
+.sigil {
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--color-border-frosted);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  text-transform: uppercase;
+  letter-spacing: var(--letter-spacing-sigil);
+  transition: color var(--t-fast), background var(--t-fast), border-color var(--t-fast);
+}
+.sigil:hover {
+  color: var(--color-interactive);
+  background: color-mix(in srgb, var(--color-interactive) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-interactive) 30%, transparent);
+}
+.sigil:active {
+  transform: scale(0.95);
+}
+.sigil.active {
+  background: var(--color-interactive);
+  color: var(--color-surface-sunken);
+  border-color: var(--color-interactive);
+  font-weight: 600;
+}
+.sigil.active:hover {
+  background: var(--color-interactive-hover);
+  border-color: var(--color-interactive-hover);
+}
+
+/* Compact sigil — for inline chips (categoricals) */
+.sigil-sm {
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+
+/* ── Treemap (visual split — geometry is in compositions) ──── */
+
+.treemap-cell {
+  background: color-mix(
+    in srgb,
+    var(--cell-color) calc(var(--opacity-4) * 100%),
+    var(--color-surface)
+  );
+  border: 1px solid color-mix(in srgb, var(--cell-color) 10%, transparent);
+  cursor: pointer;
+  transition:
+    background var(--t-fast) var(--ease-move),
+    border-color var(--t-fast) var(--ease-move),
+    box-shadow var(--t-fast) var(--ease-move),
+    opacity var(--t-base) var(--ease-move),
+    left var(--t-slow) var(--ease-out),
+    top var(--t-slow) var(--ease-out),
+    width var(--t-slow) var(--ease-out),
+    height var(--t-slow) var(--ease-out);
+}
+.treemap-cell:hover {
+  background: color-mix(in srgb, var(--cell-color) 28%, var(--color-surface));
+  border-color: var(--cell-color);
+  box-shadow: var(--shadow-md);
+  z-index: 1;
+}
+.treemap-cell.active {
+  background: color-mix(in srgb, var(--cell-color) 32%, var(--color-surface));
+  border-color: var(--cell-color);
+  box-shadow: var(--shadow-lg);
+  z-index: 2;
+}
+.treemap-cell.dimmed {
+  opacity: 0.35;
+}
+.treemap-cell.dimmed:hover {
+  opacity: 0.6;
+}
+
+.treemap-label {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-body);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: var(--letter-spacing-overline);
+  color: color-mix(in srgb, var(--cell-color) 80%, white);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+  line-height: 1;
+}
+
+.treemap-count {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-body);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--cell-color);
+  text-align: center;
+  line-height: 1;
+}
+
+/* Treemap texture */
+.treemap-texture::before {
+  opacity: var(--opacity-1);
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent,
+    transparent 3px,
+    color-mix(in srgb, var(--color-surface-sunken) 50%, transparent) 3px,
+    color-mix(in srgb, var(--color-surface-sunken) 50%, transparent) 4px
+  );
+}
+
+
+/* ── Input & Button ─────────────────────────────────────────── */
+
+.input-focus-glow:focus {
+  border-color: var(--color-interactive);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--color-interactive) 15%, transparent),
+    var(--glow-interactive-sm);
+}
+
+/* Raw oklch gradients — intentional multi-stop design effect */
+.btn-primary {
+  background: linear-gradient(180deg, oklch(0.79 0.18 195), oklch(0.72 0.18 195));
+  color: var(--color-surface-sunken);
+  border: none;
+  font-weight: 700;
+}
+.btn-primary:hover {
+  background: linear-gradient(180deg, oklch(0.83 0.18 195), oklch(0.76 0.18 195));
+  box-shadow: var(--glow-interactive);
+}
+.btn-primary:active {
+  background: linear-gradient(180deg, oklch(0.7 0.18 195), oklch(0.68 0.18 195));
+}
+
+
+/* ── Nav indicator (visual split) ───────────────────────────── */
+
+.nav-active-indicator::before {
+  border-radius: 0 2px 2px 0;
+  background: var(--color-interactive);
+  box-shadow: var(--glow-interactive-sm);
+}
+
+
+/* ── Logo & Login ───────────────────────────────────────────── */
+
+.logo-glow {
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--color-interactive) 30%, transparent));
+}
+
+/* Raw oklch center color — intentional radial gradient design effect */
+.login-bg {
+  background: radial-gradient(ellipse at 50% 40%, oklch(0.14 0.04 195) 0%, var(--color-surface-sunken) 70%);
+}
+
+
+/* ── Card surfaces ──────────────────────────────────────────── */
+
+.stat-card-surface {
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.surface-header {
+  background: linear-gradient(180deg, var(--color-surface-elevated), var(--color-surface-raised));
+}
+
+.card-surface {
+  background: var(--color-surface);
+}
+
+
+/* ── Format bar segment ────────────────────────────────────── */
+
+.format-bar-seg {
+  background: var(--seg-bg);
+  transition: background var(--t-fast) var(--ease-out);
+}
+.format-bar-seg:hover {
+  background: var(--seg-fg);
+}
+
+/* ── Hash chips ─────────────────────────────────────────────── */
+/* NOTE: @apply mixes layout and visual concerns. Kept as-is
+   because splitting would break Tailwind compilation. */
+
+.hash-chip {
+  @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full transition-[filter,box-shadow];
+  font-family: var(--font-sans);
+  font-size: var(--font-size-body);
+  transition-duration: var(--t-fast);
+  background: var(--hc-bg, var(--color-surface-raised));
+  color: var(--hc-fg, var(--color-text-muted));
+}
+.hash-chip:hover {
+  filter: brightness(1.12);
+}
+.hash-chip:active {
+  filter: brightness(0.88);
+}
+
+.hash-filter-btn {
+  @apply px-1.5 py-1 md:py-0.5 rounded-sm border transition-[filter,background,color,border-color] cursor-pointer min-h-5.5 md:min-h-0;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-body);
+  transition-duration: var(--t-fast);
+  background: var(--color-surface-raised);
+  color: var(--color-text-muted);
+  border-color: var(--color-border);
+}
+.hash-filter-btn:hover {
+  filter: brightness(1.12);
+}
+.hash-filter-btn:active {
+  filter: brightness(0.88);
+}
+
+
+/* ── Readout segments ───────────────────────────────────────── */
+
+.readout-seg {
+  transition: flex var(--t-slow) var(--ease-move);
+}
+.readout-seg.status-main {
+  background: var(--color-interactive);
+}
+.readout-seg.status-alt {
+  background: var(--color-success);
+}
+.readout-seg.status-bot {
+  background: var(--color-secondary);
+}
+.readout-seg.status-probationary {
+  background: var(--color-text-faint);
+}
+
+.readout-dot.status-main {
+  background: var(--color-interactive);
+}
+.readout-dot.status-alt {
+  background: var(--color-success);
+}
+.readout-dot.status-bot {
+  background: var(--color-secondary);
+}
+.readout-dot.status-probationary {
+  background: var(--color-text-faint);
+}
+
+
+/* ── Chat ───────────────────────────────────────────────────── */
+
+.chat-bg {
+  background: var(--color-surface);
+}
+
+.bubble-self {
+  background: color-mix(in srgb, var(--color-interactive) 14%, var(--color-surface));
+  border: 1px solid color-mix(in srgb, var(--color-interactive) 10%, var(--color-border));
+}
+.bubble-other {
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+}
+
+
+/* ── Amber glow ─────────────────────────────────────────────── */
+
+.amber-glow {
+  box-shadow: 0 0 6px color-mix(in srgb, var(--color-warning) 28%, transparent);
+}
+
+
+/* ── Pseudo-elements ────────────────────────────────────────── */
+
+.message-command::before {
+  content: '> ';
+  color: var(--color-interactive);
+}
+
+.loading::after {
+  content: ' ';
+  animation: pulse var(--t-drift) var(--ease-move) infinite;
+}
+
+
+/* ── Field tooltip (visual split) ───────────────────────────── */
+
+.field-tooltip::after {
+  background: var(--color-surface-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-body);
+  color: var(--color-text-muted);
+  box-shadow: var(--shadow-sm);
+  opacity: 0;
+  transition: opacity var(--t-fast) var(--ease-out);
+  transition-delay: var(--t-base);
+}
+.field-tooltip:hover::after {
+  opacity: 1;
+}
+
+
+/* ── Equipment (visual split) ───────────────────────────────── */
+
+.equipment-slot {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  transition:
+    border-color var(--t-fast) var(--ease-move),
+    background var(--t-fast) var(--ease-move);
+}
+.equipment-slot.filled {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+}
+.equipment-slot.filled:hover {
+  border-color: var(--color-interactive-dim);
+  background: var(--color-surface-raised);
+}
+
+.equipment-slot-label {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-body);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: var(--letter-spacing-overline);
+  color: var(--color-text-faint);
+  line-height: 1;
+}
+
+
+/* ── Animation & stagger ────────────────────────────────────── */
+
+.stagger-item {
+  animation: fadeUp var(--t-base) var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 30ms);
+}
+
+.animate-fade-in {
+  animation: fadeOpacity var(--t-phi-half) var(--ease-phi) both;
+}
+
+
+/* ── Pip colors (using tokens) ──────────────────────────────── */
+
+.pip-cleric { background: var(--color-pip-cleric); }
+.pip-warrior { background: var(--color-pip-warrior); }
+.pip-wizard { background: var(--color-pip-wizard); }
+.pip-magician { background: var(--color-pip-magician); }
+.pip-enchanter { background: var(--color-pip-enchanter); }
+.pip-necromancer { background: var(--color-pip-necromancer); }
+.pip-shadow-knight { background: var(--color-pip-shadow-knight); }
+.pip-rogue { background: var(--color-pip-rogue); }
+.pip-ranger { background: var(--color-pip-ranger); }
+.pip-druid { background: var(--color-pip-druid); }
+.pip-monk { background: var(--color-pip-monk); }
+.pip-bard { background: var(--color-pip-bard); }
+.pip-paladin { background: var(--color-pip-paladin); }
+.pip-shaman { background: var(--color-pip-shaman); }
+
+
+/* ── Progress stripe ────────────────────────────────────────── */
+
+.progress-stripe {
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 10px,
+    var(--color-border-frosted) 10px,
+    var(--color-border-frosted) 20px
+  );
+  animation: progress-stripe 0.8s linear infinite;
+}
+
+@keyframes progress-stripe {
+  from {
+    background-position: 40px 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
+
+/* ── Format icon (visual split) ─────────────────────────────── */
+
+.format-icon {
+  border-radius: var(--radius-sm);
+  font-size: calc(var(--format-icon-size) * 0.28);
+  letter-spacing: -0.02em;
+}
+
+
+/* ── Skeleton ───────────────────────────────────────────────── */
+
+.skeleton {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-raised) 25%,
+    var(--color-surface-elevated) 50%,
+    var(--color-surface-raised) 75%
+  );
+  background-size: 200% 100%;
+  animation:
+    fadeOpacity calc(var(--t-phi) / 1.618) var(--ease-phi) both,
+    shimmer 1.5s ease-in-out calc(var(--t-phi) / 1.618) infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes fadeOpacity {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+
+/* ── Stepper animations ─────────────────────────────────────── */
+
+.stepper-ping {
+  will-change: transform, opacity;
+  animation: stepperPing 2s var(--ease-phi) infinite;
+}
+.stepper-reveal {
+  animation: stepperReveal 400ms var(--ease-phi) forwards;
+}
+.stepper-flourish {
+  will-change: transform;
+  animation: stepperFlourish 618ms var(--ease-phi) both;
+}
+.stepper-flourish-ping {
+  will-change: transform, opacity;
+  animation: stepperFlourishPing 618ms var(--ease-phi) both;
+}
+.stepper-conn-flourish {
+  opacity: 0;
+  animation: stepperConnFlourish 618ms var(--ease-phi) both;
+}
+
+
+/* ── Collapse transitions ───────────────────────────────────── */
+
+.collapse-chevron {
+  transition: transform var(--t-fast) var(--ease-move);
+}
+
+.collapse-container {
+  transition: grid-template-rows var(--t-slow) var(--ease-out);
+}
+
+
+/* ── All @keyframes ─────────────────────────────────────────── */
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+/* ── Stepper SVG animations (GPU-composited) ───────────────
+   All continuous animations use only transform + opacity.
+   One-shot reveals use stroke-dashoffset (SVG-internal paint). */
+
+@keyframes stepperPing {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.3;
+  }
+  50% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+@keyframes stepperReveal {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes stepperFlourish {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.5);
+  }
+  65% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes stepperFlourishPing {
+  0% {
+    transform: scale(1);
+    opacity: 0.4;
+  }
+  100% {
+    transform: scale(3);
+    opacity: 0;
+  }
+}
+
+@keyframes stepperConnFlourish {
+  0% {
+    opacity: 0;
+  }
+  40% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 0.15;
+  }
+}
+
+@keyframes flourishLabel {
+  0% {
+    opacity: 0;
+    transform: translateY(4px) scale(1);
+    color: var(--color-text-muted);
+    text-shadow: none;
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(0) scale(1.15);
+    color: var(--color-interactive);
+    text-shadow: 0 0 12px color-mix(in srgb, var(--color-interactive) 30%, transparent);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    color: var(--color-interactive);
+    text-shadow: none;
+  }
+}
+
+@keyframes pageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+
+/* ── Media queries ──────────────────────────────────────────── */
+
+@media (width < 48rem) {
+  .treemap-count {
+    font-size: var(--font-size-body);
+  }
+  .treemap-label {
+    font-size: var(--font-size-body);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation-duration: 0s !important;
+  }
+  .stagger-item {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+  }
+  .animate-page-enter {
+    animation-duration: 0s !important;
+  }
+  .animate-fade-up {
+    animation-duration: 0s !important;
+  }
+}

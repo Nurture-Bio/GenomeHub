@@ -20,10 +20,10 @@ export const button = cva(
     variants: {
       intent: {
         primary: 'btn-primary',
-        ghost: 'bg-transparent border border-line text-fg-3 hover:text-fg hover:border-fg-3',
-        danger: 'bg-raised border border-red text-red hover:bg-line',
-        success: 'bg-raised border border-green text-green hover:bg-line',
-        component: 'bg-raised border border-line text-fg hover:bg-line',
+        ghost: 'bg-transparent border border-border text-text-faint hover:text-text hover:border-text-faint',
+        danger: 'bg-surface-raised border border-danger text-danger hover:bg-border',
+        success: 'bg-surface-raised border border-success text-success hover:bg-border',
+        component: 'bg-surface-raised border border-border text-text hover:bg-border',
         bare: 'bg-transparent border-none text-inherit',
       },
       size: {
@@ -51,14 +51,14 @@ export type ButtonVariants = VariantProps<typeof button>;
 // ── INPUT ───────────────────────────────────────────────
 
 export const input = cva(
-  'border border-line text-fg rounded-sm focus:outline-none input-focus-glow',
+  'border border-border text-text rounded-sm focus:outline-none input-focus-glow',
   {
     variants: {
       variant: {
-        default: 'bg-void font-sans placeholder:text-fg-3',
-        surface: 'bg-raised font-sans placeholder:text-fg-3',
-        transparent: 'bg-transparent font-sans placeholder:text-fg-3',
-        mono: 'bg-void font-mono',
+        default: 'bg-surface-sunken font-sans placeholder:text-text-faint',
+        surface: 'bg-surface-raised font-sans placeholder:text-text-faint',
+        transparent: 'bg-transparent font-sans placeholder:text-text-faint',
+        mono: 'bg-surface-sunken font-mono',
       },
       size: {
         sm: 'text-body py-0.5 px-1.5 min-h-6',
@@ -77,7 +77,7 @@ export type InputVariants = VariantProps<typeof input>;
 
 // ── CARD ────────────────────────────────────────────────
 
-export const card = cva('card-surface border border-line rounded-md overflow-hidden', {
+export const card = cva('card-surface border border-border rounded-md overflow-hidden', {
   variants: {
     elevated: {
       true: 'shadow-md',
@@ -94,7 +94,7 @@ export type CardVariants = VariantProps<typeof card>;
 // ── DROPDOWN ────────────────────────────────────────────
 
 export const dropdown = cva(
-  'absolute bg-base border border-line shadow-lg animate-fade-in overflow-y-auto z-dropdown',
+  'absolute bg-surface border border-border shadow-lg animate-fade-in overflow-y-auto z-dropdown',
   {
     variants: {
       position: {
@@ -114,12 +114,12 @@ export type DropdownVariants = VariantProps<typeof dropdown>;
 // ── DROPDOWN ITEM ───────────────────────────────────────
 
 export const dropdownItem = cva(
-  'cursor-pointer font-sans text-body px-2 py-1 border-b border-line last:border-b-0 transition-colors duration-fast',
+  'cursor-pointer font-sans text-body px-2 py-1 border-b border-border last:border-b-0 transition-colors duration-fast',
   {
     variants: {
       selected: {
-        true: 'bg-raised',
-        false: 'hover:bg-raised',
+        true: 'bg-surface-raised',
+        false: 'hover:bg-surface-raised',
       },
     },
     defaultVariants: {
@@ -135,12 +135,12 @@ export type DropdownItemVariants = VariantProps<typeof dropdownItem>;
 export const text = cva('', {
   variants: {
     variant: {
-      body: 'text-fg font-sans text-body',
-      dim: 'text-fg-2 font-sans text-body',
-      muted: 'text-fg-3 font-sans text-body font-bold uppercase tracking-overline',
-      mono: 'text-fg font-mono text-body tabular-nums',
-      error: 'text-red font-sans text-body',
-      caption: 'text-fg-3 font-sans text-xs',
+      body: 'text-text font-sans text-body',
+      dim: 'text-text-muted font-sans text-body',
+      muted: 'text-text-faint font-sans text-body font-bold uppercase tracking-overline',
+      mono: 'text-text font-mono text-body tabular-nums',
+      error: 'text-danger font-sans text-body',
+      caption: 'text-text-faint font-sans text-xs',
     },
   },
   defaultVariants: {
@@ -155,10 +155,10 @@ export type TextVariants = VariantProps<typeof text>;
 export const heading = cva('', {
   variants: {
     level: {
-      display: 'font-display font-bold text-display tracking-tight text-fg',
-      title: 'font-display font-semibold text-title tracking-tight text-cyan',
-      heading: 'font-display font-semibold text-heading text-cyan animate-fade-in',
-      subheading: 'font-sans font-semibold text-lg text-fg',
+      display: 'font-display font-bold text-display tracking-tight text-text',
+      title: 'font-display font-semibold text-title tracking-tight text-interactive',
+      heading: 'font-display font-semibold text-heading text-interactive animate-fade-in',
+      subheading: 'font-sans font-semibold text-lg text-text',
     },
   },
   defaultVariants: {
@@ -173,19 +173,19 @@ export type HeadingVariants = VariantProps<typeof heading>;
 export const badge = cva('font-sans font-bold', {
   variants: {
     variant: {
-      status: 'text-body uppercase tracking-overline px-1 py-px rounded-sm bg-raised',
+      status: 'text-body uppercase tracking-overline px-1 py-px rounded-sm bg-surface-raised',
       count:
-        'inline-flex items-center bg-raised text-body leading-none py-px px-1 font-semibold rounded-sm normal-case',
+        'inline-flex items-center bg-surface-raised text-body leading-none py-px px-1 font-semibold rounded-sm normal-case',
       filter:
-        'bg-base border border-line rounded-sm px-1 py-0.5 text-body font-semibold normal-case',
+        'bg-surface border border-border rounded-sm px-1 py-0.5 text-body font-semibold normal-case',
     },
     color: {
-      accent: 'text-cyan',
-      green: 'text-green',
-      yellow: 'text-yellow',
-      red: 'text-red',
-      dim: 'text-fg-3',
-      default: 'text-fg-3',
+      accent: 'text-interactive',
+      green: 'text-success',
+      yellow: 'text-warning',
+      red: 'text-danger',
+      dim: 'text-text-faint',
+      default: 'text-text-faint',
     },
   },
   defaultVariants: {
@@ -203,8 +203,8 @@ export const navLink = cva(
   {
     variants: {
       active: {
-        true: 'text-cyan nav-active-indicator',
-        false: 'text-fg-3 hover:text-fg',
+        true: 'text-interactive nav-active-indicator',
+        false: 'text-text-faint hover:text-text',
       },
     },
     defaultVariants: {
@@ -220,8 +220,8 @@ export type NavLinkVariants = VariantProps<typeof navLink>;
 export const statusDot = cva('rounded-full shrink-0', {
   variants: {
     status: {
-      connected: 'bg-green',
-      disconnected: 'bg-red',
+      connected: 'bg-success',
+      disconnected: 'bg-danger',
     },
     size: {
       sm: 'size-0.5',
@@ -238,7 +238,7 @@ export type StatusDotVariants = VariantProps<typeof statusDot>;
 
 // ── PROGRESS TRACK ──────────────────────────────────────
 
-export const progressTrack = cva('flex bg-raised gap-px overflow-hidden rounded-full h-1');
+export const progressTrack = cva('flex bg-surface-raised gap-px overflow-hidden rounded-full h-1');
 
 // ── MODAL OVERLAY ───────────────────────────────────────
 
@@ -249,23 +249,23 @@ export const modalOverlay = cva(
 // ── MODAL CARD ──────────────────────────────────────────
 
 export const modalCard = cva(
-  'bg-elevated border border-line rounded-lg shadow-lg p-3 w-full max-w-embed',
+  'bg-surface-elevated border border-border rounded-lg shadow-lg p-3 w-full max-w-embed',
 );
 
 // ── RECONNECT BANNER ────────────────────────────────────
 
 export const reconnectBanner = cva(
-  'bg-red text-white text-center py-1 text-body font-bold uppercase tracking-wide animate-pulse-slow',
+  'bg-danger text-white text-center py-1 text-body font-bold uppercase tracking-wide animate-pulse-slow',
 );
 
 // ── EMBED CARD ──────────────────────────────────────────
 
-export const embedCard = cva('bg-base border-l-2 rounded-md py-1.5 px-2 max-w-embed', {
+export const embedCard = cva('bg-surface border-l-2 rounded-md py-1.5 px-2 max-w-embed', {
   variants: {
     color: {
-      red: 'border-l-red',
-      yellow: 'border-l-yellow',
-      green: 'border-l-green',
+      red: 'border-l-danger',
+      yellow: 'border-l-warning',
+      green: 'border-l-success',
     },
   },
   defaultVariants: {
@@ -278,12 +278,12 @@ export type EmbedCardVariants = VariantProps<typeof embedCard>;
 // ── INLINE INPUT ───────────────────────────────────────
 
 export const inlineInput = cva(
-  'bg-transparent border-b border-dotted border-line/40 outline-none p-0 transition-colors duration-fast placeholder:text-fg-3 hover:border-solid hover:border-line focus:border-solid focus:border-cyan focus:cursor-text cursor-pointer',
+  'bg-transparent border-b border-dotted border-border/40 outline-none p-0 transition-colors duration-fast placeholder:text-text-faint hover:border-solid hover:border-border focus:border-solid focus:border-interactive focus:cursor-text cursor-pointer',
   {
     variants: {
       font: {
-        mono: 'font-mono text-body text-fg',
-        body: 'font-sans text-body text-fg-2',
+        mono: 'font-mono text-body text-text',
+        body: 'font-sans text-body text-text-muted',
       },
     },
     defaultVariants: {
@@ -301,8 +301,8 @@ export const chip = cva(
   {
     variants: {
       variant: {
-        default: 'bg-raised text-fg-2',
-        subtle: 'text-fg-3',
+        default: 'bg-surface-raised text-text-muted',
+        subtle: 'text-text-faint',
       },
     },
     defaultVariants: {
@@ -320,9 +320,9 @@ export const iconAction = cva(
   {
     variants: {
       color: {
-        dim: 'text-fg-3 hover:text-fg',
-        accent: 'text-cyan hover:text-fg',
-        danger: 'text-fg-3 hover:text-red',
+        dim: 'text-text-faint hover:text-text',
+        accent: 'text-interactive hover:text-text',
+        danger: 'text-text-faint hover:text-danger',
       },
       reveal: {
         true: 'opacity-0 group-hover:opacity-100 transition-opacity',

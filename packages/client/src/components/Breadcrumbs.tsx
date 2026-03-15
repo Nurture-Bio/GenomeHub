@@ -64,14 +64,14 @@ export default function Breadcrumbs() {
               </Text>
             )}
             {isLast ? (
-              <Text variant="dim" className="text-fg truncate">
+              <Text variant="dim" className="text-text truncate">
                 {crumb.label}
               </Text>
             ) : (
               <Link to={crumb.to} className="no-underline">
                 <Text
                   variant="dim"
-                  className="hover:text-fg transition-colors duration-fast whitespace-nowrap"
+                  className="hover:text-text transition-colors duration-fast whitespace-nowrap"
                 >
                   {crumb.label}
                 </Text>

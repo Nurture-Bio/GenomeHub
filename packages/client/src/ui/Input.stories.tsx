@@ -25,7 +25,7 @@ export const AllVariants: Story = {
     <div className="flex flex-col gap-3" style={{ width: 300 }}>
       {(['default', 'surface', 'transparent', 'mono'] as const).map((variant) => (
         <div key={variant}>
-          <span className="text-fg-3 font-mono text-body block mb-1">{variant}</span>
+          <span className="text-text-faint font-mono text-body block mb-1">{variant}</span>
           <Input variant={variant} placeholder={`${variant} input`} className="w-full" />
         </div>
       ))}
@@ -38,7 +38,7 @@ export const AllSizes: Story = {
     <div className="flex flex-col gap-3" style={{ width: 300 }}>
       {(['sm', 'md', 'lg'] as const).map((size) => (
         <div key={size}>
-          <span className="text-fg-3 font-mono text-body block mb-1">{size}</span>
+          <span className="text-text-faint font-mono text-body block mb-1">{size}</span>
           <Input size={size} placeholder={`${size} input`} className="w-full" />
         </div>
       ))}

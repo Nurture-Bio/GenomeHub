@@ -1,0 +1,26 @@
+/* ── Utilities — single-purpose overrides ────────────── */
+
+/* Safe area */
+.pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+/* Rendering */
+.pixelated { image-rendering: pixelated; }
+
+/* Table cell spacing */
+.tbl-cell { @apply py-1.5 pl-2.5 pr-3; }
+.tbl-cell-end { @apply py-1.5 pr-2.5; }
+.tbl-row { @apply px-2 py-1.5; }
+
+/* Range slider z-ordering */
+.range-low { z-index: 3; }
+.range-high { z-index: 4; }
+.range-low:active, .range-low:focus { z-index: 5; }
+.range-high:active, .range-high:focus { z-index: 5; }
+
+/* Skeleton sizing */
+.skel-format-icon { width: var(--format-icon-size); height: var(--format-icon-size); }
+.skel-check { width: var(--target-min-icon); height: var(--target-min-icon); }
+
+/* Visibility toggle */
+.ghost { opacity: 0; pointer-events: none; transition: opacity var(--t-fast) var(--ease-out); }
+.ghost.awake { opacity: 1; pointer-events: auto; }

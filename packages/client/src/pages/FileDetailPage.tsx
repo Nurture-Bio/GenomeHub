@@ -248,7 +248,7 @@ export default function FileDetailPage() {
             renderLabel={(item) => (
               <Link
                 to={`/collections/${item.id}`}
-                className="no-underline text-fg-2 hover:text-cyan"
+                className="no-underline text-text-muted hover:text-interactive"
               >
                 {item.label}
               </Link>
@@ -278,7 +278,7 @@ export default function FileDetailPage() {
             </div>
 
             {addingProv && (
-              <div className="border border-line rounded-md p-2.5 mb-2 bg-raised">
+              <div className="border border-border rounded-md p-2.5 mb-2 bg-surface-raised">
                 <div className="flex items-center gap-2 mb-2 flex-wrap">
                   <Text variant="dim" className="shrink-0">
                     This file
@@ -333,7 +333,7 @@ export default function FileDetailPage() {
                             setProvSearch(f.filename);
                           }}
                           className={`flex items-center gap-2 px-1.5 py-1 rounded-sm cursor-pointer border-none text-left w-full transition-colors duration-fast ${
-                            provTargetId === f.id ? 'bg-cyan/10' : 'bg-transparent hover:bg-base'
+                            provTargetId === f.id ? 'bg-interactive/10' : 'bg-transparent hover:bg-surface'
                           }`}
                         >
                           <FormatPill filename={f.filename} />
@@ -355,7 +355,7 @@ export default function FileDetailPage() {
 
             {fileDetail && fileDetail.provenance.upstream.length > 0 && (
               <div className="mb-2">
-                <Text variant="dim" className="mb-1 block text-fg-3">
+                <Text variant="dim" className="mb-1 block text-text-faint">
                   This file was created from:
                 </Text>
                 <div className="flex flex-col gap-1">
@@ -368,7 +368,7 @@ export default function FileDetailPage() {
                           <Link to={`/files/${p.file.id}`} className="no-underline flex-1 min-w-0">
                             <Text
                               variant="mono"
-                              className="truncate hover:text-cyan transition-colors duration-fast"
+                              className="truncate hover:text-interactive transition-colors duration-fast"
                             >
                               {p.file.filename}
                             </Text>
@@ -395,7 +395,7 @@ export default function FileDetailPage() {
 
             {fileDetail && fileDetail.provenance.downstream.length > 0 && (
               <div className="mb-2">
-                <Text variant="dim" className="mb-1 block text-fg-3">
+                <Text variant="dim" className="mb-1 block text-text-faint">
                   Files created from this:
                 </Text>
                 <div className="flex flex-col gap-1">
@@ -408,7 +408,7 @@ export default function FileDetailPage() {
                           <Link to={`/files/${p.file.id}`} className="no-underline flex-1 min-w-0">
                             <Text
                               variant="mono"
-                              className="truncate hover:text-cyan transition-colors duration-fast"
+                              className="truncate hover:text-interactive transition-colors duration-fast"
                             >
                               {p.file.filename}
                             </Text>

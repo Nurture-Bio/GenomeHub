@@ -1,0 +1,185 @@
+/* ================================================================
+   COMPOSITIONS — Layer 3 (CUBE CSS)
+   Geometry only: display, flex, grid, gap, padding, margin, width,
+   height, position, alignment, overflow, contain, clip-path, inset,
+   z-index (structural), pointer-events (structural), isolation.
+   No color, background, border-color, shadow, font, opacity, text,
+   cursor, transition, animation, filter, border-radius, transform.
+   ================================================================ */
+
+/* ── Row hover scaffolding ──────────────────────────── */
+
+.row-hover {
+  position: relative;
+  isolation: isolate;
+}
+
+.row-hover > td::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.row-hover > td {
+  position: relative;
+}
+
+/* ── Treemap cell ───────────────────────────────────── */
+
+.treemap-cell {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--spacing) / 2);
+  padding: var(--spacing) calc(var(--spacing) * 1.5);
+  overflow: hidden;
+}
+
+/* ── Treemap texture overlay ────────────────────────── */
+
+.treemap-texture::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ── Nav active indicator ───────────────────────────── */
+
+.nav-active-indicator {
+  position: relative;
+}
+
+.nav-active-indicator::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: calc(var(--spacing) * 0.75);
+  bottom: calc(var(--spacing) * 0.75);
+  width: var(--nav-indicator-width);
+}
+
+/* ── Containment fences ─────────────────────────────── */
+
+.vault-door {
+  contain: layout style paint;
+}
+
+.glass-canopy {
+  contain: layout style paint;
+}
+
+.sidebar-surface {
+  contain: layout style paint;
+}
+
+/* ── River groove ───────────────────────────────────── */
+
+.river-groove {
+  overflow: hidden;
+}
+
+/* ── Field tooltip ──────────────────────────────────── */
+
+.field-tooltip {
+  position: relative;
+}
+
+.field-tooltip::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + calc(var(--spacing) / 2));
+  left: 0;
+  padding: calc(var(--spacing) / 2) var(--spacing);
+  z-index: var(--z-index-dropdown);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* ── Sigil ─────────────────────────────────────────── */
+
+.sigil {
+  padding: calc(var(--spacing) * 0.75) calc(var(--spacing) * 2);
+}
+
+.sigil-sm {
+  padding: calc(var(--spacing) / 4) calc(var(--spacing) * 0.75);
+}
+
+/* ── Equipment grid ─────────────────────────────────── */
+
+.equipment-grid {
+  display: grid;
+  gap: calc(var(--spacing) / 2);
+  grid-template-columns: repeat(5, 1fr);
+  grid-template-areas:
+    'ear1      head       face       .          ear2'
+    'neck      shoulders  shoulders  arms       back'
+    'wrist1    chest      chest      chest      wrist2'
+    'range     hands      primary    secondary  .'
+    'finger1   legs       legs       legs       finger2'
+    'feet      waist      waist      waist      ammo'
+    '.         .          .          .          .'
+    'bag1      bag2       bag3       bag4       .'
+    'bag5      bag6       bag7       bag8       .';
+}
+
+@media (width < 48rem) {
+  .equipment-grid {
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-areas:
+      'ear1      head      face      ear2'
+      'neck      shoulders shoulders back'
+      'arms      chest     chest     wrist1'
+      'wrist2    chest     chest     range'
+      'hands     primary   secondary .'
+      'finger1   legs      legs      finger2'
+      'feet      waist     waist     ammo'
+      '.         .         .         .'
+      'bag1      bag2      bag3      bag4'
+      'bag5      bag6      bag7      bag8';
+  }
+}
+
+/* ── Equipment slot ─────────────────────────────────── */
+
+.equipment-slot {
+  grid-area: var(--slot-area);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--spacing) / 4);
+  padding: calc(var(--spacing) / 2);
+}
+
+/* ── Collapse container ─────────────────────────────── */
+
+.collapse-container {
+  display: grid;
+  grid-template-rows: 0fr;
+}
+
+.collapse-container > .collapse-inner {
+  overflow: hidden;
+}
+
+/* ── Format icon ────────────────────────────────────── */
+
+.format-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--format-icon-size);
+  height: var(--format-icon-size);
+}
+
+/* ── River fill ─────────────────────────────────────── */
+
+.river-fill {
+  will-change: clip-path;
+}

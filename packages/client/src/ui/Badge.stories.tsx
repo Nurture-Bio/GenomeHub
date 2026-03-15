@@ -31,7 +31,7 @@ export const VariantColorGrid: Story = {
       >
         <div />
         {colors.map((c) => (
-          <span key={c} className="text-fg-3 font-mono text-body text-center">
+          <span key={c} className="text-text-faint font-mono text-body text-center">
             {c}
           </span>
         ))}
@@ -39,7 +39,7 @@ export const VariantColorGrid: Story = {
           <>
             <span
               key={`label-${variant}`}
-              className="text-fg-3 font-mono text-body self-center"
+              className="text-text-faint font-mono text-body self-center"
             >
               {variant}
             </span>

@@ -96,13 +96,13 @@ function SortChevron({ dir, index }: { dir: 'asc' | 'desc' | false | null; index
           transition: 'transform var(--t-fast) var(--ease-move)',
           transform: dir === 'desc' ? 'rotate(180deg)' : 'none',
           opacity: active ? 1 : 0.3,
-          color: active ? 'var(--color-cyan)' : 'inherit',
+          color: active ? 'var(--color-interactive)' : 'inherit',
         }}
       >
         <path d="M4 0L7.5 4.5H0.5L4 0Z" />
       </svg>
       {index !== undefined && index >= 0 && (
-        <span style={{ fontSize: 9, color: 'var(--color-cyan)', fontWeight: 600 }}>
+        <span style={{ fontSize: 9, color: 'var(--color-interactive)', fontWeight: 600 }}>
           {index + 1}
         </span>
       )}
@@ -117,10 +117,10 @@ function ColName({ name }: { name: string }) {
   if (parts.length === 1) return <span>{name}</span>;
   return (
     <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.3 }}>
-      <span style={{ color: 'var(--color-fg-3)' }}>{parts[0]}</span>
+      <span style={{ color: 'var(--color-text-faint)' }}>{parts[0]}</span>
       {parts.slice(1).map((part, i) => (
         <span key={i}>
-          <span style={{ color: 'var(--color-fg-3)' }}>› </span>
+          <span style={{ color: 'var(--color-text-faint)' }}>› </span>
           {part}
         </span>
       ))}
@@ -241,10 +241,10 @@ function MultiSelect({
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
         <button
-          className="w-full flex items-center justify-between gap-1.5 rounded-sm border border-line px-2 py-1 cursor-pointer bg-transparent transition-colors"
+          className="w-full flex items-center justify-between gap-1.5 rounded-sm border border-border px-2 py-1 cursor-pointer bg-transparent transition-colors"
           style={{ fontSize: 'var(--font-size-xs)' }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'var(--color-base)';
+            e.currentTarget.style.background = 'var(--color-surface)';
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.background = 'transparent';
@@ -252,7 +252,7 @@ function MultiSelect({
         >
           <span
             className="truncate"
-            style={{ color: count > 0 ? 'var(--color-fg)' : 'var(--color-fg-3)' }}
+            style={{ color: count > 0 ? 'var(--color-text)' : 'var(--color-text-faint)' }}
           >
             {count > 0 ? `${count} of ${values.length}` : 'All'}
           </span>
@@ -261,8 +261,8 @@ function MultiSelect({
               className="shrink-0 rounded px-1 font-mono font-bold tabular-nums"
               style={{
                 fontSize: 'var(--font-size-xs)',
-                background: 'var(--color-cyan)',
-                color: 'var(--color-void)',
+                background: 'var(--color-interactive)',
+                color: 'var(--color-surface-sunken)',
               }}
             >
               {count}
@@ -284,12 +284,12 @@ function MultiSelect({
         <Popover.Content
           sideOffset={4}
           align="start"
-          className="border border-line shadow-lg rounded-md z-popover animate-fade-in"
+          className="border border-border shadow-lg rounded-md z-popover animate-fade-in"
           style={{
             minWidth: 'var(--radix-popover-trigger-width)',
             maxHeight: 260,
             overflowY: 'auto',
-            background: 'var(--color-void)',
+            background: 'var(--color-surface-sunken)',
           }}
         >
           {count > 0 && (
@@ -297,11 +297,11 @@ function MultiSelect({
               className="block w-full text-left px-2 py-1.5 font-mono cursor-pointer bg-transparent border-none"
               style={{
                 fontSize: 'var(--font-size-xs)',
-                color: 'var(--color-fg-3)',
-                borderBottom: '1px solid var(--color-line)',
+                color: 'var(--color-text-faint)',
+                borderBottom: '1px solid var(--color-border)',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'var(--color-base)';
+                e.currentTarget.style.background = 'var(--color-surface)';
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.background = 'transparent';
@@ -320,7 +320,7 @@ function MultiSelect({
               className="flex items-center gap-2 px-2 py-1 cursor-pointer"
               style={{ fontSize: 'var(--font-size-xs)' }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'var(--color-base)';
+                e.currentTarget.style.background = 'var(--color-surface)';
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.background = 'transparent';
@@ -330,12 +330,12 @@ function MultiSelect({
                 type="checkbox"
                 checked={selected.has(v)}
                 onChange={() => onToggle(v)}
-                style={{ accentColor: 'var(--color-cyan)', flexShrink: 0 }}
+                style={{ accentColor: 'var(--color-interactive)', flexShrink: 0 }}
               />
               <span
                 className="font-mono truncate"
                 style={{
-                  color: selected.has(v) ? 'var(--color-cyan)' : 'var(--color-fg)',
+                  color: selected.has(v) ? 'var(--color-interactive)' : 'var(--color-text)',
                   fontWeight: selected.has(v) ? 600 : 400,
                 }}
               >
@@ -464,13 +464,13 @@ const RangeSliderCard = memo(function RangeSliderCard({
           style={{
             fontSize: 'var(--font-size-xs)',
             color: active
-              ? 'var(--color-cyan)'
+              ? 'var(--color-interactive)'
               : visible
-                ? 'var(--color-fg-2)'
-                : 'var(--color-fg-3)',
+                ? 'var(--color-text-muted)'
+                : 'var(--color-text-faint)',
             borderBottom: visible
-              ? '1px solid var(--color-cyan)'
-              : '1px dashed var(--color-fg-3)',
+              ? '1px solid var(--color-interactive)'
+              : '1px dashed var(--color-text-faint)',
             opacity: visible ? 1 : 0.5,
             transition: 'color var(--t-fast), opacity var(--t-fast), border-color var(--t-fast)',
           }}
@@ -503,7 +503,7 @@ const RangeSliderCard = memo(function RangeSliderCard({
           className="font-mono"
           style={{
             fontSize: 'var(--font-size-xs)',
-            color: 'var(--color-fg-3)',
+            color: 'var(--color-text-faint)',
             fontStyle: 'italic',
           }}
         >
@@ -627,13 +627,13 @@ const ControlCenter = memo(function ControlCenter({
             style={{
               fontSize: 'var(--font-size-xs)',
               color: active
-                ? 'var(--color-cyan)'
+                ? 'var(--color-interactive)'
                 : visibleColumns.has(c.name)
-                  ? 'var(--color-fg-2)'
-                  : 'var(--color-fg-3)',
+                  ? 'var(--color-text-muted)'
+                  : 'var(--color-text-faint)',
               borderBottom: visibleColumns.has(c.name)
-                ? '1px solid var(--color-cyan)'
-                : '1px dashed var(--color-fg-3)',
+                ? '1px solid var(--color-interactive)'
+                : '1px dashed var(--color-text-faint)',
               opacity: visibleColumns.has(c.name) ? 1 : 0.5,
               transition: 'color var(--t-fast), opacity var(--t-fast), border-color var(--t-fast)',
             }}
@@ -654,7 +654,7 @@ const ControlCenter = memo(function ControlCenter({
               className="font-mono"
               style={{
                 fontSize: 'var(--font-size-xs)',
-                color: 'var(--color-fg-3)',
+                color: 'var(--color-text-faint)',
                 fontStyle: 'italic',
               }}
             >
@@ -676,11 +676,11 @@ const ControlCenter = memo(function ControlCenter({
           )
         ) : (
           <input
-            className="w-full bg-transparent border border-line rounded-sm text-fg-2 font-mono placeholder:text-fg-3 focus:outline-none"
+            className="w-full bg-transparent border border-border rounded-sm text-text-muted font-mono placeholder:text-text-faint focus:outline-none"
             style={{
               fontSize: 'var(--font-size-xs)',
               padding: '3px 6px',
-              borderColor: textFilters[c.name]?.trim() ? 'var(--color-cyan)' : undefined,
+              borderColor: textFilters[c.name]?.trim() ? 'var(--color-interactive)' : undefined,
               transition: 'border-color var(--t-fast)',
             }}
             placeholder="Search…"
@@ -704,7 +704,7 @@ const ControlCenter = memo(function ControlCenter({
                 className="font-semibold shrink-0"
                 style={{
                   fontSize: 'var(--font-size-xs)',
-                  color: sel.size > 0 ? 'var(--color-cyan)' : 'var(--color-fg-3)',
+                  color: sel.size > 0 ? 'var(--color-interactive)' : 'var(--color-text-faint)',
                 }}
               >
                 {col.name}
@@ -739,7 +739,7 @@ const ControlCenter = memo(function ControlCenter({
             {corrSortCol && (
               <button
                 className="text-xs font-mono cursor-pointer bg-transparent border-none"
-                style={{ color: 'var(--color-fg-3)', justifySelf: 'start', padding: '0 0 4px' }}
+                style={{ color: 'var(--color-text-faint)', justifySelf: 'start', padding: '0 0 4px' }}
                 onClick={() => setCorrSortCol(null)}
               >
                 ✕ Clear correlation sort
@@ -904,7 +904,7 @@ const VirtualRows = memo(function VirtualRows({
                         minWidth: 50,
                         flexShrink: 0,
                         padding: '0 6px',
-                        borderBottom: '1px solid var(--color-line)',
+                        borderBottom: '1px solid var(--color-border)',
                         lineHeight: `${ROW_H}px`,
                       }}
                     >
@@ -933,7 +933,7 @@ const VirtualRows = memo(function VirtualRows({
                       minWidth: 50,
                       flexShrink: 0,
                       padding: '0 6px',
-                      borderBottom: '1px solid var(--color-line)',
+                      borderBottom: '1px solid var(--color-border)',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
@@ -946,7 +946,7 @@ const VirtualRows = memo(function VirtualRows({
                     }}
                   >
                     {raw === null || raw === undefined ? (
-                      <span style={{ color: 'var(--color-fg-3)', fontStyle: 'italic' }}>—</span>
+                      <span style={{ color: 'var(--color-text-faint)', fontStyle: 'italic' }}>—</span>
                     ) : (
                       fmt(raw, c.type)
                     )}
@@ -1288,7 +1288,7 @@ export default function QueryWorkbench({
                     minWidth: 50,
                     flexShrink: 0,
                     padding: '0 6px',
-                    borderBottom: '1px solid var(--color-line)',
+                    borderBottom: '1px solid var(--color-border)',
                     lineHeight: `${ROW_H}px`,
                   }}
                 >
@@ -1318,7 +1318,7 @@ export default function QueryWorkbench({
           position: 'absolute',
           inset: 0,
           zIndex: 10,
-          background: 'var(--color-void)',
+          background: 'var(--color-surface-sunken)',
           opacity: structural.showSkeleton ? 1 : 0,
           pointerEvents: structural.showSkeleton ? 'auto' : 'none',
         }}
@@ -1346,7 +1346,7 @@ export default function QueryWorkbench({
     <div
       className="flex flex-col flex-1"
       style={{
-        background: 'var(--color-void)',
+        background: 'var(--color-surface-sunken)',
         minHeight: 600,
       }}
     >
@@ -1368,8 +1368,8 @@ export default function QueryWorkbench({
                 </div>
                 {/* Visible */}
                 <div className="flex items-baseline gap-1 min-w-0">
-                  <span className="text-lg font-bold tracking-tight text-fg truncate" title={filename}>{stem}</span>
-                  <span className={`text-lg font-normal text-cyan/70 overflow-hidden transition-[opacity,max-width] duration-300 ease-[cubic-bezier(0.382,0,0.618,1)] ${showExt ? 'opacity-100 max-w-40' : 'opacity-0 max-w-0'}`}>{ext}</span>
+                  <span className="text-lg font-bold tracking-tight text-text truncate" title={filename}>{stem}</span>
+                  <span className={`text-lg font-normal text-interactive/70 overflow-hidden transition-[opacity,max-width] duration-300 ease-[cubic-bezier(0.382,0,0.618,1)] ${showExt ? 'opacity-100 max-w-40' : 'opacity-0 max-w-0'}`}>{ext}</span>
                 </div>
               </>
             )}
@@ -1385,7 +1385,7 @@ export default function QueryWorkbench({
             <button
               type="button"
               onClick={filters.resetFilters}
-              className={`ghost flex items-center gap-1 px-2 py-0.5 rounded font-mono uppercase tracking-widest cursor-pointer bg-transparent border-none text-cyan/70 hover:text-cyan hover:bg-cyan/10 active:scale-95 text-xs ${
+              className={`ghost flex items-center gap-1 px-2 py-0.5 rounded font-mono uppercase tracking-widest cursor-pointer bg-transparent border-none text-interactive/70 hover:text-interactive hover:bg-interactive/10 active:scale-95 text-xs ${
                 dataState.hasFilter ? 'awake' : ''
               }`}
             >
@@ -1403,7 +1403,7 @@ export default function QueryWorkbench({
             <button
               type="button"
               onClick={handleExport}
-              className="flex items-center px-2 py-0.5 rounded font-mono uppercase tracking-widest cursor-pointer bg-transparent border border-line text-cyan/70 hover:text-cyan hover:bg-cyan/10 active:scale-95 text-xs"
+              className="flex items-center px-2 py-0.5 rounded font-mono uppercase tracking-widest cursor-pointer bg-transparent border border-border text-interactive/70 hover:text-interactive hover:bg-interactive/10 active:scale-95 text-xs"
             >
               Export
             </button>
@@ -1437,11 +1437,11 @@ export default function QueryWorkbench({
                     className="font-mono"
                     style={{
                       fontSize: 'var(--font-size-xs)',
-                      color: 'var(--color-fg-3)',
+                      color: 'var(--color-text-faint)',
                     }}
                   >
                     {col.name}{' '}
-                    <span style={{ color: 'var(--color-cyan)', fontWeight: 600 }}>{value}</span>
+                    <span style={{ color: 'var(--color-interactive)', fontWeight: 600 }}>{value}</span>
                   </span>
                 ))}
               </div>
@@ -1507,7 +1507,7 @@ export default function QueryWorkbench({
         {/* Left: The Handle */}
         <div className="flex items-center gap-3">
           <svg
-            className={`w-4 h-4 text-fg-3 transition-transform duration-300 group-hover:text-cyan ${drawerState !== 'closed' ? 'rotate-180' : ''}`}
+            className={`w-4 h-4 text-text-faint transition-transform duration-300 group-hover:text-interactive ${drawerState !== 'closed' ? 'rotate-180' : ''}`}
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -1515,7 +1515,7 @@ export default function QueryWorkbench({
           >
             <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
           </svg>
-          <span className="text-xs font-mono uppercase tracking-[0.2em] text-fg-2 group-hover:text-fg transition-colors">
+          <span className="text-xs font-mono uppercase tracking-[0.2em] text-text-muted group-hover:text-text transition-colors">
             {drawerState !== 'closed' ? 'Close Data Vault' : 'Inspect Data Vault'}
           </span>
         </div>
@@ -1549,8 +1549,8 @@ export default function QueryWorkbench({
                   key={label}
                   className="cursor-pointer border-none bg-transparent select-none font-mono text-xs uppercase tracking-[0.1em] px-2 py-1 rounded transition-colors"
                   style={{
-                    color: allOn ? 'var(--color-cyan)' : 'var(--color-fg-3)',
-                    borderBottom: allOn ? '1px solid var(--color-cyan)' : '1px solid transparent',
+                    color: allOn ? 'var(--color-interactive)' : 'var(--color-text-faint)',
+                    borderBottom: allOn ? '1px solid var(--color-interactive)' : '1px solid transparent',
                   }}
                   onClick={() => {
                     setVisibleColumns((prev) => {
@@ -1578,7 +1578,7 @@ export default function QueryWorkbench({
         style={{
           height: drawerState !== 'closed' ? '40vh' : '0px',
           transition: 'height 382ms cubic-bezier(0.382, 0, 0.618, 1)',
-          border: drawerState !== 'closed' ? '1px solid oklch(1 0 0 / 0.10)' : 'none',
+          border: drawerState !== 'closed' ? '1px solid var(--color-border-frosted)' : 'none',
           borderRadius: 'var(--radius-lg)',
         }}
         onTransitionEnd={(e) => {
@@ -1590,8 +1590,8 @@ export default function QueryWorkbench({
           ref={headerRef}
           className="shrink-0 font-mono mx-3 overflow-hidden"
           style={{
-            background: 'var(--color-void)',
-            ...(activeColumns.length === 0 ? { borderBottom: '2px solid var(--color-line)' } : {}),
+            background: 'var(--color-surface-sunken)',
+            ...(activeColumns.length === 0 ? { borderBottom: '2px solid var(--color-border)' } : {}),
           }}
         >
           {activeColumns.length > 0 &&
@@ -1605,7 +1605,7 @@ export default function QueryWorkbench({
                   style={{
                     minWidth: '100%',
                     width: activeTotalWidth,
-                    borderBottom: '2px solid var(--color-line)',
+                    borderBottom: '2px solid var(--color-border)',
                   }}
                 >
                   {headerGroup.headers.map((header) => {
@@ -1619,14 +1619,14 @@ export default function QueryWorkbench({
                     return (
                       <div
                         key={header.id}
-                        className="text-left font-semibold text-fg-2 select-none relative group cursor-pointer"
+                        className="text-left font-semibold text-text-muted select-none relative group cursor-pointer"
                         style={{
                           width: w,
                           minWidth: 50,
                           flexShrink: 0,
                           padding: '3px 6px',
-                          background: 'var(--color-void)',
-                          borderBottom: `2px solid ${sorted ? 'var(--color-cyan)' : 'var(--color-line)'}`,
+                          background: 'var(--color-surface-sunken)',
+                          borderBottom: `2px solid ${sorted ? 'var(--color-interactive)' : 'var(--color-border)'}`,
                           fontSize: 'var(--font-size-xs)',
                         }}
                         onClick={header.column.getToggleSortingHandler()}
@@ -1639,7 +1639,7 @@ export default function QueryWorkbench({
                           <input
                             type="text"
                             inputMode="numeric"
-                            className="w-full bg-transparent font-mono text-fg-2 placeholder:text-fg-3 focus:outline-none"
+                            className="w-full bg-transparent font-mono text-text-muted placeholder:text-text-faint focus:outline-none"
                             style={{
                               fontSize: 'calc(var(--font-size-xs) - 1px)',
                               padding: '1px 0',
@@ -1649,8 +1649,8 @@ export default function QueryWorkbench({
                                   const r = filters.rangeOverrides[c.name];
                                   return r && r[0] === r[1];
                                 })()
-                                  ? 'var(--color-cyan)'
-                                  : 'var(--color-line)'
+                                  ? 'var(--color-interactive)'
+                                  : 'var(--color-border)'
                               }`,
                             }}
                             placeholder="="
@@ -1672,15 +1672,15 @@ export default function QueryWorkbench({
                         ) : (
                           <input
                             type="text"
-                            className="w-full bg-transparent font-mono text-fg-2 placeholder:text-fg-3 focus:outline-none"
+                            className="w-full bg-transparent font-mono text-text-muted placeholder:text-text-faint focus:outline-none"
                             style={{
                               fontSize: 'calc(var(--font-size-xs) - 1px)',
                               padding: '1px 0',
                               border: 'none',
                               borderBottom: `1px solid ${
                                 filters.textFilters[c.name]?.trim()
-                                  ? 'var(--color-cyan)'
-                                  : 'var(--color-line)'
+                                  ? 'var(--color-interactive)'
+                                  : 'var(--color-border)'
                               }`,
                             }}
                             placeholder="search"
@@ -1694,7 +1694,7 @@ export default function QueryWorkbench({
                           style={{
                             width: 3,
                             cursor: 'col-resize',
-                            background: 'var(--color-line)',
+                            background: 'var(--color-border)',
                             transition: 'opacity var(--t-fast)',
                           }}
                           onMouseDown={(e) => {
@@ -1702,10 +1702,10 @@ export default function QueryWorkbench({
                             handleResizeStart(c.name, e.clientX, w);
                           }}
                           onMouseEnter={(e) => {
-                            (e.currentTarget as HTMLElement).style.background = 'var(--color-cyan)';
+                            (e.currentTarget as HTMLElement).style.background = 'var(--color-interactive)';
                           }}
                           onMouseLeave={(e) => {
-                            (e.currentTarget as HTMLElement).style.background = 'var(--color-line)';
+                            (e.currentTarget as HTMLElement).style.background = 'var(--color-border)';
                           }}
                         />
                       </div>
@@ -1758,7 +1758,7 @@ export default function QueryWorkbench({
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="1.5"
-                style={{ opacity: 0.3, color: 'var(--color-fg-3)' }}
+                style={{ opacity: 0.3, color: 'var(--color-text-faint)' }}
               >
                 <circle cx="11" cy="11" r="8" />
                 <line x1="21" y1="21" x2="16.65" y2="16.65" />
@@ -1767,8 +1767,8 @@ export default function QueryWorkbench({
               <Text variant="dim">No records match the current filters</Text>
               <button
                 onClick={filters.resetFilters}
-                className="cursor-pointer bg-transparent border-none transition-colors hover:text-fg"
-                style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-fg-3)' }}
+                className="cursor-pointer bg-transparent border-none transition-colors hover:text-text"
+                style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-faint)' }}
               >
                 Clear all filters
               </button>

@@ -55,7 +55,7 @@ export const WithProgress: Story = {
       <div style={{ width: 400 }}>
         <Stepper steps={ENGINE_STEPS} active={active} progress={progress} />
         <div className="mt-4 flex flex-col gap-2">
-          <label className="text-fg-3 font-mono text-body">
+          <label className="text-text-faint font-mono text-body">
             Active step: {active}
             <input
               type="range"
@@ -66,7 +66,7 @@ export const WithProgress: Story = {
               className="ml-2"
             />
           </label>
-          <label className="text-fg-3 font-mono text-body">
+          <label className="text-text-faint font-mono text-body">
             Progress: {progress}%
             <input
               type="range"

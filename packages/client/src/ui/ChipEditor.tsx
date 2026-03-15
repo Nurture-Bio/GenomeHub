@@ -41,7 +41,7 @@ export default function ChipEditor({
       className="size-5 shrink-0 flex items-center justify-center rounded-full
                  opacity-0 group-hover/editor:opacity-100
                  transition-opacity duration-fast
-                 bg-raised text-fg-3 hover:text-fg hover:bg-elevated
+                 bg-surface-raised text-text-faint hover:text-text hover:bg-surface-elevated
                  cursor-pointer border-0 font-sans text-body leading-none"
     >
       +
@@ -62,7 +62,7 @@ export default function ChipEditor({
       ))}
 
       {overflow > 0 && (
-        <span className="font-sans text-body text-fg-3 px-1 leading-none">+{overflow} more</span>
+        <span className="font-sans text-body text-text-faint px-1 leading-none">+{overflow} more</span>
       )}
 
       {!disabled &&

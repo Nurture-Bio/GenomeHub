@@ -80,7 +80,7 @@ function RangeSlider({
       <div className="relative" style={{ height: 22 }}>
         <div
           className="absolute top-1/2 -translate-y-1/2 rounded-full w-full"
-          style={{ height: 2, background: 'var(--color-line)' }}
+          style={{ height: 2, background: 'var(--color-border)' }}
         />
         <div
           className="absolute top-1/2 -translate-y-1/2 rounded-full"
@@ -88,7 +88,7 @@ function RangeSlider({
             left: `${lowPct}%`,
             width: `${highPct - lowPct}%`,
             height: 2,
-            background: 'var(--color-cyan)',
+            background: 'var(--color-interactive)',
             opacity: isFull ? 0.3 : 1,
           }}
         />
@@ -117,7 +117,7 @@ function RangeSlider({
         className="flex justify-between font-mono"
         style={{
           fontSize: 'var(--font-size-xs)',
-          color: isFull ? 'var(--color-fg-3)' : 'var(--color-fg-2)',
+          color: isFull ? 'var(--color-text-faint)' : 'var(--color-text-muted)',
         }}
       >
         <span>{low.toLocaleString()}</span>
@@ -145,12 +145,12 @@ function FacetSelect({
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
         <button
-          className="inline-flex items-center gap-1 rounded-sm border border-line px-1.5 py-0.5 font-mono cursor-pointer bg-transparent hover:bg-raised transition-colors"
+          className="inline-flex items-center gap-1 rounded-sm border border-border px-1.5 py-0.5 font-mono cursor-pointer bg-transparent hover:bg-surface-raised transition-colors"
           style={{ fontSize: 'var(--font-size-xs)' }}
         >
-          <span className="text-fg-2">{label}</span>
+          <span className="text-text-muted">{label}</span>
           {active && (
-            <span className="font-semibold" style={{ color: 'var(--color-cyan)' }}>
+            <span className="font-semibold" style={{ color: 'var(--color-interactive)' }}>
               {active}
             </span>
           )}
@@ -170,15 +170,15 @@ function FacetSelect({
         <Popover.Content
           sideOffset={4}
           align="start"
-          className="bg-base border border-line shadow-lg rounded-md overflow-auto z-popover animate-fade-in"
+          className="bg-surface border border-border shadow-lg rounded-md overflow-auto z-popover animate-fade-in"
           style={{ maxHeight: 240 }}
         >
           {active && (
             <button
-              className="block text-left px-2 py-1 text-fg-2 font-mono cursor-pointer bg-transparent border-none hover:bg-raised transition-colors whitespace-nowrap w-full"
+              className="block text-left px-2 py-1 text-text-muted font-mono cursor-pointer bg-transparent border-none hover:bg-surface-raised transition-colors whitespace-nowrap w-full"
               style={{
                 fontSize: 'var(--font-size-xs)',
-                borderBottom: '1px solid var(--color-line)',
+                borderBottom: '1px solid var(--color-border)',
               }}
               onClick={() => {
                 onSelect('');
@@ -191,10 +191,10 @@ function FacetSelect({
           {values.map((v) => (
             <button
               key={v}
-              className="block text-left px-2 py-1 font-mono cursor-pointer bg-transparent border-none hover:bg-raised transition-colors whitespace-nowrap w-full"
+              className="block text-left px-2 py-1 font-mono cursor-pointer bg-transparent border-none hover:bg-surface-raised transition-colors whitespace-nowrap w-full"
               style={{
                 fontSize: 'var(--font-size-xs)',
-                color: v === active ? 'var(--color-cyan)' : 'var(--color-fg)',
+                color: v === active ? 'var(--color-interactive)' : 'var(--color-text)',
                 fontWeight: v === active ? 600 : 400,
               }}
               onClick={() => {
@@ -277,9 +277,9 @@ const VirtualRows = memo(function VirtualRows({
                     width: TOTAL_WIDTH,
                     lineHeight: `${ROW_HEIGHT}px`,
                     fontSize: 'var(--font-size-xs)',
-                    color: 'var(--color-fg-3)',
+                    color: 'var(--color-text-faint)',
                     padding: '0 6px',
-                    borderBottom: '1px solid var(--color-line)',
+                    borderBottom: '1px solid var(--color-border)',
                   }}
                 >
                   …
@@ -290,7 +290,7 @@ const VirtualRows = memo(function VirtualRows({
                   style={{
                     width: TOTAL_WIDTH,
                     height: ROW_HEIGHT,
-                    borderBottom: '1px solid var(--color-line)',
+                    borderBottom: '1px solid var(--color-border)',
                     opacity: 0.15,
                   }}
                 />
@@ -311,7 +311,7 @@ const VirtualRows = memo(function VirtualRows({
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
-                      borderBottom: '1px solid var(--color-line)',
+                      borderBottom: '1px solid var(--color-border)',
                     }}
                   >
                     {formatCell(row[col.name], col.type)}
@@ -470,7 +470,7 @@ export default function DevRangePage() {
     return (
       <div
         className="flex flex-col items-center justify-center gap-3"
-        style={{ background: 'var(--color-void)', height: 'calc(100dvh - 2.5rem)' }}
+        style={{ background: 'var(--color-surface-sunken)', height: 'calc(100dvh - 2.5rem)' }}
       >
         <Text variant="dim">Failed to load SBF file</Text>
         <Text variant="caption" as="p" style={{ fontFamily: 'var(--font-mono)' }}>
@@ -487,7 +487,7 @@ export default function DevRangePage() {
           style={{
             fontFamily: 'var(--font-mono)',
             fontSize: 'var(--font-size-xs)',
-            background: 'var(--color-raised)',
+            background: 'var(--color-surface-raised)',
             borderRadius: 4,
             padding: '6px 10px',
           }}
@@ -501,12 +501,12 @@ export default function DevRangePage() {
   return (
     <div
       className="flex flex-col"
-      style={{ background: 'var(--color-void)', height: 'calc(100dvh - 2.5rem)' }}
+      style={{ background: 'var(--color-surface-sunken)', height: 'calc(100dvh - 2.5rem)' }}
     >
       {/* Header */}
       <div
-        className="px-4 py-3 border-b border-line flex items-center gap-3 flex-wrap"
-        style={{ background: 'var(--color-base)' }}
+        className="px-4 py-3 border-b border-border flex items-center gap-3 flex-wrap"
+        style={{ background: 'var(--color-surface)' }}
       >
         <Heading as="span" level="subheading">
           Range Request Demo
@@ -531,7 +531,7 @@ export default function DevRangePage() {
         {meta && startStats && (
           <div className="flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-2">
-              <span className="font-mono text-fg-2" style={{ fontSize: 'var(--font-size-xs)' }}>
+              <span className="font-mono text-text-muted" style={{ fontSize: 'var(--font-size-xs)' }}>
                 start
               </span>
               <RangeSlider
@@ -561,27 +561,27 @@ export default function DevRangePage() {
         {rangePlan && (
           <div
             className="flex items-center gap-3 flex-wrap font-mono"
-            style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-fg-2)' }}
+            style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}
           >
             <span>
               Records in range:{' '}
-              <span style={{ color: 'var(--color-fg)' }}>{rangePlan.count.toLocaleString()}</span>
+              <span style={{ color: 'var(--color-text)' }}>{rangePlan.count.toLocaleString()}</span>
             </span>
-            <span style={{ color: 'var(--color-line)' }}>|</span>
+            <span style={{ color: 'var(--color-border)' }}>|</span>
             <span>
-              Pages loaded: <span style={{ color: 'var(--color-fg)' }}>{pagesLoaded}</span>
-              <span style={{ color: 'var(--color-fg-3)' }}>
+              Pages loaded: <span style={{ color: 'var(--color-text)' }}>{pagesLoaded}</span>
+              <span style={{ color: 'var(--color-text-faint)' }}>
                 {' '}
                 × {fmtBytes(PAGE_SIZE * (meta?.stride ?? 32))} = {fmtBytes(totalBytes)} fetched
               </span>
             </span>
             {lastPageMs !== null && (
               <>
-                <span style={{ color: 'var(--color-line)' }}>|</span>
+                <span style={{ color: 'var(--color-border)' }}>|</span>
                 <span>
                   Last page:{' '}
                   <span
-                    style={{ color: lastPageMs < 20 ? 'var(--color-cyan)' : 'var(--color-fg)' }}
+                    style={{ color: lastPageMs < 20 ? 'var(--color-interactive)' : 'var(--color-text)' }}
                   >
                     {fmtMs(lastPageMs)}
                   </span>
@@ -590,8 +590,8 @@ export default function DevRangePage() {
             )}
             {(chromFilter || strandFilter) && (
               <>
-                <span style={{ color: 'var(--color-line)' }}>|</span>
-                <span style={{ color: 'oklch(0.750 0.150 60)' }}>
+                <span style={{ color: 'var(--color-border)' }}>|</span>
+                <span style={{ color: 'var(--color-warning)' }}>
                   dim rows filtered by secondary filter
                 </span>
               </>
@@ -601,15 +601,15 @@ export default function DevRangePage() {
 
         {/* Table */}
         <div
-          className="flex-1 flex flex-col overflow-hidden rounded-md border border-line"
-          style={{ background: 'var(--color-void)' }}
+          className="flex-1 flex flex-col overflow-hidden rounded-md border border-border"
+          style={{ background: 'var(--color-surface-sunken)' }}
         >
           {/* Pinned header */}
           <div
             className="shrink-0 flex font-mono text-xs"
             style={{
-              background: 'var(--color-raised)',
-              borderBottom: '2px solid var(--color-line)',
+              background: 'var(--color-surface-raised)',
+              borderBottom: '2px solid var(--color-border)',
             }}
           >
             {COLUMNS.map((col) => (
@@ -621,7 +621,7 @@ export default function DevRangePage() {
                   padding: '3px 6px',
                   textAlign: col.type !== 'VARCHAR' ? 'right' : 'left',
                   fontWeight: 600,
-                  color: 'var(--color-fg-2)',
+                  color: 'var(--color-text-muted)',
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
                 }}
@@ -641,7 +641,7 @@ export default function DevRangePage() {
                 cacheVersion={cacheVersion}
               />
             ) : isLoading ? (
-              <div className="flex items-center justify-center py-6 font-mono text-xs text-fg-3">
+              <div className="flex items-center justify-center py-6 font-mono text-xs text-text-faint">
                 Loading file index…
               </div>
             ) : null}
@@ -652,7 +652,7 @@ export default function DevRangePage() {
         {meta && (
           <div
             className="flex gap-4 flex-wrap font-mono"
-            style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-fg-3)' }}
+            style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-faint)' }}
           >
             <span>
               page size: {PAGE_SIZE} rows · {fmtBytes(PAGE_SIZE * meta.stride)}

@@ -11,7 +11,7 @@ export default function DemoPage() {
   if (!fileId) return null;
 
   return (
-    <div className="flex flex-col h-full" style={{ background: 'var(--color-void)' }}>
+    <div className="flex flex-col h-full" style={{ background: 'var(--color-surface-sunken)' }}>
       <header className="flex items-center gap-2.5 px-4 py-3 border-b border-white/10 shrink-0">
         <span className="logo-glow">
           <AppLogo size={28} />

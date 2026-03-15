@@ -54,10 +54,10 @@ function TextPreview({ pages, isFetchingNextPage, hasNextPage, fetchNextPage }: 
       </div>
       <div
         ref={scrollRef}
-        className="overflow-auto rounded-md border border-line"
-        style={{ background: 'var(--color-void)', maxHeight: 400 }}
+        className="overflow-auto rounded-md border border-border"
+        style={{ background: 'var(--color-surface-sunken)', maxHeight: 400 }}
       >
-        <pre className="font-mono text-body text-fg-2 p-2 m-0 leading-relaxed">
+        <pre className="font-mono text-body text-text-muted p-2 m-0 leading-relaxed">
           <code>{allLines.join('\n')}</code>
         </pre>
         <div ref={sentinelRef} style={{ height: 1 }} />

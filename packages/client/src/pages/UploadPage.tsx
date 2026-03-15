@@ -40,27 +40,27 @@ function DropZone({ onFiles }: DropZoneProps) {
       onClick={() => inputRef.current?.click()}
       className="relative border-2 border-dashed rounded-lg p-4 md:p-8 flex flex-col items-center gap-2 md:gap-3 cursor-pointer transition-colors duration-fast"
       style={{
-        borderColor: dragging ? 'var(--color-cyan)' : 'var(--color-line)',
-        background: dragging ? 'oklch(0.750 0.180 195 / 0.06)' : 'var(--color-base)',
+        borderColor: dragging ? 'var(--color-interactive)' : 'var(--color-border)',
+        background: dragging ? 'color-mix(in srgb, var(--color-interactive) 6%, transparent)' : 'var(--color-surface)',
       }}
     >
       {dragging && (
         <div
           className="absolute inset-0 rounded-lg pointer-events-none"
-          style={{ boxShadow: '0 0 0 2px var(--color-cyan) inset' }}
+          style={{ boxShadow: '0 0 0 2px var(--color-interactive) inset' }}
         />
       )}
 
       <div
         className="flex items-center justify-center w-12 h-12 rounded-full"
-        style={{ background: 'oklch(0.750 0.180 195 / 0.12)' }}
+        style={{ background: 'color-mix(in srgb, var(--color-interactive) 12%, transparent)' }}
       >
         <svg
           width="24"
           height="24"
           viewBox="0 0 24 24"
           fill="none"
-          style={{ color: 'var(--color-cyan)' }}
+          style={{ color: 'var(--color-interactive)' }}
         >
           <path
             d="M12 4v12m0-12L8 8m4-4l4 4"
@@ -80,7 +80,7 @@ function DropZone({ onFiles }: DropZoneProps) {
 
       <div className="text-center">
         <Text variant="body">
-          Drop genomic files here, or <span style={{ color: 'var(--color-cyan)' }}>browse</span>
+          Drop genomic files here, or <span style={{ color: 'var(--color-interactive)' }}>browse</span>
         </Text>
         <Text variant="dim" as="div" className="hidden sm:block">
           FASTQ, BAM, CRAM, VCF, BED, GFF, FASTA, H5AD, Cool, Parquet &amp; more · No file size
@@ -140,7 +140,7 @@ function QueueItem({
   const meta = FORMAT_META[fmt];
 
   return (
-    <div className="flex flex-col gap-2 p-2.5 bg-base border border-line rounded-md">
+    <div className="flex flex-col gap-2 p-2.5 bg-surface border border-border rounded-md">
       <div className="flex items-center gap-2">
         <HashChip label={meta.label} colorKey={fmt} />
         <div className="flex-1 min-w-0">
@@ -226,19 +226,19 @@ function UploadItem({
   const meta = FORMAT_META[fmt];
 
   return (
-    <div className="flex flex-col gap-1 p-2 bg-base border border-line rounded-md">
+    <div className="flex flex-col gap-1 p-2 bg-surface border border-border rounded-md">
       <div className="flex items-center gap-2">
         <HashChip label={meta.label} colorKey={fmt} />
         <Text variant="mono" className="flex-1 truncate min-w-0">
           {filename}
         </Text>
         {status === 'done' && (
-          <Text variant="dim" className="shrink-0" style={{ color: 'var(--color-green)' }}>
+          <Text variant="dim" className="shrink-0" style={{ color: 'var(--color-success)' }}>
             {'\u2713'}
           </Text>
         )}
         {status === 'error' && (
-          <Text variant="dim" className="shrink-0" style={{ color: 'var(--color-red)' }}>
+          <Text variant="dim" className="shrink-0" style={{ color: 'var(--color-danger)' }}>
             {'\u2717'}
           </Text>
         )}
@@ -489,7 +489,7 @@ export default function UploadPage() {
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-2">
             <Text variant="muted">Completed ({doneUploads.length})</Text>
-            <Button intent="bare" size="xs" onClick={clearDone} className="text-fg-3 hover:text-fg">
+            <Button intent="bare" size="xs" onClick={clearDone} className="text-text-faint hover:text-text">
               clear
             </Button>
           </div>

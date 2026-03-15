@@ -31,10 +31,10 @@ const CONN = GAP - 2 * R - 2 * PAD; // connector line length (26px)
 
 function accentFor(h: StepHealth): string {
   return h === 'error'
-    ? 'var(--color-red)'
+    ? 'var(--color-danger)'
     : h === 'warning'
-      ? 'var(--color-amber)'
-      : 'var(--color-cyan)';
+      ? 'var(--color-warning)'
+      : 'var(--color-interactive)';
 }
 
 /**
@@ -124,7 +124,7 @@ export default function Stepper({
                 y1={CY}
                 x2={x2}
                 y2={CY}
-                stroke={reached || revealing ? 'var(--color-cyan)' : 'var(--color-line)'}
+                stroke={reached || revealing ? 'var(--color-interactive)' : 'var(--color-border)'}
                 strokeWidth={CONN_W}
                 strokeLinecap="round"
                 style={{ transition: 'stroke var(--t-phi) var(--ease-phi)' }}
@@ -167,7 +167,7 @@ export default function Stepper({
                   y1={CY}
                   x2={x2}
                   y2={CY}
-                  stroke="var(--color-cyan)"
+                  stroke="var(--color-interactive)"
                   strokeWidth={GLOW_W}
                   strokeLinecap="round"
                   className="stepper-conn-flourish"
@@ -184,14 +184,14 @@ export default function Stepper({
           const current = i === active;
           const pulsing = current && !isFinal;
 
-          const color = current ? accent : reached ? 'var(--color-cyan)' : 'var(--color-line)';
+          const color = current ? accent : reached ? 'var(--color-interactive)' : 'var(--color-border)';
 
           return (
             <g key={step.key} transform={`translate(${cx(i)},${CY})`}>
               {isFinal && reached && (
                 <circle
                   r={R}
-                  fill="var(--color-cyan)"
+                  fill="var(--color-interactive)"
                   className="stepper-flourish-ping"
                   style={{ animationDelay: `${i * 80}ms` }}
                 />
@@ -241,12 +241,12 @@ export default function Stepper({
             fontSize: 'var(--font-size-xs)',
             fontFamily: 'var(--font-mono)',
             color: isFinal
-              ? 'var(--color-cyan)'
+              ? 'var(--color-interactive)'
               : health === 'error'
-                ? 'var(--color-red)'
+                ? 'var(--color-danger)'
                 : health === 'warning'
-                  ? 'var(--color-amber)'
-                  : 'var(--color-fg-2)',
+                  ? 'var(--color-warning)'
+                  : 'var(--color-text-muted)',
             animation: isFinal ? 'flourishLabel 1000ms var(--ease-phi) both' : undefined,
             transition: 'color var(--t-phi) var(--ease-phi), opacity var(--t-phi) var(--ease-phi)',
           }}
@@ -263,7 +263,7 @@ export default function Stepper({
             style={{
               fontSize: 'var(--font-size-xs)',
               fontFamily: 'var(--font-mono)',
-              color: 'var(--color-red)',
+              color: 'var(--color-danger)',
             }}
           >
             {activeError}

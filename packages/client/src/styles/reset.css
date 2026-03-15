@@ -1,0 +1,3 @@
+/* ── Reset — minimal, Tailwind preflight handles the rest ── */
+
+*, *::before, *::after { box-sizing: border-box; }

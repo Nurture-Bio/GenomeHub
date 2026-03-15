@@ -29,7 +29,7 @@ import { TechniquePicker, OrganismPicker, FileTypePicker } from '../ui';
 
 function SkeletonRow() {
   return (
-    <tr className="border-b border-line">
+    <tr className="border-b border-border">
       <td className="tbl-cell">
         <div className="flex flex-col gap-1">
           <div className="skeleton h-[1lh] w-3/4" />
@@ -173,12 +173,12 @@ export default function CollectionsPage() {
 
       {/* Desktop table */}
       <div
-        className="hidden md:block flex-1 overflow-auto min-h-0 border border-line rounded-md bg-base"
+        className="hidden md:block flex-1 overflow-auto min-h-0 border border-border rounded-md bg-surface"
         style={{ scrollbarGutter: 'stable' }}
       >
         <table className="w-full border-collapse text-left table-fixed">
-          <thead className="sticky top-0 bg-raised z-sticky">
-            <tr className="border-b border-line">
+          <thead className="sticky top-0 bg-surface-raised z-sticky">
+            <tr className="border-b border-border">
               <th className="tbl-cell">
                 <Text variant="muted">Name</Text>
               </th>
@@ -205,7 +205,7 @@ export default function CollectionsPage() {
                 {!filtered.length && (
                   <tr>
                     <td colSpan={6} className="py-12 text-center">
-                      <Text variant="body" className="text-fg-3 animate-fade-up">
+                      <Text variant="body" className="text-text-faint animate-fade-up">
                         {techFilter || orgFilter || typeFilter
                           ? 'No collections match your filters.'
                           : 'No collections yet.'}
@@ -216,14 +216,14 @@ export default function CollectionsPage() {
                 {filtered.map((c, i) => (
                   <tr
                     key={c.id}
-                    className="border-b border-line group stagger-item row-hover"
+                    className="border-b border-border group stagger-item row-hover"
                     style={{ '--i': Math.min(i, 15) } as React.CSSProperties}
                   >
                     <td className="tbl-cell">
                       <Link to={`/collections/${c.id}`} className="no-underline">
                         <Text
                           variant="body"
-                          className="hover:text-cyan transition-colors duration-fast"
+                          className="hover:text-interactive transition-colors duration-fast"
                         >
                           {c.name}
                         </Text>
@@ -287,7 +287,7 @@ export default function CollectionsPage() {
                 ))}
 
                 {/* Inline add row */}
-                <tr className="text-fg-3">
+                <tr className="text-text-faint">
                   <td className="tbl-cell overflow-hidden">
                     <input
                       ref={nameRef}
@@ -365,7 +365,7 @@ export default function CollectionsPage() {
             </Card>
           ))
         ) : !filtered.length ? (
-          <Text variant="body" className="py-8 text-center text-fg-3 animate-fade-up">
+          <Text variant="body" className="py-8 text-center text-text-faint animate-fade-up">
             {techFilter || orgFilter || typeFilter
               ? 'No collections match your filters.'
               : 'No collections yet.'}
@@ -373,7 +373,7 @@ export default function CollectionsPage() {
         ) : (
           filtered.map((c) => (
             <Link key={c.id} to={`/collections/${c.id}`} className="no-underline">
-              <Card className="p-2.5 flex flex-col gap-1 hover:border-cyan transition-colors duration-fast cursor-pointer">
+              <Card className="p-2.5 flex flex-col gap-1 hover:border-interactive transition-colors duration-fast cursor-pointer">
                 <div className="flex items-center gap-2 flex-wrap">
                   {c.techniques.map((t) => (
                     <HashChip key={t.id} label={t.name} />
