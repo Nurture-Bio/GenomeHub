@@ -13,7 +13,6 @@ import { useEffect, useReducer, useState, useCallback, useRef } from 'react';
 import { apiFetch } from '../lib/api.js';
 import { useAppStore } from '../stores/useAppStore.js';
 import type { DataProfile, FilterSpec, SortSpec } from '@genome-hub/shared';
-import { HISTOGRAM_BINS } from '@genome-hub/shared';
 
 // Re-export shared types for downstream consumers
 export type { FilterSpec, SortSpec } from '@genome-hub/shared';
@@ -221,20 +220,15 @@ interface StreamCallbacks {
   onGod?: (god: {
     filteredCount: number;
     constrainedStats: Record<string, { min: number; max: number }>;
-    dynamicHistograms: Record<string, number[]>;
   }) => void;
   onViewport?: (table: ArrowTable) => void;
 }
 
 // ── Arrow frame parsers ──────────────────────────────────
 
-function parseGodTable(
-  godTable: ArrowTable,
-  histColNames: string[],
-): {
+function parseGodTable(godTable: ArrowTable): {
   filteredCount: number;
   constrainedStats: Record<string, { min: number; max: number }>;
-  dynamicHistograms: Record<string, number[]>;
 } {
   const filteredCount = Number(godTable.getChild('total_rows')?.get(0) ?? 0);
   const constrainedStats: Record<string, { min: number; max: number }> = {};
@@ -254,26 +248,17 @@ function parseGodTable(
     }
   }
 
-  // Unpack histogram MAP columns: MAP(INT32, UBIGINT) → number[HISTOGRAM_BINS]
-  // Defensive getChild: try unquoted, then quoted (DuckDB/Arrow may preserve quotes)
-  const dynamicHistograms: Record<string, number[]> = {};
-  for (const colName of histColNames) {
-    const fieldName = `hist_${colName}`;
-    const mapVec = godTable.getChild(fieldName) ?? godTable.getChild(`"${fieldName}"`);
-    const bins = new Array<number>(HISTOGRAM_BINS).fill(0);
-    if (mapVec) {
-      const mapRow = mapVec.get(0);
-      if (mapRow) {
-        for (const [bucket, count] of mapRow) {
-          const idx = Number(bucket);
-          if (idx >= 0 && idx < HISTOGRAM_BINS) bins[idx] = Number(count);
-        }
-      }
-    }
-    dynamicHistograms[colName] = bins;
-  }
+  return { filteredCount, constrainedStats };
+}
 
-  return { filteredCount, constrainedStats, dynamicHistograms };
+function parseHistTable(histTable: ArrowTable): number[] {
+  const cntVec = histTable.getChild('cnt');
+  if (!cntVec) return new Array(64).fill(0);
+  const bins = new Array<number>(cntVec.length);
+  for (let i = 0; i < cntVec.length; i++) {
+    bins[i] = Number(cntVec.get(i) ?? 0);
+  }
+  return bins;
 }
 
 /** State matrix: {filter_state → count} pairs from the bitwise GROUP BY. */
@@ -354,7 +339,7 @@ function parseStateMatrix(table: ArrowTable, columns: string[]): StateMatrix {
 // Wire format:
 //   [4B LE: num_tables]
 //   For each table: [4B LE: byte_length] [byte_length bytes: Arrow IPC]
-//   Table order: viewport, god (with histogram MAPs), state_matrix?
+//   Table order: viewport, god, hist_0, hist_1, ...
 
 async function* streamArrowFrames(
   body: ReadableStream<Uint8Array>,
@@ -442,24 +427,35 @@ async function serverQuery(
   let filteredCount = 0;
   let constrainedStats: Record<string, { min: number; max: number }> = {};
   let viewportTable: ArrowTable | null = null;
-  let dynamicHistograms: Record<string, number[]> = {};
+  const dynamicHistograms: Record<string, number[]> = {};
   let stateMatrix: StateMatrix | null = null;
 
-  // Table indices: 0=viewport, 1=god (with histogram MAPs), 2=state matrix (if present)
+  // Table indices: 0=viewport, 1=god, 2..2+N-1=histograms, last=state matrix (if present)
+  const stateMatrixIndex = hasStateMatrix ? 2 + histColNames.length : -1;
+  let histIndex = 0;
+
   for await (const { index, table } of streamArrowFrames(res.body!)) {
     if (!table) continue;
 
     if (index === 0) {
+      // Viewport — rows arrive first (fastest: stops at first qualifying row group)
       viewportTable = table;
       callbacks?.onViewport?.(table);
     } else if (index === 1) {
-      const god = parseGodTable(table, histColNames);
+      // God Query — count + constrained stats (full scan)
+      const god = parseGodTable(table);
       filteredCount = god.filteredCount;
       constrainedStats = god.constrainedStats;
-      dynamicHistograms = god.dynamicHistograms;
       callbacks?.onGod?.(god);
-    } else if (index === 2 && hasStateMatrix) {
+    } else if (index === stateMatrixIndex) {
+      // State matrix — filter intersection counts
       stateMatrix = parseStateMatrix(table, stateColNames);
+    } else {
+      // Histogram frame
+      if (histIndex < histColNames.length) {
+        dynamicHistograms[histColNames[histIndex]] = parseHistTable(table);
+      }
+      histIndex++;
     }
   }
 
@@ -765,7 +761,7 @@ export function useFileQuery(
             if (!frames) return;
             for await (const { table } of frames) {
               if (!table) continue;
-              const god = parseGodTable(table, []);
+              const god = parseGodTable(table);
               if (preflightRef.current?.filterKey === currentFilterKey) {
                 dispatch({ type: 'QUERY_DATA', payload: {
                   count: god.filteredCount,
